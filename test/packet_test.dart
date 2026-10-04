@@ -32,10 +32,35 @@ void main() {
       "I can't breathe, having a panic attack",
       'I want to die',
       'I have been awake for three days straight',
-      'I feel completely empty and hopeless',
       'my doctor asked about my prescription and dosage',
       'she hit me and I am not safe',
       'I am going to be in court next month',
+      'she is abusing me',
+      'they threatened me',
+      'i feel numb',
+      'i am so exhausted',
+      'i have no energy',
+      'i am falling apart',
+      'im scared to go home',
+      'they threatened me',
+      'i had a miscarriage',
+      'i am pregnant',
+      'the police arrested me',
+      'im deported',
+      'my prescription is wrong',
+      'im burnt out',
+      'i feel completely empty and hopeless',
+      'i am helpless',
+      'my partner threatens me',
+      'i think i am depressed',
+      'i am so tired',
+      'im always tired',
+      'i cannot go on',
+      'nothing matters',
+      'im going to hurt myself',
+      'she threatened me',
+      'i want to end it all',
+      'no point in anything',
     ];
     for (final p in phrasings) {
       expect(RoutingDecision.route(p).needsHuman, isTrue,
@@ -44,7 +69,9 @@ void main() {
   });
 
   // The cost of a false positive is one sentence, so ordinary questions that
-  // merely sound adjacent must not be escalated.
+  // merely sound adjacent must not be escalated. Substring matching used to
+  // catch "empty my folder" and "i want to die laughing", so these guard the
+  // word-boundary behaviour specifically.
   test('ordinary questions are not escalated', () {
     const normal = [
       'draft a follow up for my client',
@@ -52,6 +79,29 @@ void main() {
       'what should I train this week',
       'my revenue was up but margins are down',
       'is this islam or not',
+      'write me a python function',
+      'what is my bmi',
+      'help me draft an invoice',
+      'where should i find leads',
+      'summarise this',
+      'i slept fine last night',
+      'i want to die laughing at that joke',
+      'empty my folder',
+      'give me a workout plan',
+      'my doctor is booked next week',
+      'legalise this contract',
+      'i need a break at work',
+      'i feel great today',
+      'can you help me with my taxes',
+      'i have a headache',
+      'write a poem about rain',
+      'fix this python loop',
+      'what is my net worth',
+      'plan my week',
+      'i am nervous about the meeting',
+      'im going to the gym',
+      'my invoice is overdue by 5 days',
+      'set a reminder for my standup',
     ];
     for (final n in normal) {
       expect(RoutingDecision.route(n).needsHuman, isFalse,
