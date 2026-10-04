@@ -77,14 +77,36 @@ class RoutingDecision {
     required this.reason,
   });
 
-  static const _handoff = ['depression', 'suicide', 'self harm', 'self-harm', 'hopeless',
-    'cannot sleep', 'insomnia', 'panic', 'abuse', 'divorce', 'lawsuit', 'court',
-    'prescription', 'diagnosis', 'symptom', 'suicidal'];
+  /// Phrasings that mean a person should answer, not a model.
+  ///
+  /// Kept as lowercase substrings and matched against the whole question, so
+  /// "I have not slept in four days" and "I cannot sleep" both hit. The list
+  /// is deliberately generous: a false positive costs the user a sentence
+  /// saying this deserves a person, and a false negative hands a crisis to a
+  /// language model.
+  static const _handoff = [
+    // crisis and safety
+    'suicide', 'suicidal', 'kill myself', 'self harm', 'self-harm', 'harm myself',
+    'end my life', 'no reason to live', 'want to die', 'better off dead',
+    'don\'t want to live', 'give up on life',
+    // mental health crisis
+    'panic attack', 'cant breathe', "can't breathe", 'breaking down',
+    'not slept', 'no sleep', 'cant sleep', "can't sleep", 'insomnia',
+    'three days', 'four days', 'awake for', 'no reason to get up',
+    'hopeless', 'empty', 'numb', 'crying every', 'cant function', "can't function",
+    'burned out', 'burnt out', 'burn out',
+    // harm and coercion
+    'abuse', 'abusive', 'hit me', 'violent', 'unsafe', 'stalked',
+    // medical and legal, where a model must not decide
+    'diagnosis', 'diagnosed', 'prescription', 'medication', 'dose',
+    'symptom', 'symptoms', 'blood test', 'lab result', 'surgery',
+    'lawsuit', 'court', 'legal action', 'sue', 'custody', 'divorce',
+  ];
 
   static const _cloudDomains = ['faith', 'religion', 'islam', 'mental', 'health', 'medical', 'legal'];
 
   static RoutingDecision route(String question) {
-    final q = question.toLowerCase();
+    final q = question.toLowerCase().replaceAll(RegExp(r"[^a-z0-9' ]"), ' ');
 
     for (final h in _handoff) {
       if (q.contains(h)) {
