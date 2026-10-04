@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -124,8 +123,12 @@ class ProfileStore {
     await _db.insert('business', c.toMap());
   }
 
-  Future<List<Client> clients() async {
-    final rows = await _db.query('business', orderBy: 'created DESC');
+  Future<List<Client>> clients() async {
+    // '<' inside a string is fine, but Dart's parser treats an unbalanced
+    // '<' after a quote in an argument as a type argument, so orderBy uses a
+    // named constant to keep the parser out of it.
+    const order = 'created' ' DESC';
+    final rows = await _db.query('business', orderBy: order);
     return rows.map(Client.fromMap).toList();
   }
 
@@ -214,7 +217,7 @@ class Client {
         'status': status,
         if (amount != null) 'amount': amount,
         if (due != null) 'due': due,
-        if (lead_source != null) 'lead_source': leadSource,
+        if (leadSource != null) 'lead_source': leadSource,
         if (note != null) 'note': note,
         'created': created,
       };

@@ -128,7 +128,8 @@ class PromptBuilder {
       ..writeln()
       ..writeln('Question: $question');
     if (routing.needsHuman) {
-      buf.writeln()
+      buf
+        ..writeln()
         ..writeln('IMPORTANT: this is a sensitive topic. Do not give a diagnosis,')
         ..writeln('ruling, or legal judgement. Acknowledge, give general framing,')
         ..writeln('and tell them a qualified human should be the one to decide.');

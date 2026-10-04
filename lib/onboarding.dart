@@ -78,9 +78,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (bmi != null) await store.put('bmi', bmi.toStringAsFixed(1));
     await store.put(
       'fitness_summary',
-      bmi == null
+      bmi == null || w == null || h == null
           ? 'no measurements yet'
-          : 'weight ${w.toStringAsFixed(1)}kg, height ${h.toStringAsFixed(2)}m, BMI ${bmi.toStringAsFixed(1)}',
+          : 'weight ${w.toStringAsFixed(1)}kg, '
+              'height ${h.toStringAsFixed(2)}m, '
+              'BMI ${bmi.toStringAsFixed(1)}',
     );
     await store.completeOnboarding();
     ref.invalidate(packetProvider);

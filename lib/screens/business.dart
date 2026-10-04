@@ -81,7 +81,7 @@ class BusinessScreen extends ConsumerWidget {
                     Expanded(
                       flex: 3,
                       child: DropdownButtonFormField<String>(
-                        initialValue: status,
+                        value: status,
                         decoration: const InputDecoration(labelText: 'Status'),
                         items: _statuses
                             .map((s) => DropdownMenuItem(value: s, child: Text(s)))

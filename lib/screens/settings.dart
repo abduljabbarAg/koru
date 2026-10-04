@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../packet.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -154,7 +153,7 @@ class SettingsScreen extends ConsumerWidget {
                 ref.invalidate(clientsProvider);
                 ref.invalidate(fitnessProvider);
                 ref.invalidate(packetProvider);
-                if (ctx.mounted) toast(ctx, 'All data deleted');
+                if (context.mounted) toast(context, 'All data deleted');
               }
             },
             icon: const Icon(Icons.delete_outline_rounded, color: KoruColors.clay),
