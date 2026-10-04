@@ -34,10 +34,11 @@ jobs:
         run: |
           cd build/app/outputs/flutter-apk/
           ls -la
-          cp app-release-arm64-v8a.apk koru-arm64.apk || cp app-release.apk koru.apk
+          # --split-per-abi names them app-<abi>-release.apk, not app-release-<abi>.apk
+          cp app-arm64-v8a-release.apk koru-arm64.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: koru-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/koru-arm64.apk
           retention-days: 30
