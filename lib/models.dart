@@ -1,5 +1,6 @@
 /// Domain models, kept out of the storage layer so the assistant and the UI can
 /// reason about them without importing sqflite.
+library;
 
 /// One weight-and-measurements log.
 class FitnessEntry {

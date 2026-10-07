@@ -65,7 +65,7 @@ HandoffPlan handoffPlanFor(RoutingDecision decision, String question) {
     throw ArgumentError('handoffPlanFor needs a decision that asks for a human');
   }
   if (isImmediateDanger(question)) {
-    return HandoffPlan(
+    return const HandoffPlan(
       urgent: true,
       headline: 'Talk to someone right now',
       body: 'I am not the right place for this, and I do not want to guess. '

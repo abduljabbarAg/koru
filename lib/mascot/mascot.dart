@@ -377,6 +377,8 @@ class KoruMascotPainter extends CustomPainter {
   bool _blinkClosed(double t) => clip == KoruClip.blink && (t < 0.25 || (t > 0.5 && t < 0.75));
 
   @override
-  bool shouldRepaint(KoruMascotPainter old) =>
-      old.frame != frame || old.clip != clip || old.size != size;
+  bool shouldRepaint(KoruMascotPainter oldDelegate) =>
+      oldDelegate.frame != frame ||
+      oldDelegate.clip != clip ||
+      oldDelegate.size != size;
 }

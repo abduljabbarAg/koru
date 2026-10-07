@@ -102,13 +102,19 @@ class SettingsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('OpenRouter API key',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                  const Text(
+                    'OpenRouter API key',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
                   const SizedBox(height: 4),
                   const Text(
                     'Encrypted with the Android keystore. Only questions about '
                     'faith, health, medicine or law ever use it.',
-                    style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: KoruColors.inkFaint,
+                      height: 1.4,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   const _KeyField(),
@@ -211,6 +217,7 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _editContext(BuildContext context, WidgetRef ref) async {
     final store = await ref.read(storeProvider.future);
     final m = await store.all();
+    if (!context.mounted) return;
 
     final nick = TextEditingController(text: m['nickname'] ?? '');
     final stage = TextEditingController(text: m['stage'] ?? '');

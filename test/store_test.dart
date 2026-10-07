@@ -201,7 +201,7 @@ void main() {
 
   group('drafts', () {
     test('a new draft is pending', () async {
-      final id = await store.addDraft(Draft(title: 'Follow up', body: 'Hi there', created: '2026-01-01'));
+      final id = await store.addDraft(const Draft(title: 'Follow up', body: 'Hi there', created: '2026-01-01'));
       final d = (await store.drafts()).single;
       expect(d.id, id);
       expect(d.status, DraftStatus.pending);
@@ -226,8 +226,8 @@ void main() {
 
   group('chat', () {
     test('round trips in insertion order', () async {
-      await store.addChat(ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
-      await store.addChat(ChatRecord(
+      await store.addChat(const ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
+      await store.addChat(const ChatRecord(
         role: 'koru',
         text: 'hello',
         why: 'Answered on device.',
@@ -240,7 +240,7 @@ void main() {
     });
 
     test('a handoff survives the round trip', () async {
-      await store.addChat(ChatRecord(
+      await store.addChat(const ChatRecord(
         role: 'koru',
         text: 'stepping aside',
         needsHuman: true,
@@ -250,7 +250,7 @@ void main() {
     });
 
     test('clears', () async {
-      await store.addChat(ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
+      await store.addChat(const ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
       await store.clearChat();
       expect(await store.chat(), isEmpty);
     });
@@ -263,7 +263,7 @@ void main() {
       await store.addClient(const Client(name: 'x', created: '2026-01-01'));
       await store.addTopic(const KnowledgeTopic(topic: 'x', updated: '2026-01-01'));
       await store.addDraft(const Draft(title: 'x', body: 'y', created: '2026-01-01'));
-      await store.addChat(ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
+      await store.addChat(const ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
 
       await store.wipe();
 

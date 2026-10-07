@@ -93,7 +93,7 @@ const _greeting = 'I am here, and I run on this phone. Ask about your work, '
 class ChatNotifier extends Notifier<ChatState> {
   @override
   ChatState build() => const ChatState(
-        messages: [Msg(MsgRole.koru, _greeting, local: true)],
+        messages: const [Msg(MsgRole.koru, _greeting, local: true)],
         busy: false,
       );
 
@@ -108,7 +108,7 @@ class ChatNotifier extends Notifier<ChatState> {
       return;
     }
     final messages = <Msg>[
-      Msg(MsgRole.koru, _greeting, local: true),
+      const Msg(MsgRole.koru, _greeting, local: true),
       ...records.map((r) => r.role == 'user'
           ? Msg(MsgRole.user, r.text)
           : Msg(MsgRole.koru, r.text, why: r.why, local: !r.needsHuman)),
@@ -119,7 +119,7 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> clear() async {
     final store = await ref.read(storeProvider.future);
     await store.clearChat();
-    state = ChatState(
+    state = const ChatState(
       messages: [Msg(MsgRole.koru, _greeting, local: true)],
       busy: false,
       loaded: true,
@@ -205,7 +205,7 @@ class ChatNotifier extends Notifier<ChatState> {
       case CloudUnavailable():
         // Cloud is the right place for this question but there is no key, so say
         // so instead of silently answering with something weaker.
-        return Msg(
+        return const Msg(
           MsgRole.koru,
           'This one deserves a stronger model than the one on your phone, and I '
           'do not have a cloud key yet. Add one in Settings and I will send a '

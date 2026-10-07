@@ -336,9 +336,9 @@ class _TrendPainter extends CustomPainter {
     final maxV = values.reduce((a, b) => a > b ? a : b);
     final span = (maxV - minV).abs() < 0.1 ? 1.0 : maxV - minV;
 
-    final left = 34.0;
+    const left = 34.0;
+    const top = 8.0;
     final right = size.width - 8;
-    final top = 8.0;
     final bottom = size.height - 18;
 
     // Grid and axis labels.

@@ -296,7 +296,7 @@ void main() {
 
   group('drafts', () {
     test('preview flattens whitespace and truncates', () {
-      final d = Draft(title: 't', body: 'line one\n\n  line   two');
+      const d = Draft(title: 't', body: 'line one\n\n  line   two');
       expect(d.preview, 'line one line two');
     });
 
