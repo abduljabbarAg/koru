@@ -59,7 +59,7 @@ class ContextPacket {
   /// Joins a preamble and its parts without leaving a dangling separator when
   /// there is nothing to say.
   static String _sentence(String preamble, List<String> parts) =>
-      parts.isEmpty ? '$preamble' : '$preamble ${parts.join('. ')}.';
+      parts.isEmpty ? preamble : '$preamble ${parts.join('. ')}.';
 
   Map<String, dynamic> toJson() => {
         'nickname': nickname,
