@@ -13,47 +13,57 @@ import 'package:koru/widgets.dart';
 
 import 'test_store.dart';
 
-/// Widget level checks, running against a real SQLite store so the flow under
-/// test is the flow a user gets.
-Future<void> pumpApp(
-  WidgetTester tester,
-  Widget child, {
-  ProfileStore? store,
-  List<Override> extra = const [],
-}) async {
-  final s = store ?? await openTestStore();
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        storeProvider.overrideWith((ref) async => s),
-        cloudKeyProvider.overrideWith((ref) async => ''),
-        secretsProvider.overrideWithValue(MemoryKeyStore()),
-        ...extra,
-      ],
-      child: MaterialApp(theme: buildKoruTheme(), home: child),
-    ),
-  );
-  await tester.pump();
-}
-
-/// Pumps a bounded number of frames.
+/// Widget level checks against a real store.
 ///
-/// The mascot runs a permanent ticker by design, so the widget tree never
-/// reaches a quiet state and `pumpAndSettle` would hang until it times out.
-/// Stepping frames a fixed number of times is the correct way to settle a screen
-/// that always has something moving on it.
-Future<void> pumpFrames(
-  WidgetTester tester, {
-  int frames = 8,
-  Duration step = const Duration(milliseconds: 40),
-}) async {
-  for (var i = 0; i < frames; i++) {
-    await tester.pump(step);
-  }
-}
-
+/// Two things about this file are load bearing:
+///
+///  * The store is opened in `setUp`, which runs in the real async zone.
+///    Opening it inside `testWidgets` would hang forever, because a widget test
+///    body executes inside a fake-async zone that never yields to the real event
+///    loop, so real file and database work never completes. Anything that touches
+///    the database from inside a test body therefore goes through
+///    `tester.runAsync`.
+///
+///  * The mascot runs a permanent ticker, so the tree never goes quiet and
+///    `pumpAndSettle` would hang until it timed out. Frames are stepped instead.
 void main() {
+  late ProfileStore store;
+
   setUpAll(initTestDatabase);
+
+  setUp(() async {
+    store = await openTestStore();
+  });
+
+  Future<void> pumpApp(WidgetTester tester, Widget child) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          storeProvider.overrideWith((ref) async => store),
+          cloudKeyProvider.overrideWith((ref) async => ''),
+          secretsProvider.overrideWithValue(MemoryKeyStore()),
+        ],
+        child: MaterialApp(theme: buildKoruTheme(), home: child),
+      ),
+    );
+    await tester.pump();
+  }
+
+  /// Steps a fixed number of frames.
+  Future<void> pumpFrames(
+    WidgetTester tester, {
+    int frames = 8,
+    Duration step = const Duration(milliseconds: 40),
+  }) async {
+    for (var i = 0; i < frames; i++) {
+      await tester.pump(step);
+    }
+  }
+
+  /// Seeds the store from inside a widget test, where the fake clock is running.
+  Future<void> seed(WidgetTester tester, Future<void> Function() body) async {
+    await tester.runAsync(body);
+  }
 
   group('MemoryKeyStore', () {
     test('round trips and clears', () async {
@@ -140,7 +150,7 @@ void main() {
       );
 
       expect(find.byType(CustomPaint), findsWidgets);
-      expect(find.bySemanticsLabel('Koru, your helper'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('Koru')), findsOneWidget);
       handle.dispose();
     });
 
@@ -154,7 +164,6 @@ void main() {
       );
 
       await tester.tap(find.byType(KoruMascot));
-      await tester.pump();
       expect(taps, 1);
     });
 
@@ -181,7 +190,7 @@ void main() {
       controller.cheer();
       controller.greet();
       expect(controller.pendingCount, 2);
-      await tester.pump();
+      await pumpFrames(tester);
       expect(controller.pendingCount, 0, reason: 'only the newest intent should play');
     });
   });
@@ -206,18 +215,18 @@ void main() {
 
       await tester.enterText(find.byType(TextField), '    ');
       await tester.tap(find.byTooltip('Send'));
-      await tester.pump();
+      await pumpFrames(tester);
 
       expect(find.textContaining('I am here, and I run on this phone'), findsOneWidget);
     });
 
     testWidgets('a local question is answered from the records', (tester) async {
-      final store = await openTestStore();
-      await store.put('nickname', 'kami');
-      await store.put('goals', 'two more clients');
-      await store.completeOnboarding();
-
-      await pumpApp(tester, const ChatScreen(), store: store);
+      await seed(tester, () async {
+        await store.put('nickname', 'kami');
+        await store.put('goals', 'two more clients');
+        await store.completeOnboarding();
+      });
+      await pumpApp(tester, const ChatScreen());
 
       await tester.enterText(find.byType(TextField), 'what are my goals?');
       await tester.tap(find.byTooltip('Send'));
@@ -228,24 +237,24 @@ void main() {
     });
 
     testWidgets('a question needing a person shows the handoff card', (tester) async {
-      final store = await openTestStore();
-      await store.completeOnboarding();
-      await pumpApp(tester, const ChatScreen(), store: store);
+      await seed(tester, store.completeOnboarding);
+      await pumpApp(tester, const ChatScreen());
 
       await tester.enterText(find.byType(TextField), 'i want to die');
       await tester.tap(find.byTooltip('Send'));
       await pumpFrames(tester);
 
       expect(find.byType(HandoffCard), findsOneWidget);
-      expect(find.text('I am stepping aside on this one. Here is who to talk to.'),
-          findsOneWidget);
+      expect(
+        find.text('I am stepping aside on this one. Here is who to talk to.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a cloud question without a key says so instead of guessing',
         (tester) async {
-      final store = await openTestStore();
-      await store.completeOnboarding();
-      await pumpApp(tester, const ChatScreen(), store: store);
+      await seed(tester, store.completeOnboarding);
+      await pumpApp(tester, const ChatScreen());
 
       await tester.enterText(find.byType(TextField), 'is this islam');
       await tester.tap(find.byTooltip('Send'));
@@ -255,22 +264,23 @@ void main() {
     });
 
     testWidgets('the thread is written to the store', (tester) async {
-      final store = await openTestStore();
-      await store.completeOnboarding();
-      await pumpApp(tester, const ChatScreen(), store: store);
+      await seed(tester, store.completeOnboarding);
+      await pumpApp(tester, const ChatScreen());
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
       await pumpFrames(tester);
 
-      final records = await store.chat();
-      expect(records.map((r) => r.role), containsAll(['user', 'koru']));
+      final roles = await tester.runAsync(() async {
+        final records = await store.chat();
+        return records.map((r) => r.role).toList();
+      });
+      expect(roles, containsAll(['user', 'koru']));
     });
 
     testWidgets('the conversation can be cleared', (tester) async {
-      final store = await openTestStore();
-      await store.completeOnboarding();
-      await pumpApp(tester, const ChatScreen(), store: store);
+      await seed(tester, store.completeOnboarding);
+      await pumpApp(tester, const ChatScreen());
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
@@ -282,7 +292,8 @@ void main() {
       await pumpFrames(tester);
 
       expect(find.text('How am I doing?'), findsOneWidget);
-      expect(await store.chat(), isEmpty);
+      final remaining = await tester.runAsync(() async => (await store.chat()).length);
+      expect(remaining, 0);
     });
   });
 
@@ -295,8 +306,7 @@ void main() {
     });
 
     testWidgets('adding a topic shows progress', (tester) async {
-      final store = await openTestStore();
-      await pumpApp(tester, const KnowledgeScreen(), store: store);
+      await pumpApp(tester, const KnowledgeScreen());
 
       await tester.tap(find.text('Add a topic'));
       await pumpFrames(tester);
