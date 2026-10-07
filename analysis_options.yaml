@@ -1,0 +1,21 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # Treat unused code as an error. Half of what was wrong with this project was
+    # dead code: a knowledge table nothing touched, a routing flag nothing read.
+    unused_import: error
+    unused_local_variable: error
+    unused_element: error
+    dead_code: error
+
+linter:
+  rules:
+    - always_declare_return_types
+    - avoid_empty_else
+    - avoid_relative_lib_imports
+    - avoid_slow_async_io
+    - cancel_subscriptions
+    - close_sinks
+    - directives_ordering
+    - prefer_single_quotes

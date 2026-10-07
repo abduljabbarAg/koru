@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../secrets.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'drafts.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -31,9 +33,10 @@ class SettingsScreen extends ConsumerWidget {
                       children: [
                         const KoruMark(size: 34),
                         const SizedBox(width: 12),
-                        Text(p.nickname,
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.w700)),
+                        Expanded(
+                          child: Text(p.nickname,
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -41,6 +44,14 @@ class SettingsScreen extends ConsumerWidget {
                     if (p.business.isNotEmpty) _line('Work', p.business),
                     if (p.fitness.isNotEmpty) _line('Fitness', p.fitness),
                     if (p.goals.isNotEmpty) _line('Goals', p.goals),
+                    if (p.focus.isNotEmpty) _line('Focus', p.focus),
+                    const SizedBox(height: 6),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+                      onPressed: () => _editContext(context, ref),
+                      icon: const Icon(Icons.edit_outlined, size: 17),
+                      label: const Text('Edit this context'),
+                    ),
                   ],
                 ),
               ),
@@ -68,18 +79,15 @@ class SettingsScreen extends ConsumerWidget {
                       border: Border.all(color: KoruColors.line),
                     ),
                     child: Text(
-                      packet.maybeWhen(
-                        data: (p) => p.render(),
-                        orElse: () => '...',
-                      ),
+                      packet.maybeWhen(data: (p) => p.renderForCloud(), orElse: () => '...'),
                       style: const TextStyle(
                           fontSize: 12.5, color: KoruColors.ink, height: 1.5),
                     ),
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Pseudonymous, not anonymous. It carries general context, '
-                    'never your name or your records.',
+                    'Pseudonymous, not anonymous. It carries general context and '
+                    'never your nickname, your name or your records.',
                     style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
                   ),
                 ],
@@ -97,27 +105,25 @@ class SettingsScreen extends ConsumerWidget {
                   const Text('OpenRouter API key',
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                   const SizedBox(height: 4),
-                  const Text('Stored on this device. Needed for frontier answers.',
-                      style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint)),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    initialValue: ref.watch(cloudKeyProvider),
-                    obscureText: true,
-                    decoration: const InputDecoration(hintText: 'sk-or-v1-...'),
-                    onChanged: (v) => ref.read(cloudKeyProvider.notifier).state = v,
+                  const Text(
+                    'Encrypted with the Android keystore. Only questions about '
+                    'faith, health, medicine or law ever use it.',
+                    style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
                   ),
+                  const SizedBox(height: 12),
+                  const _KeyField(),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 22),
           const SectionLabel('Routing'),
-          Card(
+          const Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   _Route('Faith, mental health, medical, legal', 'Cloud model'),
                   SizedBox(height: 10),
                   _Route('Everything else', 'On device'),
@@ -128,36 +134,51 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 22),
-          const SectionLabel('Data'),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Delete everything?'),
-                  content: const Text(
-                      'Your profile, clients and fitness logs will be removed from this device. '
-                      'This cannot be undone.'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Delete', style: TextStyle(color: KoruColors.clay)),
-                    ),
-                  ],
+          const SectionLabel('Shortcuts'),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.drafts_outlined, color: KoruColors.leaf),
+                  title: const Text('Drafts'),
+                  subtitle: const Text('What Koru wrote and is holding for you'),
+                  trailing: const Icon(Icons.chevron_right_rounded, color: KoruColors.inkFaint),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const DraftsScreen()),
+                  ),
                 ),
-              );
-              if (ok == true) {
-                final store = await ref.read(storeProvider.future);
-                await store.wipe();
-                ref.invalidate(clientsProvider);
-                ref.invalidate(fitnessProvider);
-                ref.invalidate(packetProvider);
-                if (context.mounted) toast(context, 'All data deleted');
-              }
-            },
-            icon: const Icon(Icons.delete_outline_rounded, color: KoruColors.clay),
-            label: const Text('Delete all local data', style: TextStyle(color: KoruColors.clay)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const SectionLabel('Data'),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.delete_sweep_outlined, color: KoruColors.clay),
+                  title: const Text('Clear conversation'),
+                  subtitle: const Text('Keeps your profile, clients and logs'),
+                  onTap: () async {
+                    await ref.read(chatProvider.notifier).clear();
+                    if (context.mounted) toast(context, 'Conversation cleared');
+                  },
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _deleteEverything(context, ref),
+                      icon: const Icon(Icons.delete_outline_rounded, color: KoruColors.clay),
+                      label: const Text('Delete all local data',
+                          style: TextStyle(color: KoruColors.clay)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -184,12 +205,209 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
+
+  /// Onboarding told the user they could change all of this here. Until now
+  /// this screen only displayed it, so the sentence was a lie.
+  Future<void> _editContext(BuildContext context, WidgetRef ref) async {
+    final store = await ref.read(storeProvider.future);
+    final m = await store.all();
+
+    final nick = TextEditingController(text: m['nickname'] ?? '');
+    final stage = TextEditingController(text: m['stage'] ?? '');
+    final business = TextEditingController(text: m['business'] ?? '');
+    final goals = TextEditingController(text: m['goals'] ?? '');
+    final focus = TextEditingController(text: m['help_focus'] ?? '');
+    final height = TextEditingController(text: (m['height'] ?? ''));
+
+    final saved = await showKoruSheet<bool>(
+      context,
+      title: 'Your context',
+      subtitle: 'This is what Koru knows about you. It stays on this device.',
+      builder: (ctx) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: nick,
+            decoration: const InputDecoration(
+                labelText: 'Nickname', helperText: 'Never sent to a cloud model'),
+          ),
+          const SizedBox(height: 12),
+          TextField(controller: stage, decoration: const InputDecoration(labelText: 'Stage')),
+          const SizedBox(height: 12),
+          TextField(
+              controller: business, decoration: const InputDecoration(labelText: 'Work')),
+          const SizedBox(height: 12),
+          TextField(
+            controller: goals,
+            maxLines: 3,
+            decoration: const InputDecoration(labelText: 'Goals'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: focus,
+            decoration: const InputDecoration(labelText: 'Help me most with'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: height,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Height', suffixText: 'm'),
+          ),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved != true) return;
+    await store.put('nickname', nick.text.trim());
+    await store.put('stage', stage.text.trim());
+    await store.put('business', business.text.trim());
+    await store.put('goals', goals.text.trim());
+    await store.put('help_focus', focus.text.trim());
+    final h = double.tryParse(height.text.trim());
+    if (h != null && h > 0) await store.putNumber('height', h);
+    await store.refreshFitnessSummary();
+    ref.invalidate(packetProvider);
+    if (context.mounted) toast(context, 'Context updated');
+  }
+
+  /// Clears the key too. The old version left it in memory, so "delete all local
+  /// data" did not delete all of the local data.
+  Future<void> _deleteEverything(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete everything?'),
+        content: const Text(
+            'Your profile, clients, logs, topics, drafts, conversation and your '
+            'cloud key will all be removed from this device. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: KoruColors.clay)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final store = await ref.read(storeProvider.future);
+    await store.wipe();
+    await ref.read(secretsProvider).clearKey();
+
+    await ref.read(chatProvider.notifier).clear();
+    ref.invalidate(clientsProvider);
+    ref.invalidate(fitnessProvider);
+    ref.invalidate(topicsProvider);
+    ref.invalidate(draftsProvider);
+    ref.invalidate(packetProvider);
+    ref.invalidate(cloudKeyProvider);
+    ref.invalidate(heightProvider);
+    ref.read(onboardedProvider.notifier).state = false;
+
+    if (context.mounted) toast(context, 'All data deleted');
+  }
+}
+
+/// Shows whether a key is present without ever revealing it.
+class _KeyField extends ConsumerStatefulWidget {
+  const _KeyField();
+
+  @override
+  ConsumerState<_KeyField> createState() => _KeyFieldState();
+}
+
+class _KeyFieldState extends ConsumerState<_KeyField> {
+  late final TextEditingController _controller;
+  bool _revealed = false;
+  bool _saved = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+    ref.read(cloudKeyProvider).whenData((value) {
+      if (value.isNotEmpty && _controller.text.isEmpty) {
+        _controller.text = value;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final existing = ref.watch(cloudKeyProvider).valueOrNull ?? '';
+    final hasKey = existing.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _controller,
+          obscureText: !_revealed,
+          decoration: InputDecoration(
+            hintText: 'sk-or-v1-...',
+            suffixIcon: IconButton(
+              tooltip: _revealed ? 'Hide key' : 'Show key',
+              icon: Icon(
+                _revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                size: 19,
+                color: KoruColors.inkFaint,
+              ),
+              onPressed: () => setState(() => _revealed = !_revealed),
+            ),
+          ),
+          onChanged: (_) => setState(() => _saved = false),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+              onPressed: () async {
+                await saveCloudKey(ref, _controller.text);
+                setState(() => _saved = true);
+                if (context.mounted) toast(context, 'Key saved to the keystore');
+              },
+              child: const Text('Save key'),
+            ),
+            const SizedBox(width: 10),
+            if (hasKey)
+              TextButton(
+                onPressed: () async {
+                  await saveCloudKey(ref, '');
+                  _controller.clear();
+                  setState(() => _saved = false);
+                  if (context.mounted) toast(context, 'Key removed');
+                },
+                child: const Text('Remove'),
+              ),
+            if (_saved) ...[
+              const SizedBox(width: 8),
+              const Icon(Icons.check_circle_rounded, size: 18, color: KoruColors.leaf),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _Route extends StatelessWidget {
+  const _Route(this.topic, this.where);
+
   final String topic;
   final String where;
-  const _Route(this.topic, this.where);
 
   @override
   Widget build(BuildContext context) {

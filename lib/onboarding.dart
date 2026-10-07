@@ -191,22 +191,40 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _intro() => _body(
         'An assistant that remembers you.',
-        'Your life, your work, your training. Everything stays on this phone. '
+        'Your life, your work, your training. It runs on this phone. '
             'No account, no real name.',
         [
-          const SizedBox(height: 8),
-          const KoruFeature(icon: Icons.lock_outline_rounded, title: 'Local by default',
-              body: 'Your data never leaves this device.'),
-          const KoruFeature(icon: Icons.drafts_outlined, title: 'Drafts, never sends',
-              body: 'Messages are written for you to approve.'),
-          const KoruFeature(icon: Icons.people_outline_rounded, title: 'Knows when to step aside',
-              body: 'Some questions deserve a real person.'),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Image.asset(
+              'assets/splash/koru_splash.png',
+              width: double.infinity,
+              fit: BoxFit.cover,
+              height: 190,
+              excludeFromSemantics: true,
+            ),
+          ),
+          const SizedBox(height: 20),
+          const KoruFeature(
+              icon: Icons.lock_outline_rounded,
+              title: 'Local by default',
+              body: 'Work, training and goals are answered here, without a network call.'),
+          const KoruFeature(
+              icon: Icons.drafts_outlined,
+              title: 'Drafts, never sends',
+              body: 'Anything he writes for you waits for you to send it yourself.'),
+          const KoruFeature(
+              icon: Icons.people_outline_rounded,
+              title: 'Knows when to step aside',
+              body: 'Some questions deserve a real person, not a model.'),
         ],
       );
 
   Widget _nickName() => _body(
         'What should I call you?',
-        'A nickname only. It stays on this device and is never sent anywhere.',
+        'A nickname, not a name. It stays on this device and is never attached '
+            'to anything sent to a cloud model.',
         [
           const SizedBox(height: 8),
           TextField(

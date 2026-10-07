@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shown by Android between tapping the icon and Flutter drawing its first frame.
+
+  It is a static crest of the Koru splash artwork on the brand background, so the
+  hand off from the system splash into the animated in-app splash reads as one
+  continuous moment rather than a white flash into a logo.
+-->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white"/>
+    <item android:drawable="@color/koru_cream" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/koru_splash_crest" />
+    </item>
 </layer-list>

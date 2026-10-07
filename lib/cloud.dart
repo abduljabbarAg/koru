@@ -1,132 +1,141 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import 'packet.dart';
 
-/// Cloud model call. One endpoint, one key, no user-facing configuration.
+/// Result of a cloud call.
+///
+/// The old implementation returned a bare String and turned every failure into a
+/// sentence the user reads as an answer, including a raw exception dump. A caller
+/// cannot tell "the model said this" from "the network fell over", so the UI
+/// could not react differently. This makes the difference explicit.
+sealed class CloudResult {
+  const CloudResult();
+}
+
+class CloudReply extends CloudResult {
+  const CloudReply(this.text);
+  final String text;
+}
+
+class CloudFailure extends CloudResult {
+  const CloudFailure(this.reason, {this.detail});
+
+  /// A short line safe to show a user.
+  final String reason;
+
+  /// Diagnostic detail, kept for a debug surface rather than the chat bubble.
+  final String? detail;
+}
+
+class CloudUnavailable extends CloudResult {
+  const CloudUnavailable();
+  @override
+  String toString() => 'CloudUnavailable';
+}
+
+/// One frontier model call. One endpoint, one key, no user-facing routing
+/// configuration.
 class CloudModel {
   const CloudModel();
 
   static const _endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+  static const _model = 'anthropic/claude-3.5-sonnet';
+  static const _timeout = Duration(seconds: 45);
 
-  Future<String> ask({
+  Future<CloudResult> ask({
     required ContextPacket packet,
     required String question,
     required RoutingDecision routing,
     required String apiKey,
-    String model = 'anthropic/claude-3.5-sonnet',
+    String model = _model,
   }) async {
-    if (apiKey.isEmpty) {
-      return 'No cloud key set. Add one in Settings to use frontier models.';
-    }
-    final body = {
+    if (apiKey.trim().isEmpty) return const CloudUnavailable();
+
+    final prompt = PromptBuilder.build(packet: packet, question: question, routing: routing);
+    final body = jsonEncode({
       'model': model,
       'messages': [
-        {'role': 'system', 'content': PromptBuilder.build(packet: packet, question: question, routing: routing)},
+        {'role': 'system', 'content': prompt},
         {'role': 'user', 'content': question},
       ],
       'max_tokens': 600,
-    };
-    final resp = await http.post(
-      Uri.parse(_endpoint),
-      headers: {
-        'Authorization': 'Bearer $apiKey',
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://github.com/AbduljabbarBXR/koru',
-        'X-Title': 'Koru',
-      },
-      body: _encode(body),
-    ).timeout(const Duration(seconds: 60));
+    });
 
-    if (resp.statusCode != 200) {
-      return 'Cloud model returned ${resp.statusCode}. Check the key, or retry.';
-    }
-    return _extract(resp.body);
-  }
+    try {
+      final resp = await http
+          .post(
+            Uri.parse(_endpoint),
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://github.com/AbduljabbarBXR/koru',
+              'X-Title': 'Koru',
+            },
+            body: body,
+          )
+          .timeout(_timeout);
 
-  String _encode(Map<String, dynamic> m) {
-    final sb = StringBuffer();
-    _write(sb, m);
-    return sb.toString();
-  }
-
-  void _write(StringBuffer sb, Object? v) {
-    if (v is Map) {
-      sb.write('{');
-      var first = true;
-      v.forEach((k, val) {
-        if (!first) sb.write(',');
-        first = false;
-        sb.write(jsonQuote(k.toString()));
-        sb.write(':');
-        _write(sb, val);
-      });
-      sb.write('}');
-    } else if (v is List) {
-      sb.write('[');
-      for (var i = 0; i < v.length; i++) {
-        if (i > 0) sb.write(',');
-        _write(sb, v[i]);
+      if (resp.statusCode == 401 || resp.statusCode == 403) {
+        return const CloudFailure(
+          'That cloud key was rejected. Check it in Settings.',
+        );
       }
-      sb.write(']');
-    } else if (v is num || v is bool || v == null) {
-      sb.write(v?.toString() ?? 'null');
-    } else {
-      sb.write(jsonQuote(v.toString()));
+      if (resp.statusCode == 429) {
+        return const CloudFailure('The model is rate limited right now. Try again shortly.');
+      }
+      if (resp.statusCode != 200) {
+        return CloudFailure(
+          'The cloud model returned ${resp.statusCode}.',
+          detail: resp.body.length > 400 ? '${resp.body.substring(0, 400)}...' : resp.body,
+        );
+      }
+      final text = extractReply(resp.body);
+      if (text == null || text.trim().isEmpty) {
+        return const CloudFailure('Could not read the reply from the model.');
+      }
+      return CloudReply(text.trim());
+    } on TimeoutException {
+      return const CloudFailure('The model took too long to answer.');
+    } catch (e) {
+      return CloudFailure('Could not reach the model.', detail: '$e');
     }
   }
 
-  String jsonQuote(String s) {
-    final out = StringBuffer('"');
-    for (final c in s.codeUnits) {
-      switch (c) {
-        case 34:
-          out.write(r'\"');
-        case 92:
-          out.write(r'\\');
-        case 10:
-          out.write(r'\n');
-        case 13:
-          out.write(r'\r');
-        case 9:
-          out.write(r'\t');
-        default:
-          if (c < 0x20) {
-            out.write(r'\u');
-            out.write(c.toRadixString(16).padLeft(4, '0'));
-          } else {
-            out.writeCharCode(c);
-          }
+  /// Pulls the assistant text out of an OpenRouter response.
+  ///
+  /// The previous version scanned for the first `"content":` and copied until
+  /// the next quote, which breaks on escaped quotes and on any response where
+  /// content is not the first field. The project already depended on
+  /// `dart:convert` for the request body, so the decoder was there.
+  static String? extractReply(String body) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException {
+      return null;
+    }
+    if (decoded is! Map) return null;
+    final choices = decoded['choices'];
+    if (choices is! List || choices.isEmpty) return null;
+    final first = choices.first;
+    if (first is! Map) return null;
+    final message = first['message'];
+    if (message is! Map) return null;
+    final content = message['content'];
+    if (content is String) return content;
+    // Some gateways return content as a list of parts.
+    if (content is List) {
+      final buffer = StringBuffer();
+      for (final part in content) {
+        if (part is Map && part['text'] is String) buffer.write(part['text']);
       }
+      return buffer.isEmpty ? null : buffer.toString();
     }
-    out.write('"');
-    return out.toString();
-  }
-
-  String _extract(String body) {
-    // Minimal extraction: the only field that matters is the message text.
-    final marker = '"content":';
-    final start = body.indexOf(marker);
-    if (start < 0) return 'Could not read the reply.';
-    var i = start + marker.length;
-    while (i < body.length && body[i] != '"') {
-      i++;
-    }
-    if (i >= body.length) return 'Could not read the reply.';
-    final sb = StringBuffer();
-    i++;
-    while (i < body.length && body[i] != '"') {
-      if (body[i] == r'\' && i + 1 < body.length) {
-        sb.write(body[i + 1]);
-        i += 2;
-      } else {
-        sb.write(body[i]);
-        i++;
-      }
-    }
-    return sb.toString();
+    return null;
   }
 }
 

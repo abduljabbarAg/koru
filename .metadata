@@ -1,0 +1,18 @@
+name: koru
+description: "Koru - a local-first AI companion that knows your life and your business."
+
+project_type: app
+
+version:
+  revision: "13e6c3f"
+  channel: "stable"
+
+platforms:
+  platform:
+    root_package: android
+    android_package: com.abduljabbar.koru
+    ios_package: com.abduljabbar.koru
+
+unmanaged_files:
+  - 'lib/main.dart'
+  - 'ios/Runner.xcodeproj/project.pbxproj'

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- KoruColors.cream, kept in step with lib/theme.dart. -->
+    <color name="koru_cream">#FBF8F4</color>
+    <color name="koru_leaf">#2F7A5A</color>
+</resources>

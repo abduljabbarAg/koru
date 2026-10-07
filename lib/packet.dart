@@ -1,11 +1,16 @@
 import 'dart:convert';
 
-/// The shape that leaves the device when a cloud model is used.
+/// The context that leaves the device, and only the context that is allowed to.
 ///
-/// Hard rule enforced by construction: this class is built only by
-/// [ProfileStore.toContextPacket]. Nothing the model previously wrote is ever
-/// fed back in, so a model that read a full profile once cannot quote it back
-/// in a later packet.
+/// Two shapes, on purpose:
+///
+///  * [renderLocal] is what the user sees on their own screen. It may name them.
+///  * [renderForCloud] is what goes upstream. It never carries the nickname,
+///    because onboarding promises the nickname never leaves the device, and an
+///    earlier version quietly put it in the system prompt.
+///
+/// [ProfileStore.packet] is the only constructor, so a new field cannot appear in
+/// a cloud prompt without someone noticing it here.
 class ContextPacket {
   final String nickname;
   final String lifeStage;
@@ -23,9 +28,24 @@ class ContextPacket {
     required this.focus,
   });
 
-  /// Pseudonymous context: who you are in general terms, never who you are.
-  /// No names, no exact figures the user did not intend to share, no history.
-  String render() {
+  /// A neutral stand-in for the user in anything that leaves the phone.
+  static const String cloudSubject = 'the user';
+
+  /// Local-only description. Safe to show on this device, never sent.
+  String renderLocal() {
+    final parts = <String>[
+      if (nickname.isNotEmpty) 'name: $nickname',
+      if (lifeStage.isNotEmpty) 'stage: $lifeStage',
+      if (business.isNotEmpty) 'work: $business',
+      if (goals.isNotEmpty) 'goals: $goals',
+      if (fitness.isNotEmpty) 'fitness: $fitness',
+      if (focus.isNotEmpty) 'focusing on: $focus',
+    ];
+    return 'About this person. ${parts.join('. ')}.'.trim();
+  }
+
+  /// What a cloud model is allowed to see. No nickname, ever.
+  String renderForCloud() {
     final parts = <String>[
       if (lifeStage.isNotEmpty) 'stage: $lifeStage',
       if (business.isNotEmpty) 'work: $business',
@@ -33,7 +53,7 @@ class ContextPacket {
       if (fitness.isNotEmpty) 'fitness: $fitness',
       if (focus.isNotEmpty) 'asking about: $focus',
     ];
-    return 'About this user. $nickname. ${parts.join('. ')}.';
+    return 'About this user. ${parts.join('. ')}.'.trim();
   }
 
   Map<String, dynamic> toJson() => {
@@ -56,8 +76,12 @@ class ContextPacket {
 
   String encode() => jsonEncode(toJson());
 
-  /// Word count, used to keep the packet inside a token budget.
-  int get wordCount => render().split(RegExp(r'\s+')).length;
+  /// Word count of the cloud rendering, used to keep the packet inside a budget.
+  int get wordCount => renderForCloud().split(RegExp(r'\s+')).length;
+
+  /// Longest cloud rendering the packet is allowed to produce. Past this the
+  /// context is the conversation's problem, not the model's.
+  static const int maxCloudWords = 90;
 }
 
 /// Turns a domain question into a routing decision, with no configuration
@@ -138,11 +162,16 @@ class RoutingDecision {
     }
   }
 
-  static bool _isWordChar(String c) => c.codeUnitAt(0) >= 48 && c.codeUnitAt(0) <= 122 ||
-      c.codeUnitAt(0) == 39;
+  static bool _isWordChar(String c) =>
+      c.codeUnitAt(0) >= 48 && c.codeUnitAt(0) <= 122 || c.codeUnitAt(0) == 39;
+
+  /// Normalises a question for matching: lower case, punctuation folded to
+  /// spaces. Exposed for tests, which check the fold rather than re-deriving it.
+  static String normalise(String question) =>
+      question.toLowerCase().replaceAll(RegExp(r"[^a-z0-9' ]"), ' ');
 
   static RoutingDecision route(String question) {
-    final q = question.toLowerCase().replaceAll(RegExp(r"[^a-z0-9' ]"), ' ');
+    final q = normalise(question);
 
     for (final h in _handoff) {
       if (_matches(q, h)) {
@@ -182,7 +211,7 @@ class PromptBuilder {
       ..writeln('Be brief and concrete. Code first, words second when it is code.')
       ..writeln('The user is pseudonymous: never guess or invent a real name.')
       ..writeln()
-      ..writeln(packet.render())
+      ..writeln(packet.renderForCloud())
       ..writeln()
       ..writeln('Question: $question');
     if (routing.needsHuman) {
