@@ -171,9 +171,18 @@ class RoutingDecision {
       c.codeUnitAt(0) >= 48 && c.codeUnitAt(0) <= 122 || c.codeUnitAt(0) == 39;
 
   /// Normalises a question for matching: lower case, punctuation folded to
-  /// spaces. Exposed for tests, which check the fold rather than re-deriving it.
-  static String normalise(String question) =>
-      question.toLowerCase().replaceAll(RegExp(r"[^a-z0-9' ]"), ' ');
+  /// spaces, runs of whitespace collapsed.
+  ///
+  /// Collapsing matters. Folding punctuation alone turns "Hi, there!" into
+  /// "hi  there " with a doubled and a trailing space, which is harmless for
+  /// substring matching but wrong as a normalised form.
+  ///
+  /// Exposed for tests, which check the fold rather than re-deriving it.
+  static String normalise(String question) => question
+      .toLowerCase()
+      .replaceAll(RegExp(r"[^a-z0-9' ]"), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   static RoutingDecision route(String question) {
     final q = normalise(question);
