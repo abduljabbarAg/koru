@@ -112,7 +112,7 @@ void main() {
 
   test('a blink never interrupts another one-shot', () {
     a.wave(0);
-    final step = 10;
+    const step = 10;
     final end = KoruAnimator.clipDurationMs(KoruClip.wave);
     for (var t = 0; t < end; t += step) {
       expect(a.clipAt(t), KoruClip.wave);

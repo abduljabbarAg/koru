@@ -71,7 +71,7 @@ HandoffPlan handoffPlanFor(RoutingDecision decision, String question) {
       body: 'I am not the right place for this, and I do not want to guess. '
           'These lines are free and answer around the clock. If you are in '
           'immediate danger, call the emergency number first.',
-      resources: const [
+      resources: [
         Resource(
           name: 'Emergency',
           detail: 'Police, ambulance, fire',

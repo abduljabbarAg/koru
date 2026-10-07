@@ -96,18 +96,18 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 22),
           const SectionLabel('Cloud model'),
-          Card(
+          const Card(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'OpenRouter API key',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                   ),
-                  const SizedBox(height: 4),
-                  const Text(
+                  SizedBox(height: 4),
+                  Text(
                     'Encrypted with the Android keystore. Only questions about '
                     'faith, health, medicine or law ever use it.',
                     style: TextStyle(
@@ -116,8 +116,8 @@ class SettingsScreen extends ConsumerWidget {
                       height: 1.4,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const _KeyField(),
+                  SizedBox(height: 12),
+                  _KeyField(),
                 ],
               ),
             ),

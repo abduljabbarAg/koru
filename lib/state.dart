@@ -93,7 +93,7 @@ const _greeting = 'I am here, and I run on this phone. Ask about your work, '
 class ChatNotifier extends Notifier<ChatState> {
   @override
   ChatState build() => const ChatState(
-        messages: const [Msg(MsgRole.koru, _greeting, local: true)],
+        messages: [Msg(MsgRole.koru, _greeting, local: true)],
         busy: false,
       );
 
