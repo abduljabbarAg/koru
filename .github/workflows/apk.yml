@@ -37,11 +37,10 @@ jobs:
       - name: analyze
         run: flutter analyze
 
-      # A per-test timeout keeps a hung test from burning the whole job. The
-      # mascot animates continuously, so any screen showing it can never be
-      # settled with pumpAndSettle.
+      # Per-test timeout lives in dart_test.yaml, where the test runner actually
+      # reads it.
       - name: test
-        run: flutter test --timeout=90s
+        run: flutter test
 
       - name: build release apk
         run: flutter build apk --release --split-per-abi

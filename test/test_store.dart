@@ -10,12 +10,18 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 /// opened in a temp directory. That way the schema and the queries are really
 /// executed, and the tests fail for the reasons a user would hit rather than
 /// because a mock drifted from the real thing.
+///
+/// The no-isolate factory matters. `databaseFactoryFfi` runs SQLite on a
+/// background isolate, and `testWidgets` executes its body inside a fake-async
+/// zone that never yields to the real event loop, so every store await would
+/// hang until the test timed out. Running on the same isolate keeps the work in
+/// microtasks, which fake async does drain.
 bool _initialised = false;
 
 void initTestDatabase() {
   if (_initialised) return;
   sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+  databaseFactory = databaseFactoryFfiNoIsolate;
   _initialised = true;
 }
 

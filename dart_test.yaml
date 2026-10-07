@@ -1,0 +1,10 @@
+# A hung test should fail in a minute, not quietly consume the whole CI job.
+#
+# The mascot animates continuously and every store call crosses a plugin
+# boundary, so a test that forgets to pump or to await correctly would
+# otherwise sit there until the default ten minute timeout.
+timeout: 60s
+
+# Keep the runner's memory footprint predictable: each test file forks its own
+# isolate, and the widget tests build real widget trees.
+concurrency: 2
