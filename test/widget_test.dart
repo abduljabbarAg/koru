@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:koru/handoff.dart';
 import 'package:koru/mascot/mascot.dart';
 import 'package:koru/screens/chat.dart';
 import 'package:koru/screens/knowledge.dart';
@@ -109,7 +110,7 @@ void main() {
         ),
       );
 
-      expect(find.bySemanticsLabel(contains('Step aside')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('Step aside')), findsOneWidget);
       handle.dispose();
     });
   });

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Where the cloud key lives.
@@ -56,7 +57,7 @@ final secretsProvider = Provider<KeyStore>((ref) => const PlatformKeyStore());
 class SecureKeyStore {
   const SecureKeyStore._();
 
-  static const _channel = 'koru/secure_key';
+  static const MethodChannel _channel = MethodChannel('koru/secure_key');
 
   static Future<String> read() async {
     try {

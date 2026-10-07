@@ -10,7 +10,6 @@ import 'screens/knowledge.dart';
 import 'screens/settings.dart';
 import 'state.dart';
 import 'theme.dart';
-import 'widgets.dart';
 
 void main() {
   runApp(const ProviderScope(child: KoruApp()));
@@ -72,12 +71,12 @@ class _RootGateState extends ConsumerState<RootGate> {
   @override
   Widget build(BuildContext context) {
     if (_ready == null) {
-      return const SplashScreen(onDone: _leaveSplash);
+      return SplashScreen(onDone: _leaveSplash);
     }
     if (!_splashDone) {
       // The store opened faster than the minimum splash time. Keep showing it so
       // the intro never flashes past.
-      return const SplashScreen(onDone: _leaveSplash);
+      return SplashScreen(onDone: _leaveSplash);
     }
     if (!_done) return const OnboardingScreen();
     return const HomeShell();

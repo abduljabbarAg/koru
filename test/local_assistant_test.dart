@@ -91,7 +91,7 @@ void main() {
         ]),
       );
       expect(out.text, contains('Acme'));
-      expect(out.text, doesNotContain('Globex'));
+      expect(out.text, isNot(contains('Globex')));
     });
 
     test('does not call paid work overdue', () {

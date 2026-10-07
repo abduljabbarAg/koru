@@ -81,7 +81,6 @@ class _KoruMascotState extends State<KoruMascot> with SingleTickerProviderStateM
 
   Ticker? _ticker;
   ui.Image? _atlas;
-  bool _atlasFailed = false;
   int _now = 0;
 
   KoruClip _clip = KoruClip.idle;
@@ -90,7 +89,6 @@ class _KoruMascotState extends State<KoruMascot> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _now = _elapsedMs;
     _animator.start(_now);
     _animator.setBusy(widget.busy, _now);
     _ticker = createTicker(_onTick)..start();
@@ -111,10 +109,9 @@ class _KoruMascotState extends State<KoruMascot> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  int get _elapsedMs => _ticker?.lastElapsedDuration?.inMilliseconds ?? 0;
-
   void _onTick(Duration elapsed) {
-    final now = _elapsedMs;
+    // Ticker hands us the elapsed time directly, so there is nothing to query.
+    final now = elapsed.inMilliseconds;
     _now = now;
     _animator.setBusy(widget.busy, now);
 
@@ -145,7 +142,7 @@ class _KoruMascotState extends State<KoruMascot> with SingleTickerProviderStateM
       }
       setState(() => _atlas = image);
     } catch (_) {
-      if (mounted) setState(() => _atlasFailed = true);
+      // The vector portrait below takes over and stays put.
     }
   }
 
@@ -160,7 +157,7 @@ class _KoruMascotState extends State<KoruMascot> with SingleTickerProviderStateM
   void _handleTap() {
     widget.onTap?.call();
     if (widget.busy) return;
-    _animator.wave(_elapsedMs);
+    _animator.wave(_now);
     setState(() {});
   }
 
@@ -168,7 +165,10 @@ class _KoruMascotState extends State<KoruMascot> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final art = _atlas != null
         ? _AtlasFrame(image: _atlas!, clip: _clip, frame: _frame, size: widget.size)
-        : KoruMascotPainter(size: widget.size, clip: _clip, frame: _frame);
+        : CustomPaint(
+            size: Size.square(widget.size),
+            painter: KoruMascotPainter(size: widget.size, clip: _clip, frame: _frame),
+          );
 
     return Semantics(
       label: widget.semanticLabel ?? 'Koru, your helper',

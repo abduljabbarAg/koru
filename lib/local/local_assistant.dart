@@ -265,7 +265,7 @@ class LocalAnswer {
 
 /// Everything the assistant is allowed to know, gathered once by the caller.
 class LocalFacts {
-  const LocalFacts({
+  LocalFacts({
     this.nickname = '',
     this.lifeStage = '',
     this.goals = '',

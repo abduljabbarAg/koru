@@ -7,7 +7,7 @@ import 'package:koru/mascot/mascot_clips.dart';
 void main() {
   late KoruAnimator a;
 
-  setUp(() => a = KoruAnimator(seed: 7)..start(0));
+  setUp(() => a = KoruAnimator()..start(0));
 
   test('starts idle on frame zero', () {
     expect(a.clipAt(0), KoruClip.idle);
