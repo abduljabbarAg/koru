@@ -10,3 +10,11 @@
 
 # The secure key channel is resolved by name at runtime.
 -keep class com.abduljabbar.koru.MainActivity { *; }
+
+# Flutter's Play Store split application references Play Core, which is not on
+# the classpath because this app is not distributed as an app bundle with Play
+# split install. R8 treats the reference as a hard error; the class is never
+# loaded, so silence the warning rather than pulling in a dependency the app will
+# never use.
+-dontwarn com.google.android.play.core.**
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication

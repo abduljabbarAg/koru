@@ -26,7 +26,10 @@ if (hasReleaseKeystore) {
 android {
     namespace = "com.abduljabbar.koru"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Pinned above flutter.ndkVersion (23.x) because path_provider_android and
+    // sqflite_android both require 27.0.12077973. NDK versions are backward
+    // compatible, so using the highest one is the supported answer.
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
