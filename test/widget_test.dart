@@ -36,6 +36,22 @@ Future<void> pumpApp(
   await tester.pump();
 }
 
+/// Pumps a bounded number of frames.
+///
+/// The mascot runs a permanent ticker by design, so the widget tree never
+/// reaches a quiet state and `pumpAndSettle` would hang until it times out.
+/// Stepping frames a fixed number of times is the correct way to settle a screen
+/// that always has something moving on it.
+Future<void> pumpFrames(
+  WidgetTester tester, {
+  int frames = 8,
+  Duration step = const Duration(milliseconds: 40),
+}) async {
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(step);
+  }
+}
+
 void main() {
   setUpAll(initTestDatabase);
 
@@ -205,7 +221,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'what are my goals?');
       await tester.tap(find.byTooltip('Send'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       expect(find.textContaining('two more clients'), findsOneWidget);
       expect(find.text('ON DEVICE'), findsWidgets);
@@ -218,7 +234,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'i want to die');
       await tester.tap(find.byTooltip('Send'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       expect(find.byType(HandoffCard), findsOneWidget);
       expect(find.text('I am stepping aside on this one. Here is who to talk to.'),
@@ -233,7 +249,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'is this islam');
       await tester.tap(find.byTooltip('Send'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       expect(find.textContaining('do not have a cloud key'), findsOneWidget);
     });
@@ -245,7 +261,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       final records = await store.chat();
       expect(records.map((r) => r.role), containsAll(['user', 'koru']));
@@ -258,12 +274,12 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       await tester.tap(find.byTooltip('Clear conversation'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
       await tester.tap(find.text('Clear'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       expect(find.text('How am I doing?'), findsOneWidget);
       expect(await store.chat(), isEmpty);
@@ -283,11 +299,11 @@ void main() {
       await pumpApp(tester, const KnowledgeScreen(), store: store);
 
       await tester.tap(find.text('Add a topic'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       await tester.enterText(find.widgetWithText(TextField, 'Topic'), 'Rust');
       await tester.tap(find.text('Add topic'));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
 
       expect(find.text('Rust'), findsOneWidget);
       // Once on the topic's pill, once on the average tile.
