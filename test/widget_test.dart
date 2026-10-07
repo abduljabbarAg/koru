@@ -127,13 +127,14 @@ void main() {
       expect(find.byType(OnboardingScreen), findsNothing);
       expect(find.byType(HomeShell), findsOneWidget);
 
-      final saved = await tester.runAsync(() async => <String, String?>{
+      // runAsync returns a nullable value, hence the bang.
+      final saved = (await tester.runAsync(() async => <String, String?>{
             'onboarded': await store.get('onboarded'),
             'nickname': await store.get('nickname'),
             'stage': await store.get('stage'),
             'business': await store.get('business'),
             'goals': await store.get('goals'),
-          });
+          }))!;
       expect(saved['onboarded'], '1');
       expect(saved['nickname'], 'kami');
       expect(saved['stage'], 'Early career');
