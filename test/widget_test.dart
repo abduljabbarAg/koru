@@ -27,7 +27,7 @@ Future<void> pumpApp(
       overrides: [
         storeProvider.overrideWith((ref) async => s),
         cloudKeyProvider.overrideWith((ref) async => ''),
-        secretsProvider.overrideWithValue(const MemoryKeyStore()),
+        secretsProvider.overrideWithValue(MemoryKeyStore()),
         ...extra,
       ],
       child: MaterialApp(theme: buildKoruTheme(), home: child),
@@ -41,7 +41,7 @@ void main() {
 
   group('MemoryKeyStore', () {
     test('round trips and clears', () async {
-      const store = MemoryKeyStore();
+      final store = MemoryKeyStore();
       expect(await store.readKey(), '');
       await store.writeKey('sk-or-v1-abc');
       expect(await store.readKey(), 'sk-or-v1-abc');
