@@ -77,18 +77,50 @@ void main() {
       expect(await store.readKey(), '');
     });
   });
+  /// Onboarding is a tall form, and the default 800x600 test surface puts the
+  /// help chips below the fold where they cannot be hit. This is roughly the
+  /// shape of the phone the app runs on.
+  void useTallSurface(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+  }
+
+  /// Taps a chip, scrolling it into view first.
+  Future<void> tapChip(WidgetTester tester, String label) async {
+    final finder = find.text(label);
+    await tester.ensureVisible(finder);
+    await pumpFrames(tester);
+    await tester.tap(finder);
+    await pumpFrames(tester);
+  }
+
+  /// Walks the first five steps of onboarding and leaves the user on the goals
+  /// page, where Start and the help chips are.
+  Future<void> advanceToGoals(WidgetTester tester) async {
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+    }
+    expect(find.text('Start'), findsOneWidget);
+  }
 
   group('Onboarding', () {
     /// Walks the whole flow the way a person does. The regression this covers is
     /// real: the Start button used to do nothing, because RootGate held the
     /// onboarded flag in a field and never watched the provider onboarding set.
     testWidgets('Start on the last step lands you in the app', (tester) async {
+      useTallSurface(tester);
       await pumpApp(tester, const RootGate());
 
-      // Splash first: it holds for a minimum time on purpose.
+      // Splash first: it holds for a minimum time, and it only starts once the
+      // store read in initState resolves, so give both room.
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 1700));
-      await pumpFrames(tester);
+      await tester.pump(const Duration(seconds: 3));
+      await pumpFrames(tester, frames: 12);
       expect(find.byType(OnboardingScreen), findsOneWidget);
 
       // intro
@@ -144,20 +176,13 @@ void main() {
 
     testWidgets('help topics are multi-select and all of them persist',
         (tester) async {
+      useTallSurface(tester);
       await pumpApp(tester, const OnboardingScreen());
+      await advanceToGoals(tester);
 
-      for (var i = 0; i < 5; i++) {
-        await tester.tap(find.text('Continue'));
-        await pumpFrames(tester);
-      }
-      expect(find.text('Start'), findsOneWidget);
-
-      await tester.tap(find.text('Career'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Fitness'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Learning'));
-      await pumpFrames(tester);
+      await tapChip(tester, 'Career');
+      await tapChip(tester, 'Fitness');
+      await tapChip(tester, 'Learning');
 
       // All three stay selected at once.
       expect(find.byType(ChoiceChip), findsNWidgets(5));
@@ -186,22 +211,17 @@ void main() {
     });
 
     testWidgets('tapping a help topic again deselects it', (tester) async {
+      useTallSurface(tester);
       await pumpApp(tester, const OnboardingScreen());
+      await advanceToGoals(tester);
 
-      for (var i = 0; i < 5; i++) {
-        await tester.tap(find.text('Continue'));
-        await pumpFrames(tester);
-      }
-
-      await tester.tap(find.text('Career'));
-      await pumpFrames(tester);
+      await tapChip(tester, 'Career');
       expect(
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
         isTrue,
       );
 
-      await tester.tap(find.text('Career'));
-      await pumpFrames(tester);
+      await tapChip(tester, 'Career');
       expect(
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
         isFalse,
@@ -210,17 +230,12 @@ void main() {
 
     testWidgets('All of it is a shortcut and clears the other picks',
         (tester) async {
+      useTallSurface(tester);
       await pumpApp(tester, const OnboardingScreen());
+      await advanceToGoals(tester);
 
-      for (var i = 0; i < 5; i++) {
-        await tester.tap(find.text('Continue'));
-        await pumpFrames(tester);
-      }
-
-      await tester.tap(find.text('Career'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('All of it'));
-      await pumpFrames(tester);
+      await tapChip(tester, 'Career');
+      await tapChip(tester, 'All of it');
 
       expect(
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All of it')).selected,
@@ -232,8 +247,7 @@ void main() {
       );
 
       // Picking something specific drops the shortcut.
-      await tester.tap(find.text('Fitness'));
-      await pumpFrames(tester);
+      await tapChip(tester, 'Fitness');
       expect(
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All of it')).selected,
         isFalse,
