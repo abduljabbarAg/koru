@@ -133,9 +133,11 @@ class LocalAssistant {
     final fit = _fitnessLines(f);
     if (fit.isNotEmpty) lines.addAll(fit);
 
-    if (lines.isEmpty) {
-      return 'Not much to report yet. Log a measurement or add a client and I '
-          'will have something to say.';
+    // A profile on its own is not a status report. Say what is missing rather
+    // than returning just a greeting echoed back.
+    if (biz.isEmpty && fit.isEmpty && f.goals.isEmpty) {
+      lines.add('Nothing logged yet. Add a client or log a measurement and I '
+          'will have something real to say.');
     }
     return lines.join('\n');
   }

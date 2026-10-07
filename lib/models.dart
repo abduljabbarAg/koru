@@ -35,6 +35,17 @@ class FitnessEntry {
         if (note != null) 'note': note,
       };
 
+  /// Row for an UPDATE. Writes nulls so a cleared field is actually cleared.
+  Map<String, Object?> toUpdateMap() => {
+        'day': day,
+        'weight': weight,
+        'waist': waist,
+        'chest': chest,
+        'arm': arm,
+        'leg': leg,
+        'note': note,
+      };
+
   factory FitnessEntry.fromMap(Map<String, Object?> m) => FitnessEntry(
         id: m['id'] as int?,
         day: m['day'] as String? ?? '',
@@ -111,6 +122,21 @@ class Client {
         if (due != null) 'due': due,
         if (leadSource != null) 'lead_source': leadSource,
         if (note != null) 'note': note,
+        'created': created,
+      };
+
+  /// Row for an UPDATE.
+  ///
+  /// Unlike [toMap] this writes nulls. An insert can afford to omit a column,
+  /// but an update that omits one leaves the previous value in place, so
+  /// clearing a due date or a note silently did nothing.
+  Map<String, Object?> toUpdateMap() => {
+        'name': name,
+        'status': status,
+        'amount': amount,
+        'due': due,
+        'lead_source': leadSource,
+        'note': note,
         'created': created,
       };
 
@@ -246,6 +272,14 @@ class KnowledgeTopic {
         'topic': topic,
         'progress': progress,
         if (note != null) 'note': note,
+        'updated': updated,
+      };
+
+  /// Row for an UPDATE. Writes nulls so a cleared note is actually cleared.
+  Map<String, Object?> toUpdateMap() => {
+        'topic': topic,
+        'progress': progress,
+        'note': note,
         'updated': updated,
       };
 

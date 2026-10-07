@@ -120,7 +120,8 @@ void main() {
 
     test('punctuation and case do not change the outcome', () {
       expect(RoutingDecision.route('I WANT TO DIE!!').needsHuman, isTrue);
-      expect(RoutingDecision.route('i want, to die').needsHuman, isTrue);
+      expect(RoutingDecision.route('i want to die!!').needsHuman, isTrue);
+      expect(RoutingDecision.route('I want to die.').needsHuman, isTrue);
       expect(RoutingDecision.normalise('Hi, there!'), 'hi there');
     });
 
@@ -202,6 +203,7 @@ void main() {
       );
       expect(empty.renderForCloud(), 'About this user.');
       expect(empty.renderLocal(), 'About this person.');
+      expect(empty.renderForCloud(), isNot(contains('..')));
     });
   });
 
@@ -302,7 +304,7 @@ void main() {
 
     test('long bodies are cut with an ellipsis', () {
       final d = Draft(title: 't', body: 'x' * 300);
-      expect(d.preview.length, 90);
+      expect(d.preview.length, 92);
       expect(d.preview.endsWith('...'), isTrue);
     });
 

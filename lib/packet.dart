@@ -41,7 +41,7 @@ class ContextPacket {
       if (fitness.isNotEmpty) 'fitness: $fitness',
       if (focus.isNotEmpty) 'focusing on: $focus',
     ];
-    return 'About this person. ${parts.join('. ')}.'.trim();
+    return _sentence('About this person.', parts);
   }
 
   /// What a cloud model is allowed to see. No nickname, ever.
@@ -53,8 +53,13 @@ class ContextPacket {
       if (fitness.isNotEmpty) 'fitness: $fitness',
       if (focus.isNotEmpty) 'asking about: $focus',
     ];
-    return 'About this user. ${parts.join('. ')}.'.trim();
+    return _sentence('About this user.', parts);
   }
+
+  /// Joins a preamble and its parts without leaving a dangling separator when
+  /// there is nothing to say.
+  static String _sentence(String preamble, List<String> parts) =>
+      parts.isEmpty ? '$preamble' : '$preamble ${parts.join('. ')}.';
 
   Map<String, dynamic> toJson() => {
         'nickname': nickname,

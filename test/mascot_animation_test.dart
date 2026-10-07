@@ -123,11 +123,9 @@ void main() {
     // Consecutive blink start times must differ, otherwise the character blinks
     // like a metronome and reads as mechanical.
     final times = <int>[];
-    var t = 0;
-    for (var i = 0; i < 20000; i += 10) {
+    for (var t = 0; t < 20000; t += 10) {
       if (a.clipAt(t) == KoruClip.blink && (times.isEmpty || t > times.last)) {
         times.add(t);
-        t += KoruAnimator.clipDurationMs(KoruClip.blink);
       }
     }
     expect(times.length, greaterThan(2));

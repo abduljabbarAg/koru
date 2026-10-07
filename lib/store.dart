@@ -188,7 +188,7 @@ class ProfileStore {
   Future<void> updateFitness(FitnessEntry e) async {
     final id = e.id;
     if (id == null) return;
-    await _db.update('fitness', e.toMap(), where: 'id = ?', whereArgs: [id]);
+    await _db.update('fitness', e.toUpdateMap(), where: 'id = ?', whereArgs: [id]);
     await refreshFitnessSummary();
   }
 
@@ -217,7 +217,7 @@ class ProfileStore {
   Future<void> updateClient(Client c) async {
     final id = c.id;
     if (id == null) return;
-    await _db.update('business', c.toMap(), where: 'id = ?', whereArgs: [id]);
+    await _db.update('business', c.toUpdateMap(), where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteClient(int id) =>
@@ -236,7 +236,7 @@ class ProfileStore {
   Future<void> updateTopic(KnowledgeTopic t) async {
     final id = t.id;
     if (id == null) return;
-    await _db.update('knowledge', t.toMap(), where: 'id = ?', whereArgs: [id]);
+    await _db.update('knowledge', t.toUpdateMap(), where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteTopic(int id) =>

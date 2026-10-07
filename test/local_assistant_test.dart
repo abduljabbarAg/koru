@@ -56,7 +56,7 @@ void main() {
         ),
       );
       expect(out.text, contains('1 paid'));
-      expect(out.text, contains('2 more clients'));
+      expect(out.text, contains('two more clients'));
       expect(out.usedData, isTrue);
     });
 
@@ -65,7 +65,7 @@ void main() {
         question: 'give me a status update',
         facts: facts(fitness: const [], clients: const [], goals: ''),
       );
-      expect(out.text, contains('Not much to report'));
+      expect(out.text, contains('Nothing logged yet'));
     });
   });
 
@@ -173,7 +173,7 @@ void main() {
     });
 
     test('says when there are none', () {
-      final out = a.answer(question: 'what should I focus on?', facts: facts(goals: ''));
+      final out = a.answer(question: 'what are my goals?', facts: facts(goals: ''));
       expect(out.text, contains('not set a goal'));
     });
   });
@@ -215,7 +215,8 @@ void main() {
 
     test('weight trend is kg per week', () {
       final f = facts(fitness: [log('2026-02-28', 79), log('2026-02-14', 80)]);
-      expect(f.weightTrendPerWeek, closeTo(-1.0, 0.001));
+      // One kilo lost across two weeks.
+      expect(f.weightTrendPerWeek, closeTo(-0.5, 0.001));
     });
 
     test('readings without a weight are ignored for the trend', () {

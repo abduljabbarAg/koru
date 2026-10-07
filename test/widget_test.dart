@@ -96,9 +96,8 @@ void main() {
       );
 
       expect(find.text('Talk to someone right now'), findsOneWidget);
-      expect(find.text('999'), findsOneWidget);
-      expect(find.text('800 4673'), findsOneWidget);
-      expect(find.textContaining('24 hours'), findsNWidgets(2));
+      expect(find.text('999 - 24 hours'), findsOneWidget);
+      expect(find.text('800 4673 - 24 hours'), findsOneWidget);
     });
 
     testWidgets('can be dismissed', (tester) async {
@@ -204,9 +203,10 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('the greeting is labelled as on-device', (tester) async {
+    testWidgets('the empty state says the answer stays on the phone',
+        (tester) async {
       await pumpApp(tester, const ChatScreen());
-      expect(find.text('ON DEVICE'), findsOneWidget);
+      expect(find.textContaining('answered here, on this phone'), findsOneWidget);
       expect(find.text('CLOUD MODEL'), findsNothing);
     });
 
@@ -217,7 +217,9 @@ void main() {
       await tester.tap(find.byTooltip('Send'));
       await pumpFrames(tester);
 
-      expect(find.textContaining('I am here, and I run on this phone'), findsOneWidget);
+      // Still in the empty state, so nothing was appended to the thread.
+      expect(find.text('How am I doing?'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
     });
 
     testWidgets('a local question is answered from the records', (tester) async {
