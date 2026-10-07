@@ -7,7 +7,7 @@ import 'package:koru/mascot/mascot_clips.dart';
 void main() {
   late KoruAnimator a;
 
-  setUp(() => a = KoruAnimator()..start(0));
+  setUp(() => a = KoruAnimator(seed: 7)..start(0));
 
   test('starts idle on frame zero', () {
     expect(a.clipAt(0), KoruClip.idle);
@@ -94,7 +94,11 @@ void main() {
     // Somewhere inside two blink intervals there has to be a blink, otherwise the
     // character looks like a sticker.
     var blinked = false;
-    for (var t = 0; t < kBlinkEveryMs + kBlinkVarianceMs; t += 20) {
+    // Sample a little past the theoretical maximum: the delay is
+    // kBlinkEveryMs + rand(kBlinkVarianceMs), so a blink can begin on the very
+    // last millisecond inside the bound and be missed entirely.
+    final limit = kBlinkEveryMs + kBlinkVarianceMs + 500;
+    for (var t = 0; t < limit; t += 20) {
       if (a.clipAt(t) == KoruClip.blink) {
         blinked = true;
         break;
@@ -105,7 +109,7 @@ void main() {
 
   test('blinking does not happen while thinking', () {
     a.setBusy(true, 0);
-    for (var t = 0; t < kBlinkEveryMs + kBlinkVarianceMs; t += 20) {
+    for (var t = 0; t < kBlinkEveryMs + kBlinkVarianceMs + 500; t += 20) {
       expect(a.clipAt(t), isNot(KoruClip.blink));
     }
   });

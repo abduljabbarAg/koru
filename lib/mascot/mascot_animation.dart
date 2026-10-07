@@ -12,7 +12,13 @@ import 'mascot_clips.dart';
 /// a long idle breathe, an occasional blink that does not fall on a fixed
 /// cadence, and one-shot clips that interrupt the loop and hand control back.
 class KoruAnimator {
-  final math.Random _random = math.Random();
+  /// [seed] makes the blink schedule reproducible. The app never passes one and
+  /// gets a different cadence on every launch, which is the point; tests pass a
+  /// fixed value so timing assertions are deterministic rather than occasionally
+  /// unlucky.
+  KoruAnimator({int? seed}) : _random = seed == null ? math.Random() : math.Random(seed);
+
+  final math.Random _random;
 
   KoruClip _loop = KoruClip.idle;
   int _loopStartMs = 0;
