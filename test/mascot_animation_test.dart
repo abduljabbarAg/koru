@@ -97,7 +97,7 @@ void main() {
     // Sample a little past the theoretical maximum: the delay is
     // kBlinkEveryMs + rand(kBlinkVarianceMs), so a blink can begin on the very
     // last millisecond inside the bound and be missed entirely.
-    final limit = kBlinkEveryMs + kBlinkVarianceMs + 500;
+    const limit = kBlinkEveryMs + kBlinkVarianceMs + 500;
     for (var t = 0; t < limit; t += 20) {
       if (a.clipAt(t) == KoruClip.blink) {
         blinked = true;
