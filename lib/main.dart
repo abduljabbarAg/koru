@@ -43,7 +43,6 @@ class RootGate extends ConsumerStatefulWidget {
 
 class _RootGateState extends ConsumerState<RootGate> {
   bool? _ready;
-  bool _done = false;
   bool _splashDone = false;
 
   @override
@@ -56,10 +55,7 @@ class _RootGateState extends ConsumerState<RootGate> {
     final store = await ref.read(storeProvider.future);
     final done = await store.onboarded;
     if (!mounted) return;
-    setState(() {
-      _ready = true;
-      _done = done;
-    });
+    setState(() => _ready = true);
     ref.read(onboardedProvider.notifier).state = done;
   }
 
@@ -78,8 +74,12 @@ class _RootGateState extends ConsumerState<RootGate> {
       // the intro never flashes past.
       return SplashScreen(onDone: _leaveSplash);
     }
-    if (!_done) return const OnboardingScreen();
-    return const HomeShell();
+    // Watched, not cached in a field. Onboarding flips this provider when the
+    // user presses Start, and watching it is the only thing that swaps the tree
+    // over to the app. Holding a copy in a field meant the last button on the
+    // last screen did nothing at all.
+    final onboarded = ref.watch(onboardedProvider);
+    return onboarded ? const HomeShell() : const OnboardingScreen();
   }
 }
 

@@ -24,7 +24,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _goals = TextEditingController();
   final _weight = TextEditingController();
   final _height = TextEditingController();
-  String? _help;
+  /// Multi-select: people usually want help with more than one thing, and
+  /// forcing a single pick quietly threw the rest away.
+  final Set<String> _help = <String>{};
 
   static const _stages = ['Student', 'Early career', 'Mid career', 'Senior', 'Running a business'];
   static const _bizs = [
@@ -62,7 +64,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
   }
 
+  /// Writes the profile and finishes onboarding.
+  ///
+  /// Any failure here used to surface as nothing at all: the button was tapped,
+  /// a write threw, and the screen simply stayed put. A silent failure on the
+  /// one button that ends onboarding is worse than an ugly one, so it reports.
   Future<void> _save() async {
+    try {
+      await _write();
+    } catch (e) {
+      if (mounted) toast(context, 'Could not save: $e');
+      return;
+    }
+  }
+
+  Future<void> _write() async {
     final store = await ref.read(storeProvider.future);
     final w = double.tryParse(_weight.text.trim());
     final h = double.tryParse(_height.text.trim());
@@ -72,7 +88,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     await store.put('stage', _stage ?? '');
     await store.put('business', _biz ?? '');
     await store.put('goals', _goals.text.trim());
-    await store.put('help_focus', _help ?? '');
+    await store.put('help_focus', _help.join(', '));
     if (w != null) await store.put('weight', '$w');
     if (h != null) await store.put('height', '$h');
     if (bmi != null) await store.put('bmi', bmi.toStringAsFixed(1));
@@ -300,6 +316,24 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ],
       );
 
+  /// 'All of it' is a shortcut, so picking it clears the rest, and picking
+  /// anything else clears the shortcut. Otherwise you end up with 'All of it'
+  /// stored alongside one specific topic, which is noise.
+  void _toggleHelp(String value, bool selected) {
+    if (value == 'All of it') {
+      _help
+        ..clear()
+        ..add('All of it');
+      return;
+    }
+    _help.remove('All of it');
+    if (selected) {
+      _help.add(value);
+    } else {
+      _help.remove(value);
+    }
+  }
+
   Widget _goalsScreen() => _body(
         'Last one. What do you want to be true in three months?',
         'Be specific. This is what I will hold you to.',
@@ -313,17 +347,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          const SectionLabel('I want most help with'),
+          const SectionLabel('I want help with'),
+          const Text(
+            'Pick as many as apply.',
+            style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
+          ),
+          const SizedBox(height: 10),
           ..._helps.map((h) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: ChoiceChip(
                   label: Text(h),
-                  selected: _help == h,
-                  onSelected: (s) => setState(() => _help = s ? h : null),
+                  selected: _help.contains(h),
+                  onSelected: (s) => setState(() => _toggleHelp(h, s)),
                   selectedColor: KoruColors.leafSoft,
                   side: const BorderSide(color: KoruColors.line),
                   labelStyle: TextStyle(
-                      color: KoruColors.ink, fontWeight: _help == h ? FontWeight.w600 : FontWeight.w500),
+                      color: KoruColors.ink,
+                      fontWeight: _help.contains(h) ? FontWeight.w600 : FontWeight.w500),
                 ),
               )),
         ],

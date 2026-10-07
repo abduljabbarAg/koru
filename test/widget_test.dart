@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/handoff.dart';
+import 'package:koru/main.dart';
 import 'package:koru/mascot/mascot.dart';
+import 'package:koru/onboarding.dart';
 import 'package:koru/screens/chat.dart';
 import 'package:koru/screens/knowledge.dart';
 import 'package:koru/secrets.dart';
@@ -73,6 +75,177 @@ void main() {
       expect(await store.readKey(), 'sk-or-v1-abc');
       await store.clearKey();
       expect(await store.readKey(), '');
+    });
+  });
+
+  group('Onboarding', () {
+    /// Walks the whole flow the way a person does. The regression this covers is
+    /// real: the Start button used to do nothing, because RootGate held the
+    /// onboarded flag in a field and never watched the provider onboarding set.
+    testWidgets('Start on the last step lands you in the app', (tester) async {
+      await pumpApp(tester, const RootGate());
+
+      // Splash first: it holds for a minimum time on purpose.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1700));
+      await pumpFrames(tester);
+      expect(find.byType(OnboardingScreen), findsOneWidget);
+
+      // intro
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+
+      // nickname
+      await tester.enterText(find.byType(TextField), 'kami');
+      await pumpFrames(tester);
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+
+      // stage
+      await tester.tap(find.text('Early career'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+
+      // work
+      await tester.tap(find.text('Employee'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+
+      // measurements
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+
+      // goals and help
+      expect(find.text('Start'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'ship two more clients');
+      await pumpFrames(tester);
+      await tester.tap(find.text('Start'));
+      await pumpFrames(tester, frames: 12);
+
+      expect(find.byType(OnboardingScreen), findsNothing);
+      expect(find.byType(HomeShell), findsOneWidget);
+
+      final saved = await tester.runAsync(() async => <String, String?>{
+            'onboarded': await store.get('onboarded'),
+            'nickname': await store.get('nickname'),
+            'stage': await store.get('stage'),
+            'business': await store.get('business'),
+            'goals': await store.get('goals'),
+          });
+      expect(saved['onboarded'], '1');
+      expect(saved['nickname'], 'kami');
+      expect(saved['stage'], 'Early career');
+      expect(saved['business'], 'Employee');
+      expect(saved['goals'], 'ship two more clients');
+    });
+
+    testWidgets('help topics are multi-select and all of them persist',
+        (tester) async {
+      await pumpApp(tester, const OnboardingScreen());
+
+      for (var i = 0; i < 5; i++) {
+        await tester.tap(find.text('Continue'));
+        await pumpFrames(tester);
+      }
+      expect(find.text('Start'), findsOneWidget);
+
+      await tester.tap(find.text('Career'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Fitness'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Learning'));
+      await pumpFrames(tester);
+
+      // All three stay selected at once.
+      expect(find.byType(ChoiceChip), findsNWidgets(5));
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        isTrue,
+      );
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Fitness')).selected,
+        isTrue,
+      );
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Learning')).selected,
+        isTrue,
+      );
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Business growth')).selected,
+        isFalse,
+      );
+
+      await tester.tap(find.text('Start'));
+      await pumpFrames(tester, frames: 12);
+
+      final focus = await tester.runAsync(() => store.get('help_focus'));
+      expect(focus, 'Career, Fitness, Learning');
+    });
+
+    testWidgets('tapping a help topic again deselects it', (tester) async {
+      await pumpApp(tester, const OnboardingScreen());
+
+      for (var i = 0; i < 5; i++) {
+        await tester.tap(find.text('Continue'));
+        await pumpFrames(tester);
+      }
+
+      await tester.tap(find.text('Career'));
+      await pumpFrames(tester);
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        isTrue,
+      );
+
+      await tester.tap(find.text('Career'));
+      await pumpFrames(tester);
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        isFalse,
+      );
+    });
+
+    testWidgets('All of it is a shortcut and clears the other picks',
+        (tester) async {
+      await pumpApp(tester, const OnboardingScreen());
+
+      for (var i = 0; i < 5; i++) {
+        await tester.tap(find.text('Continue'));
+        await pumpFrames(tester);
+      }
+
+      await tester.tap(find.text('Career'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('All of it'));
+      await pumpFrames(tester);
+
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All of it')).selected,
+        isTrue,
+      );
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        isFalse,
+      );
+
+      // Picking something specific drops the shortcut.
+      await tester.tap(find.text('Fitness'));
+      await pumpFrames(tester);
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All of it')).selected,
+        isFalse,
+      );
+      expect(
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Fitness')).selected,
+        isTrue,
+      );
+
+      await tester.tap(find.text('Start'));
+      await pumpFrames(tester, frames: 12);
+      final focus = await tester.runAsync(() => store.get('help_focus'));
+      expect(focus, 'Fitness');
     });
   });
 
