@@ -253,12 +253,14 @@ void main() {
       List<FitnessEntry> fitness = const [],
       List<KnowledgeTopic> topics = const [],
       double? bmi,
+      bool hasProfile = false,
     }) =>
         ScreenFacts(
           clients: clients,
           fitness: fitness,
           topics: topics,
           bmi: bmi,
+          hasProfile: hasProfile,
           today: DateTime(2026, 3, 1),
         );
 

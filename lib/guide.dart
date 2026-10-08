@@ -123,7 +123,7 @@ class Guide {
 
 /// The slice of state the guide is allowed to look at.
 class ScreenFacts {
-  const ScreenFacts({
+  ScreenFacts({
     this.clients = const [],
     this.fitness = const [],
     this.topics = const [],

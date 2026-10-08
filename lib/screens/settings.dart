@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../cloud.dart';
 import '../cloud_providers.dart';
-import '../guide.dart';
 import '../engine.dart';
+import '../guide.dart';
 import '../local/local_model_client.dart';
 import '../secrets.dart';
 import '../state.dart';
@@ -303,7 +303,10 @@ class SettingsScreen extends ConsumerWidget {
 
     final store = await ref.read(storeProvider.future);
     await store.wipe();
-    await ref.read(secretsProvider).clearKey();
+    final secrets = ref.read(secretsProvider);
+    for (final provider in kCloudProviders) {
+      await secrets.clearKey(provider.id);
+    }
 
     await ref.read(chatProvider.notifier).clear();
     ref.invalidate(clientsProvider);
