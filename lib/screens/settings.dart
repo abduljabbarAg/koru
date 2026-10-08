@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../engine.dart';
+import '../local/local_model_client.dart';
 import '../secrets.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -532,9 +534,9 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
     setState(() {
       _checking = false;
       _status = switch (result) {
-        LocalModelClient.Reply(:final text) => 'Found it: $text',
-        LocalModelClient.Unavailable(:final detail) => detail,
-        LocalModelClient.Failed(:final reason) => reason,
+        LocalReply(:final text) => 'Found it: $text',
+        LocalUnavailable(:final detail) => detail,
+        LocalFailed(:final reason) => reason,
       };
     });
   }

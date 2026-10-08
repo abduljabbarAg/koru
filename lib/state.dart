@@ -251,7 +251,7 @@ class ChatNotifier extends Notifier<ChatState> {
     Object? unavailable;
 
     try {
-      final stream = client.chatStream(
+      final result = await client.chatStream(
         endpoint: config.endpoint,
         model: config.modelId,
         system: system,
@@ -261,9 +261,8 @@ class ChatNotifier extends Notifier<ChatState> {
           _updatePending(buffer.toString());
         },
       );
-      final result = await stream.last;
       switch (result) {
-        case LocalModelClient.Reply(:final tokensPerSecond):
+        case LocalReply(:final tokensPerSecond):
           final text = buffer.toString().trim();
           if (text.isEmpty) {
             failure = 'The local model returned nothing.';
@@ -288,9 +287,9 @@ class ChatNotifier extends Notifier<ChatState> {
             engine: KoruEngine.onDevice,
             tokensPerSecond: tokensPerSecond,
           );
-        case LocalModelClient.Unavailable(:final detail):
+        case LocalUnavailable(:final detail):
           unavailable = detail;
-        case LocalModelClient.Failed(:final reason):
+        case LocalFailed(:final reason):
           failure = reason;
       }
     } catch (e) {
