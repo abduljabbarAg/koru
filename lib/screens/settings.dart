@@ -439,7 +439,7 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             DropdownButtonFormField<String>(
-              initialValue: _providerId,
+              value: _providerId,
               decoration: const InputDecoration(labelText: 'Provider'),
               isExpanded: true,
               items: kCloudProviders
@@ -459,7 +459,7 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
             const SizedBox(height: 14),
             if (provider.models.isNotEmpty)
               DropdownButtonFormField<String>(
-                initialValue: provider.models.contains(_modelController.text)
+                value: provider.models.contains(_modelController.text)
                     ? _modelController.text
                     : provider.models.first,
                 decoration: const InputDecoration(labelText: 'Model'),
