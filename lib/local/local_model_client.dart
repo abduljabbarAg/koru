@@ -206,7 +206,7 @@ class LocalModelConfig {
   final int sizeBytes;
 
   const LocalModelConfig({
-    this.endpoint = defaultEndpoint,
+    this.endpoint = LocalModelClient.defaultEndpoint,
     this.modelId = 'local',
     this.label,
     this.sizeBytes = 0,
@@ -226,7 +226,7 @@ class LocalModelConfig {
       };
 
   factory LocalModelConfig.fromMap(Map<String, Object?> m) => LocalModelConfig(
-        endpoint: m['endpoint'] as String? ?? defaultEndpoint,
+        endpoint: m['endpoint'] as String? ?? LocalModelClient.defaultEndpoint,
         modelId: m['model_id'] as String? ?? 'local',
         label: m['label'] as String?,
         sizeBytes: (m['size_bytes'] as num?)?.toInt() ?? 0,

@@ -201,7 +201,7 @@ void main() {
     });
 
     test('estimates ram above the file size', () {
-      const config = LocalModelConfig(sizeBytes: 491400032);
+      const config = LocalModelConfig(sizeBytes: 491400032, label: 'Qwen 0.5B');
       expect(config.estimatedRamMb, greaterThan(468));
     });
   });
