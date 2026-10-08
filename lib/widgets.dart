@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'handoff.dart';
+import 'mascot/mascot.dart';
 import 'theme.dart';
 
 class KoruMark extends StatelessWidget {
@@ -351,4 +352,89 @@ void toast(BuildContext context, String message) {
       backgroundColor: KoruColors.ink,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ));
+}
+
+/// Koru with a comic panel beside him.
+///
+/// The mascot used to be decoration. This puts him next to something he actually
+/// said about the screen you are on, shaped like a comic speech balloon, so he
+/// reads as a helper rather than a logo.
+class KoruGuideBanner extends StatelessWidget {
+  const KoruGuideBanner({
+    super.key,
+    required this.speech,
+    this.mascotSize = 64,
+    this.onTap,
+  });
+
+  /// Null means Koru has nothing to say, and nothing renders. Silence is
+  /// deliberate: a mascot that speaks on every visit is noise, and people learn
+  /// to ignore it, which costs the one message that would have mattered.
+  final String? speech;
+
+  final double mascotSize;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = speech;
+    if (text == null || text.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          KoruMascot(size: mascotSize, onTap: onTap),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.only(left: 4),
+              padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+              decoration: BoxDecoration(
+                color: KoruColors.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: Radius.circular(16),
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
+                ),
+                border: Border.all(color: KoruColors.line),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 1, right: 8),
+                    child: Icon(
+                      Icons.format_quote_rounded,
+                      size: 16,
+                      color: KoruColors.inkFaint,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        color: KoruColors.ink,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

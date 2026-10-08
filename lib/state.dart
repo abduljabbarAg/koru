@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'cloud.dart';
+import 'cloud_providers.dart';
 import 'engine.dart';
+import 'guide.dart';
 import 'handoff.dart';
 import 'local/local_assistant.dart';
 import 'local/local_model_client.dart';
@@ -33,9 +35,9 @@ final packetProvider = FutureProvider<ContextPacket>((ref) async {
 /// tell an on-device answer from a cloud one.
 enum AnswerSource { local, cloud, human }
 
-final cloudKeyProvider = FutureProvider<String>((ref) async {
+final cloudKeyProvider = FutureProvider.family<String, String>((ref, providerId) async {
   final secrets = ref.watch(secretsProvider);
-  return secrets.readKey();
+  return secrets.readKey(providerId);
 });
 
 enum MsgRole { user, koru }
@@ -315,11 +317,14 @@ class ChatNotifier extends Notifier<ChatState> {
   }
 
   Future<Msg> _askCloud(String q, RoutingDecision routing, ProfileStore store) async {
-    final key = await ref.read(cloudKeyProvider.future);
+    final selection = await ref.read(cloudSelectionProvider.future);
+    final key = await ref.read(cloudKeyProvider(selection.provider.id).future);
     final result = await ref.read(cloudModelProvider).ask(
           packet: await store.packet(),
           question: q,
           routing: routing,
+          provider: selection.provider,
+          model: selection.model,
           apiKey: key,
         );
 
@@ -338,7 +343,8 @@ class ChatNotifier extends Notifier<ChatState> {
         final fallback = await _askBuiltIn(q, routing, store);
         return fallback.copyWith(
           text: '${fallback.text}\n\n(I answered that from your own records '
-              'because no cloud key is set. Add one in Settings.)',
+              'because no ${selection.provider.label} key is set. Add one in '
+              'Settings.)',
         );
       case CloudFailure(:final reason):
         return Msg(
@@ -391,6 +397,32 @@ final engineProvider = FutureProvider<KoruEngine>((ref) async {
   return KoruEngine.parse(await store.get('engine'));
 });
 
+/// Which cloud provider and model are selected.
+final cloudSelectionProvider = FutureProvider<({CloudProvider provider, String model})>(
+  (ref) async {
+    final store = await ref.watch(storeProvider.future);
+    final provider = providerById(await store.get('cloud_provider') ?? 'openrouter');
+    final stored = await store.get('cloud_model');
+    final model = (stored == null || stored.isEmpty)
+        ? (provider.models.isNotEmpty ? provider.models.first : 'local')
+        : stored;
+    return (provider: provider, model: model);
+  },
+);
+
+/// Everything the guide is allowed to look at, for the current screen.
+final guideFactsProvider = FutureProvider<ScreenFacts>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  final all = await store.all();
+  return ScreenFacts(
+    clients: await store.clients(),
+    fitness: await store.fitness(),
+    topics: await store.topics(),
+    bmi: await store.number('bmi'),
+    hasProfile: (all['nickname']?.isNotEmpty ?? false),
+  );
+});
+
 /// Config for the on-device model, if one has been set up.
 final localModelProvider = FutureProvider<LocalModelConfig>((ref) async {
   final store = await ref.watch(storeProvider.future);
@@ -420,7 +452,12 @@ final heightProvider = FutureProvider<double?>((ref) async {
 });
 
 /// Saves a cloud key and invalidates everything that depends on it.
-Future<void> saveCloudKey(WidgetRef ref, String value) async {
-  await ref.read(secretsProvider).writeKey(value.trim());
-  ref.invalidate(cloudKeyProvider);
+///
+/// Returns whether it actually worked. The old version swallowed the result and
+/// the UI toasted success regardless, which is how a refused write turned into
+/// "nothing responds" much later with nothing to point at.
+Future<bool> saveCloudKey(WidgetRef ref, String providerId, String value) async {
+  final ok = await ref.read(secretsProvider).writeKey(providerId, value.trim());
+  ref.invalidate(cloudKeyProvider(providerId));
+  return ok;
 }

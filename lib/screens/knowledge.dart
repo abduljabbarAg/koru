@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../guide.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -72,6 +73,7 @@ class KnowledgeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final topics = ref.watch(topicsProvider);
+    final guide = ref.watch(guideFactsProvider).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Learn')),
@@ -94,6 +96,10 @@ class KnowledgeScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
             children: [
+              KoruGuideBanner(
+                speech: guide == null ? null : Guide.forLearn(guide),
+                onTap: () {},
+              ),
               Row(
                 children: [
                   Expanded(

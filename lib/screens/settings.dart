@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../cloud.dart';
+import '../cloud_providers.dart';
+import '../guide.dart';
 import '../engine.dart';
 import '../local/local_model_client.dart';
 import '../secrets.dart';
@@ -17,12 +20,17 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final packet = ref.watch(packetProvider);
+    final guide = ref.watch(guideFactsProvider).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
         children: [
+          KoruGuideBanner(
+            speech: guide == null ? null : Guide.forSettings(guide),
+            onTap: () {},
+          ),
           const SectionLabel('Your context'),
           packet.when(
             loading: () => const LinearProgressIndicator(color: KoruColors.leaf),
@@ -105,31 +113,12 @@ class SettingsScreen extends ConsumerWidget {
           const _LocalModelCard(),
           const SizedBox(height: 22),
           const SectionLabel('Cloud model'),
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'OpenRouter API key',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Encrypted with the Android keystore. Only questions about '
-                    'faith, health, medicine or law ever use it.',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: KoruColors.inkFaint,
-                      height: 1.4,
-                    ),
-                  ),
-                  SizedBox(height: 12),
-                  _KeyField(),
-                ],
-              ),
-            ),
+          const _CloudCard(),
+          const SizedBox(height: 8),
+          const Text(
+            'Any provider works. Pick one, paste the key, test it. Only questions '
+            'about faith, health, medicine or law are ever sent.',
+            style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
           ),
           const SizedBox(height: 22),
           const SectionLabel('Routing'),
@@ -330,91 +319,229 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-/// Shows whether a key is present without ever revealing it.
-class _KeyField extends ConsumerStatefulWidget {
-  const _KeyField();
+/// Provider, model, key, and a test that costs nothing.
+///
+/// The old version had one hardcoded endpoint, one hardcoded model, and a field
+/// that reported success even when the keystore refused the write. Someone with
+/// a key for any other provider had no way to make it work.
+class _CloudCard extends ConsumerStatefulWidget {
+  const _CloudCard();
 
   @override
-  ConsumerState<_KeyField> createState() => _KeyFieldState();
+  ConsumerState<_CloudCard> createState() => _CloudCardState();
 }
 
-class _KeyFieldState extends ConsumerState<_KeyField> {
-  late final TextEditingController _controller;
+class _CloudCardState extends ConsumerState<_CloudCard> {
+  final _controller = TextEditingController();
+  final _modelController = TextEditingController();
   bool _revealed = false;
-  bool _saved = false;
+  String? _status;
+  bool _busy = false;
+  String _providerId = 'openrouter';
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController();
-    ref.read(cloudKeyProvider).whenData((value) {
-      if (value.isNotEmpty && _controller.text.isEmpty) {
-        _controller.text = value;
-      }
+    ref.read(cloudSelectionProvider).whenData((selection) {
+      if (!mounted) return;
+      setState(() {
+        _providerId = selection.provider.id;
+        _modelController.text = selection.model;
+      });
     });
+    _loadKey(_providerId);
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _modelController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadKey(String providerId) async {
+    final value = await ref.read(cloudKeyProvider(providerId).future);
+    if (!mounted) return;
+    setState(() => _controller.text = value);
+  }
+
+  Future<void> _pickProvider(String id) async {
+    setState(() {
+      _providerId = id;
+      _status = null;
+      final provider = providerById(id);
+      _modelController.text = provider.models.isNotEmpty ? provider.models.first : '';
+    });
+    await _loadKey(id);
+  }
+
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    final store = await ref.read(storeProvider.future);
+    final provider = providerById(_providerId);
+    await store.put('cloud_provider', provider.id);
+    await store.put('cloud_model', _modelController.text.trim());
+    final ok = await saveCloudKey(ref, provider.id, _controller.text);
+    ref.invalidate(cloudSelectionProvider);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok) {
+      toast(context, 'Saved for ${provider.label}');
+    } else {
+      // Told the truth. This used to say "saved" no matter what happened, which
+      // is exactly how a key that never persisted became "nothing responds".
+      toast(context, 'Could not write to the keystore. Not saved.');
+    }
+  }
+
+  Future<void> _test() async {
+    setState(() {
+      _busy = true;
+      _status = null;
+    });
+    final provider = providerById(_providerId);
+    final key = _controller.text.trim();
+    // Save first so a successful test also persists the configuration.
+    final store = await ref.read(storeProvider.future);
+    await store.put('cloud_provider', provider.id);
+    await store.put('cloud_model', _modelController.text.trim());
+    final saved = await saveCloudKey(ref, provider.id, key);
+    final result = await ref.read(cloudModelProvider).probe(
+          provider: provider,
+          model: _modelController.text.trim(),
+          apiKey: key,
+        );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _status = switch (result) {
+        CloudReply() => saved
+            ? 'Connected to ${provider.label}, and the key is saved.'
+            : 'Connected, but the key could not be written to the keystore.',
+        CloudUnavailable() => 'Add a key first.',
+        CloudFailure(:final reason) => reason,
+      };
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final existing = ref.watch(cloudKeyProvider).valueOrNull ?? '';
-    final hasKey = existing.isNotEmpty;
+    final provider = providerById(_providerId);
+    final hasKey = ref.watch(cloudKeyProvider(_providerId)).valueOrNull?.isNotEmpty ?? false;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextField(
-          controller: _controller,
-          obscureText: !_revealed,
-          decoration: InputDecoration(
-            hintText: 'sk-or-v1-...',
-            suffixIcon: IconButton(
-              tooltip: _revealed ? 'Hide key' : 'Show key',
-              icon: Icon(
-                _revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                size: 19,
-                color: KoruColors.inkFaint,
-              ),
-              onPressed: () => setState(() => _revealed = !_revealed),
-            ),
-          ),
-          onChanged: (_) => setState(() => _saved = false),
-        ),
-        const SizedBox(height: 10),
-        Row(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-              onPressed: () async {
-                await saveCloudKey(ref, _controller.text);
-                setState(() => _saved = true);
-                if (context.mounted) toast(context, 'Key saved to the keystore');
+            DropdownButtonFormField<String>(
+              initialValue: _providerId,
+              decoration: const InputDecoration(labelText: 'Provider'),
+              isExpanded: true,
+              items: kCloudProviders
+                  .map((p) => DropdownMenuItem(value: p.id, child: Text(p.label)))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) _pickProvider(v);
               },
-              child: const Text('Save key'),
             ),
-            const SizedBox(width: 10),
-            if (hasKey)
-              TextButton(
-                onPressed: () async {
-                  await saveCloudKey(ref, '');
-                  _controller.clear();
-                  setState(() => _saved = false);
-                  if (context.mounted) toast(context, 'Key removed');
-                },
-                child: const Text('Remove'),
+            if (provider.note != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                provider.note!,
+                style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
               ),
-            if (_saved) ...[
-              const SizedBox(width: 8),
-              const Icon(Icons.check_circle_rounded, size: 18, color: KoruColors.leaf),
+            ],
+            const SizedBox(height: 14),
+            if (provider.models.isNotEmpty)
+              DropdownButtonFormField<String>(
+                initialValue: provider.models.contains(_modelController.text)
+                    ? _modelController.text
+                    : provider.models.first,
+                decoration: const InputDecoration(labelText: 'Model'),
+                isExpanded: true,
+                items: provider.models
+                    .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setState(() => _modelController.text = v);
+                },
+              )
+            else
+              TextField(
+                controller: _modelController,
+                decoration: const InputDecoration(labelText: 'Model id'),
+              ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _controller,
+              obscureText: !_revealed,
+              decoration: InputDecoration(
+                labelText: provider.keyLabel,
+                hintText: provider.keyHint,
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasKey)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: Icon(Icons.lock_rounded, size: 16, color: KoruColors.leaf),
+                      ),
+                    IconButton(
+                      tooltip: _revealed ? 'Hide key' : 'Show key',
+                      icon: Icon(
+                        _revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        size: 19,
+                        color: KoruColors.inkFaint,
+                      ),
+                      onPressed: () => setState(() => _revealed = !_revealed),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Encrypted with the Android keystore, and kept per provider.',
+              style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                FilledButton(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                  onPressed: _busy ? null : _test,
+                  child: Text(_busy ? 'Testing...' : 'Test connection'),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                  onPressed: _busy ? null : _save,
+                  child: const Text('Save'),
+                ),
+                if (hasKey)
+                  TextButton(
+                    onPressed: () async {
+                      await ref.read(secretsProvider).clearKey(_providerId);
+                      ref.invalidate(cloudKeyProvider(_providerId));
+                      _controller.clear();
+                      if (context.mounted) toast(context, 'Key removed');
+                    },
+                    child: const Text('Remove'),
+                  ),
+              ],
+            ),
+            if (_status != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _status!,
+                style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
+              ),
             ],
           ],
         ),
-      ],
+      ),
     );
   }
 }

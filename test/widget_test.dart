@@ -28,6 +28,19 @@ import 'test_store.dart';
 ///
 ///  * The mascot runs a permanent ticker, so the tree never goes quiet and
 ///    `pumpAndSettle` would hang until it timed out. Frames are stepped instead.
+/// A keystore that refuses every write, standing in for a device where the
+/// platform keystore is unavailable.
+class _FailingKeyStore implements KeyStore {
+  @override
+  Future<String> readKey(String providerId) async => '';
+
+  @override
+  Future<bool> writeKey(String providerId, String value) async => false;
+
+  @override
+  Future<bool> clearKey(String providerId) async => false;
+}
+
 void main() {
   late ProfileStore store;
 
@@ -42,7 +55,7 @@ void main() {
       ProviderScope(
         overrides: [
           storeProvider.overrideWith((ref) async => store),
-          cloudKeyProvider.overrideWith((ref) async => ''),
+          cloudKeyProvider.overrideWith((ref, providerId) async => ''),
           secretsProvider.overrideWithValue(MemoryKeyStore()),
         ],
         child: MaterialApp(theme: buildKoruTheme(), home: child),
@@ -70,11 +83,28 @@ void main() {
   group('MemoryKeyStore', () {
     test('round trips and clears', () async {
       final store = MemoryKeyStore();
-      expect(await store.readKey(), '');
-      await store.writeKey('sk-or-v1-abc');
-      expect(await store.readKey(), 'sk-or-v1-abc');
-      await store.clearKey();
-      expect(await store.readKey(), '');
+      expect(await store.readKey('openrouter'), '');
+      expect(await store.writeKey('openrouter', 'sk-or-v1-abc'), isTrue);
+      expect(await store.readKey('openrouter'), 'sk-or-v1-abc');
+      expect(await store.clearKey('openrouter'), isTrue);
+      expect(await store.readKey('openrouter'), '');
+    });
+
+    test('keeps one key per provider', () async {
+      // The point of making this a family: two providers coexisting used to be
+      // impossible, because there was one slot.
+      final store = MemoryKeyStore();
+      await store.writeKey('anthropic', 'sk-ant-1');
+      await store.writeKey('openai', 'sk-openai-1');
+      expect(await store.readKey('anthropic'), 'sk-ant-1');
+      expect(await store.readKey('openai'), 'sk-openai-1');
+    });
+
+    test('reports failure instead of pretending it saved', () async {
+      // A key that failed to write used to be reported as saved, which is how a
+      // dead key became "nothing responds".
+      final store = _FailingKeyStore();
+      expect(await store.writeKey('openai', 'sk-x'), isFalse);
     });
   });
   /// Onboarding is a tall form, and the default 800x600 test surface puts the

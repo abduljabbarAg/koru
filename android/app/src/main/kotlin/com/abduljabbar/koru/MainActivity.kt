@@ -37,11 +37,16 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "read" -> result.success(readSecret())
-                    "write" -> result.success(writeSecret(call.arguments as? String ?: ""))
+                    "read" -> result.success(readSecret(call.arguments as? String ?: ""))
+                    "write" -> {
+                        val id = call.argument<String>("id") ?: ""
+                        val value = call.argument<String>("value") ?: ""
+                        result.success(writeSecret(id, value))
+                    }
                     "delete" -> {
-                        prefs().edit().remove("cloud_key").apply()
-                        result.success(null)
+                        val id = call.arguments as? String ?: ""
+                        prefs().edit().remove(storedKey(id)).apply()
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }
@@ -50,27 +55,38 @@ class MainActivity : FlutterActivity() {
 
     private fun prefs() = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
-    private fun readSecret(): String {
-        val stored = prefs().getString("cloud_key", null) ?: return ""
+    /** One encrypted entry per provider, so several keys can coexist. */
+    private fun storedKey(providerId: String) = "cloud_key_$providerId"
+
+    private fun readSecret(providerId: String): String {
+        val stored = prefs().getString(storedKey(providerId), null) ?: return ""
         return try {
             decrypt(stored) ?: ""
         } catch (e: Exception) {
             // A key that cannot be decrypted, for example after the keystore was
             // invalidated by a reinstall, is treated as absent.
-            prefs().edit().remove("cloud_key").apply()
+            prefs().edit().remove(storedKey(providerId)).apply()
             ""
         }
     }
 
-    private fun writeSecret(value: String): Boolean {
+    /**
+     * Reports honestly.
+     *
+     * This used to swallow the outcome and the UI toasted success regardless,
+     * so a refused write looked exactly like a good one and the symptom was
+     * "nothing responds" much later.
+     */
+    private fun writeSecret(providerId: String, value: String): Boolean {
         if (value.isEmpty()) {
-            prefs().edit().remove("cloud_key").apply()
+            prefs().edit().remove(storedKey(providerId)).apply()
             return true
         }
         return try {
             val encrypted = encrypt(value)
-            prefs().edit().putString("cloud_key", encrypted).apply()
-            true
+            prefs().edit().putString(storedKey(providerId), encrypted).apply()
+            // Confirm it landed rather than assuming it did.
+            prefs().getString(storedKey(providerId), null) == encrypted
         } catch (e: Exception) {
             false
         }

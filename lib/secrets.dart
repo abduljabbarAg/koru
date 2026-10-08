@@ -1,21 +1,20 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Where the cloud key lives.
+/// Where API keys live, one per provider.
 ///
-/// Settings used to say "stored on this device" while the key sat in a
-/// [StateProvider], which means in memory only: it vanished on every restart,
-/// and "delete all local data" did not touch it because it was never in the
-/// database in the first place.
-///
-/// The implementation is deliberately behind an interface so tests can inject a
-/// fake and so the storage choice can change without touching callers.
+/// A key that fails to save used to be reported as saved. The UI toasted
+/// "Key saved to the keystore" no matter what happened underneath, so a
+/// keystore that refused the write looked identical to one that worked, and the
+/// next symptom was "nothing responds". [KeyStore.write] now returns whether it
+/// actually worked.
 abstract class KeyStore {
-  Future<String> readKey();
+  Future<String> readKey(String providerId);
 
-  Future<void> writeKey(String value);
+  /// Returns true only when the value is durably stored.
+  Future<bool> writeKey(String providerId, String value);
 
-  Future<void> clearKey();
+  Future<bool> clearKey(String providerId);
 }
 
 /// Real implementation, backed by the platform keystore.
@@ -23,64 +22,78 @@ class PlatformKeyStore implements KeyStore {
   const PlatformKeyStore();
 
   @override
-  Future<String> readKey() => SecureKeyStore.read();
+  Future<String> readKey(String providerId) => SecureKeyStore.read(providerId);
 
   @override
-  Future<void> writeKey(String value) => SecureKeyStore.write(value);
+  Future<bool> writeKey(String providerId, String value) =>
+      SecureKeyStore.write(providerId, value);
 
   @override
-  Future<void> clearKey() => SecureKeyStore.delete();
+  Future<bool> clearKey(String providerId) => SecureKeyStore.delete(providerId);
 }
 
-/// In-memory implementation. Used by tests, and as the fallback when the
-/// platform keystore is unavailable, so a keystore failure degrades to "the key
-/// does not persist" instead of a crash.
+/// In-memory implementation, used by tests.
 class MemoryKeyStore implements KeyStore {
-  String? _key;
+  final Map<String, String> _keys = {};
 
   @override
-  Future<String> readKey() async => _key ?? '';
+  Future<String> readKey(String providerId) async => _keys[providerId] ?? '';
 
   @override
-  Future<void> writeKey(String value) async => _key = value;
+  Future<bool> writeKey(String providerId, String value) async {
+    if (value.isEmpty) {
+      _keys.remove(providerId);
+    } else {
+      _keys[providerId] = value;
+    }
+    return true;
+  }
 
   @override
-  Future<void> clearKey() async => _key = null;
+  Future<bool> clearKey(String providerId) async {
+    _keys.remove(providerId);
+    return true;
+  }
 }
 
 final secretsProvider = Provider<KeyStore>((ref) => const PlatformKeyStore());
 
 /// Thin wrapper so the platform channel has exactly one call site.
 ///
-/// Every method swallows a platform failure and returns a safe value. A keystore
-/// that throws on an emulator should not take the chat screen down with it.
+/// Reads return empty rather than throwing when the keystore is unavailable, so
+/// an emulator without a keystore degrades to "no key saved" instead of a crash.
+/// Writes return false instead of throwing, so the UI can say so.
 class SecureKeyStore {
   const SecureKeyStore._();
 
-  static const MethodChannel _channel = MethodChannel('koru/secure_key');
+  static const MethodChannel channel = MethodChannel('koru/secure_key');
 
-  static Future<String> read() async {
+  static Future<String> read(String providerId) async {
     try {
-      final value = await _channel.invokeMethod<String>('read');
-      return value ?? '';
+      return await channel.invokeMethod<String>('read', providerId) ?? '';
     } catch (_) {
       return '';
     }
   }
 
-  static Future<void> write(String value) async {
+  static Future<bool> write(String providerId, String value) async {
     try {
-      await _channel.invokeMethod<void>('write', value);
+      final ok = await channel.invokeMethod<bool>('write', <String, String>{
+        'id': providerId,
+        'value': value,
+      });
+      return ok ?? false;
     } catch (_) {
-      // Ignored on purpose, see above.
+      return false;
     }
   }
 
-  static Future<void> delete() async {
+  static Future<bool> delete(String providerId) async {
     try {
-      await _channel.invokeMethod<void>('delete');
+      final ok = await channel.invokeMethod<bool>('delete', providerId);
+      return ok ?? false;
     } catch (_) {
-      // Ignored on purpose, see above.
+      return false;
     }
   }
 }
