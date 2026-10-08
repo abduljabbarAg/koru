@@ -351,8 +351,13 @@ void main() {
     });
 
     group('settings and chat', () {
-      test('settings is silent when there is nothing to say', () {
-        expect(Guide.forSettings(facts(hasProfile: true)), isNull);
+      test('settings is silent when there is nothing worth saying', () {
+        // Context plus a client means there is nothing left to prompt about.
+        final line = Guide.forSettings(facts(
+          hasProfile: true,
+          clients: const [Client(name: 'A', status: 'paid', created: '2026-01-01')],
+        ));
+        expect(line, isNull);
       });
 
       test('settings prompts when context exists but records do not', () {
