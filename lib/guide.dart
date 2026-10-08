@@ -87,7 +87,9 @@ class Guide {
     if (active.isEmpty) {
       return '$done finished. Nothing in progress, which is a good moment to start one.';
     }
-    active.sort((a, b) => a.progress.compareTo(b.progress));
+    // Descending, so "furthest along" means what it says. Sorting ascending
+    // here made Koru tell you to start with the topic you had barely touched.
+    active.sort((a, b) => b.progress.compareTo(a.progress));
     final leader = active.first;
     return '${active.length} in progress. "${leader.topic}" is furthest along at '
         '${leader.percent}%. Finish that one before starting another.';

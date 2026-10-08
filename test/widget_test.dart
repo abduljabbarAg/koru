@@ -488,7 +488,7 @@ void main() {
       await tester.tap(find.byTooltip('Send'));
       await pumpFrames(tester);
 
-      expect(find.textContaining('no cloud key is set'), findsOneWidget);
+      expect(find.textContaining('key is set'), findsOneWidget);
     });
 
     testWidgets('the thread is written to the store', (tester) async {

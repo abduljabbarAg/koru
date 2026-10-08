@@ -360,7 +360,7 @@ class CloudAdapter {
       401 || 403 => 'That key was rejected by ${provider.label}.',
       404 => '${provider.label} does not know that model.',
       429 => '${provider.label} is rate limiting you.',
-      >= 500 => '${provider.label} had a problem on its side.',
+      >= 500 => '${provider.label} had a problem on its own side.',
       _ => '${provider.label} returned $status.',
     };
     if (detail == null || detail.isEmpty) return reason;

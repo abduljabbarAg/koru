@@ -22,10 +22,13 @@ void main() {
       }
     });
 
-    test('every provider suggests at least one model', () {
-      for (final provider in kCloudProviders) {
+    test('every provider suggests a model, except custom', () {
+      // Custom is whatever the user happens to be running, so a shipped list
+      // would be a guess. The UI falls back to a free text field when empty.
+      for (final provider in kCloudProviders.where((p) => p.id != 'custom')) {
         expect(provider.models, isNotEmpty, reason: '${provider.id} has no models');
       }
+      expect(providerById('custom').models, isEmpty);
     });
 
     test('no provider has a duplicate model or an empty id', () {
