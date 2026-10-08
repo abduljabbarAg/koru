@@ -161,6 +161,13 @@ class RoutingDecision {
     'lawsuit', 'in court', 'go to court', 'legal action', 'sue them', 'sue',
     'custody', 'divorce', 'restraining order', 'deportation',
     'deported', 'immigration', 'police', 'arrested', 'charges',
+    // Legal questions phrased as ordinary questions. "Can I break this
+    // contract without telling the other side" contains no legal keyword at
+    // all, and the model answered it with a ruling.
+    'is it legal', 'is that legal', 'am i allowed to', 'legally',
+    'the law says', 'break the contract', 'break my contract',
+    'breach of contract', 'terminate my contract', 'get out of my contract',
+    'without telling the other side',
   ];
 
   static const _cloudDomains = ['faith', 'religion', 'islam', 'mental', 'health', 'medical', 'legal'];

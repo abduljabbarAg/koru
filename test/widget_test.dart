@@ -445,7 +445,13 @@ void main() {
 
     testWidgets('a cloud question without a key says so instead of guessing',
         (tester) async {
-      await seed(tester, store.completeOnboarding);
+      // The cloud engine has to be selected first. With the built-in default,
+      // faith questions are answered on device, which is the point of the
+      // engine picker.
+      await seed(tester, () async {
+        await store.completeOnboarding();
+        await store.put('engine', 'cloud');
+      });
       await pumpApp(tester, const ChatScreen());
 
       await tester.enterText(find.byType(TextField), 'is this islam');
