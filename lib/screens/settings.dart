@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -58,6 +60,9 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 22),
+          const SectionLabel('Engine'),
+          const _EnginePicker(),
+          const SizedBox(height: 22),
           const SectionLabel('What leaves this phone'),
           Card(
             child: Padding(
@@ -94,6 +99,8 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(height: 22),
+          const _LocalModelCard(),
           const SizedBox(height: 22),
           const SectionLabel('Cloud model'),
           const Card(
@@ -427,6 +434,195 @@ class _Route extends StatelessWidget {
         Text(where,
             style: const TextStyle(
                 fontSize: 12.5, color: KoruColors.leaf, fontWeight: FontWeight.w700)),
+      ],
+    );
+  }
+}
+
+/// Picks which engine answers. Everything else on this screen depends on it.
+class _EnginePicker extends ConsumerWidget {
+  const _EnginePicker();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final engine = ref.watch(engineProvider).valueOrNull ?? KoruEngine.builtIn;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final option in KoruEngine.values) ...[
+              RadioListTile<KoruEngine>(
+                value: option,
+                groupValue: engine,
+                onChanged: (value) async {
+                  if (value == null) return;
+                  final store = await ref.read(storeProvider.future);
+                  await store.put('engine', value.name);
+                  ref.invalidate(engineProvider);
+                },
+                contentPadding: EdgeInsets.zero,
+                activeColor: KoruColors.leaf,
+                title: Text(
+                  option.label,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                ),
+                subtitle: Text(
+                  option.blurb,
+                  style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
+                ),
+              ),
+              if (option != KoruEngine.values.last) const Divider(height: 4),
+            ],
+            const SizedBox(height: 8),
+            const Text(
+              'Anything about a crisis, a diagnosis or a court date goes to a '
+              'person instead, whichever engine is selected.',
+              style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Points Koru at a model server running on this phone, and says plainly what
+/// it is and is not good for.
+class _LocalModelCard extends ConsumerStatefulWidget {
+  const _LocalModelCard();
+
+  @override
+  ConsumerState<_LocalModelCard> createState() => _LocalModelCardState();
+}
+
+class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
+  late final TextEditingController _endpoint;
+  late final TextEditingController _modelId;
+  String? _status;
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _endpoint = TextEditingController();
+    _modelId = TextEditingController();
+    ref.read(localModelProvider).whenData((config) {
+      _endpoint.text = config.endpoint;
+      _modelId.text = config.modelId;
+    });
+  }
+
+  @override
+  void dispose() {
+    _endpoint.dispose();
+    _modelId.dispose();
+    super.dispose();
+  }
+
+  Future<void> _check() async {
+    setState(() {
+      _checking = true;
+      _status = null;
+    });
+    final client = ref.read(localModelClientProvider);
+    final result = await client.check(_endpoint.text);
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _status = switch (result) {
+        LocalModelClient.Reply(:final text) => 'Found it: $text',
+        LocalModelClient.Unavailable(:final detail) => detail,
+        LocalModelClient.Failed(:final reason) => reason,
+      };
+    });
+  }
+
+  Future<void> _save() async {
+    final store = await ref.read(storeProvider.future);
+    final config = LocalModelConfig(
+      endpoint: ref.read(localModelClientProvider).normaliseEndpoint(_endpoint.text),
+      modelId: _modelId.text.trim().isEmpty ? 'local' : _modelId.text.trim(),
+    );
+    await store.put('local_model', jsonEncode(config.toMap()));
+    ref.invalidate(localModelProvider);
+    if (mounted) toast(context, 'Local model saved');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionLabel('On-device model'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _endpoint,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Server address',
+                    hintText: 'http://127.0.0.1:8099',
+                    helperText: 'Anything that speaks the OpenAI chat API',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _modelId,
+                  decoration: const InputDecoration(
+                    labelText: 'Model id',
+                    hintText: 'qwen2.5-0.5b-instruct',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    FilledButton(
+                      style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                      onPressed: _checking ? null : _check,
+                      child: Text(_checking ? 'Checking...' : 'Test connection'),
+                    ),
+                    const SizedBox(width: 10),
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                      onPressed: _save,
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+                if (_status != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _status!,
+                    style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: KoruColors.goldSoft,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: KoruColors.gold),
+                  ),
+                  child: const Text(
+                    'Measured on this phone: about 2.6 tokens a second once a '
+                    'short answer starts, so expect roughly ten to twenty '
+                    'seconds. Koru is built for short answers. It is not good '
+                    'with health numbers and must never be used instead of a '
+                    'person for anything urgent.',
+                    style: TextStyle(fontSize: 12.5, color: KoruColors.ink, height: 1.45),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

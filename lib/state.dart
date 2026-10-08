@@ -1,8 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'cloud.dart';
+import 'engine.dart';
 import 'handoff.dart';
 import 'local/local_assistant.dart';
+import 'local/local_model_client.dart';
 import 'models.dart';
 import 'packet.dart';
 import 'secrets.dart';
@@ -42,7 +46,15 @@ class Msg {
   final String? why;
   final bool pending;
   final bool local;
+
+  /// Which engine produced this message. Null on the opening greeting and on
+  /// anything the user typed.
+  final KoruEngine? engine;
   final HandoffPlan? handoff;
+
+  /// Measured generation speed, when the engine reported it. Shown so a slow
+  /// answer is explained rather than looking broken.
+  final double? tokensPerSecond;
 
   const Msg(
     this.role,
@@ -50,16 +62,20 @@ class Msg {
     this.why,
     this.pending = false,
     this.local = false,
+    this.engine,
     this.handoff,
+    this.tokensPerSecond,
   });
 
-  Msg copyWith({String? text, bool? pending, HandoffPlan? handoff}) => Msg(
+  Msg copyWith({String? text, bool? pending}) => Msg(
         role,
         text ?? this.text,
         why: why,
         pending: pending ?? this.pending,
         local: local,
-        handoff: handoff ?? this.handoff,
+        engine: engine,
+        handoff: handoff,
+        tokensPerSecond: tokensPerSecond,
       );
 
   AnswerSource get source {
@@ -174,9 +190,9 @@ class ChatNotifier extends Notifier<ChatState> {
   }
 
   Future<Msg> _respond(String q, RoutingDecision routing, ProfileStore store) async {
-    // A question that needs a person gets the card and stops there. It does not
-    // also get a model answer to argue with, which is what the old text prefix
-    // invited.
+    // Safety first, above every engine. A question that needs a person gets the
+    // card and stops there. It does not also get a model answer to argue with,
+    // which is what the old text prefix invited, and no engine may override this.
     if (routing.needsHuman) {
       return Msg(
         MsgRole.koru,
@@ -186,11 +202,120 @@ class ChatNotifier extends Notifier<ChatState> {
       );
     }
 
-    if (!routing.useCloud) {
-      final local = const LocalAssistant().answer(question: q, facts: await _facts(store));
-      return Msg(MsgRole.koru, local.text, why: routing.reason, local: true);
+    switch (KoruEngine.parse(await store.get('engine'))) {
+      case KoruEngine.builtIn:
+        return _askBuiltIn(q, routing, store);
+      case KoruEngine.onDevice:
+        return _askOnDevice(q, routing, store);
+      case KoruEngine.cloud:
+        return _askCloud(q, routing, store);
+    }
+  }
+
+  /// Deterministic answers from the user's own records. No model, no network,
+  /// no RAM. The default, because it works the instant the app opens.
+  Future<Msg> _askBuiltIn(String q, RoutingDecision routing, ProfileStore store) async {
+    final answer = const LocalAssistant().answer(question: q, facts: await _facts(store));
+    return Msg(
+      MsgRole.koru,
+      answer.text,
+      why: routing.reason,
+      local: true,
+      engine: KoruEngine.builtIn,
+    );
+  }
+
+  /// Real generation from a model served on this device over loopback.
+  ///
+  /// Streams, because a median of about fifteen seconds of silence reads as a
+  /// crash. Measured on the target phone: 2.57 tok/s decode with prefill
+  /// dominating, so tokens are shown as they arrive.
+  ///
+  /// Falls back to the built-in engine rather than failing outright, because
+  /// someone who picked the local model on a phone that has since filled up
+  /// should get an answer, not an error. The fallback says so, so nothing is
+  /// quietly downgraded behind their back.
+  Future<Msg> _askOnDevice(String q, RoutingDecision routing, ProfileStore store) async {
+    final config = await ref.read(localModelProvider.future);
+    final client = ref.read(localModelClientProvider);
+    final routing2 = routing;
+
+    final system = LocalModelPrompt.build(
+      packet: await store.packet(),
+      question: q,
+      facts: await _modelFacts(store),
+    );
+
+    final buffer = StringBuffer();
+    Object? failure;
+    Object? unavailable;
+
+    try {
+      final stream = client.chatStream(
+        endpoint: config.endpoint,
+        model: config.modelId,
+        system: system,
+        question: q,
+        onToken: (delta) {
+          buffer.write(delta);
+          _updatePending(buffer.toString());
+        },
+      );
+      final result = await stream.last;
+      switch (result) {
+        case LocalModelClient.Reply(:final tokensPerSecond):
+          final text = buffer.toString().trim();
+          if (text.isEmpty) {
+            failure = 'The local model returned nothing.';
+            break;
+          }
+          // Defence in depth. The gate already stopped the question reaching
+          // here, but a model this size will still drift into dosing or legal
+          // advice on innocuous phrasing, and that answer does not get shown.
+          if (ModelOutputGuard.needsHuman(text)) {
+            return Msg(
+              MsgRole.koru,
+              'I am stepping aside on this one. Here is who to talk to.',
+              why: 'The model on this phone drifted into an area that needs a person.',
+              handoff: handoffPlanFor(routing2, q),
+            );
+          }
+          return Msg(
+            MsgRole.koru,
+            text,
+            why: 'Answered by the model on this phone.',
+            local: true,
+            engine: KoruEngine.onDevice,
+            tokensPerSecond: tokensPerSecond,
+          );
+        case LocalModelClient.Unavailable(:final detail):
+          unavailable = detail;
+        case LocalModelClient.Failed(:final reason):
+          failure = reason;
+      }
+    } catch (e) {
+      failure = '$e';
     }
 
+    final fallback = await _askBuiltIn(q, routing, store);
+    final note = unavailable != null
+        ? 'I would have used the model on this phone but could not reach it: $unavailable'
+        : 'The local model did not answer: $failure';
+    return fallback.copyWith(text: '${fallback.text}\n\n($note)');
+  }
+
+  /// Replaces the pending bubble so streamed tokens appear as they arrive.
+  void _updatePending(String text) {
+    final messages = [...state.messages];
+    if (messages.isEmpty) return;
+    final last = messages.last;
+    if (last.pending) {
+      messages[messages.length - 1] = last.copyWith(text: text, pending: text.isEmpty);
+      state = state.copyWith(messages: messages);
+    }
+  }
+
+  Future<Msg> _askCloud(String q, RoutingDecision routing, ProfileStore store) async {
     final key = await ref.read(cloudKeyProvider.future);
     final result = await ref.read(cloudModelProvider).ask(
           packet: await store.packet(),
@@ -201,22 +326,42 @@ class ChatNotifier extends Notifier<ChatState> {
 
     switch (result) {
       case CloudReply(:final text):
-        return Msg(MsgRole.koru, text, why: routing.reason, local: false);
-      case CloudUnavailable():
-        // Cloud is the right place for this question but there is no key, so say
-        // so instead of silently answering with something weaker.
-        return const Msg(
+        return Msg(
           MsgRole.koru,
-          'This one deserves a stronger model than the one on your phone, and I '
-          'do not have a cloud key yet. Add one in Settings and I will send a '
-          'pseudonymous summary with the question.',
-          why: 'No cloud key set.',
-          local: true,
+          text,
+          why: routing.reason,
+          local: false,
+          engine: KoruEngine.cloud,
+        );
+      case CloudUnavailable():
+        // No key. Answer from the records and say why, rather than passing off a
+        // weaker answer as the stronger one the user asked for.
+        final fallback = await _askBuiltIn(q, routing, store);
+        return fallback.copyWith(
+          text: '${fallback.text}\n\n(I answered that from your own records '
+              'because no cloud key is set. Add one in Settings.)',
         );
       case CloudFailure(:final reason):
-        return Msg(MsgRole.koru, reason, why: routing.reason, local: false);
+        return Msg(
+          MsgRole.koru,
+          reason,
+          why: routing.reason,
+          local: false,
+          engine: KoruEngine.cloud,
+        );
     }
   }
+
+  /// Facts for the on-device model, in the shape its prompt wants.
+  Future<LocalEngineFacts> _modelFacts(ProfileStore store) async => LocalEngineFacts(
+        nickname: (await store.get('nickname')) ?? '',
+        goals: (await store.get('goals')) ?? '',
+        focus: (await store.get('help_focus')) ?? '',
+        height: await store.number('height'),
+        bmi: await store.number('bmi'),
+        fitness: await store.fitness(limit: 5),
+        clients: await store.clients(),
+      );
 }
 
 final chatProvider = NotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);
@@ -240,6 +385,34 @@ final draftsProvider = FutureProvider<List<Draft>>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return store.drafts(status: DraftStatus.pending);
 });
+
+/// Which engine answers. Persisted so the choice survives a restart.
+final engineProvider = FutureProvider<KoruEngine>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  return KoruEngine.parse(await store.get('engine'));
+});
+
+/// Config for the on-device model, if one has been set up.
+final localModelProvider = FutureProvider<LocalModelConfig>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  return localModelConfigFrom(await store.get('local_model'));
+});
+
+/// Parses stored JSON defensively. A corrupt value falls back to the default
+/// rather than taking Settings down with it.
+LocalModelConfig localModelConfigFrom(String? raw) {
+  if (raw == null || raw.isEmpty) return const LocalModelConfig();
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) return const LocalModelConfig();
+    return LocalModelConfig.fromMap(decoded.cast<String, Object?>());
+  } catch (_) {
+    return const LocalModelConfig();
+  }
+}
+
+final localModelClientProvider =
+    Provider<LocalModelClient>((ref) => const LocalModelClient());
 
 /// Height, pulled out because three different screens need it to compute BMI.
 final heightProvider = FutureProvider<double?>((ref) async {

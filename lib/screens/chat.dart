@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../engine.dart';
 import '../mascot/mascot.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -11,6 +12,44 @@ class ChatScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
+}
+
+/// Says which engine answered. The whole point of the app is that you can see
+/// where an answer came from, and a local model is slow enough that an
+/// unexplained pause would look like a hang.
+class _EngineBadge extends StatelessWidget {
+  const _EngineBadge({required this.engine, this.tokensPerSecond});
+
+  final KoruEngine? engine;
+  final double? tokensPerSecond;
+
+  @override
+  Widget build(BuildContext context) {
+    final speed = tokensPerSecond;
+    return switch (engine) {
+      KoruEngine.onDevice => KoruPill(
+          label: speed == null
+              ? 'MODEL ON THIS PHONE'
+              : 'THIS PHONE  ${speed.toStringAsFixed(1)} TOK/S',
+          color: KoruColors.leaf,
+          background: KoruColors.leafSoft,
+          icon: Icons.memory_rounded,
+        ),
+      KoruEngine.cloud => const KoruPill(
+          label: 'CLOUD MODEL',
+          color: KoruColors.gold,
+          background: KoruColors.goldSoft,
+          icon: Icons.cloud_outlined,
+        ),
+      KoruEngine.builtIn => const KoruPill(
+          label: 'FROM YOUR RECORDS',
+          color: KoruColors.leaf,
+          background: KoruColors.leafSoft,
+          icon: Icons.storage_rounded,
+        ),
+      null => const SizedBox.shrink(),
+    };
+  }
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
@@ -190,20 +229,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     children: [
                       const KoruMark(size: 17),
                       const SizedBox(width: 7),
-                      if (m.local)
-                        const KoruPill(
-                          label: 'ON DEVICE',
-                          color: KoruColors.leaf,
-                          background: KoruColors.leafSoft,
-                          icon: Icons.smartphone_rounded,
-                        )
-                      else
-                        const KoruPill(
-                          label: 'CLOUD MODEL',
-                          color: KoruColors.gold,
-                          background: KoruColors.goldSoft,
-                          icon: Icons.cloud_outlined,
-                        ),
+                      _EngineBadge(
+                        engine: m.engine,
+                        tokensPerSecond: m.tokensPerSecond,
+                      ),
                       if (m.why != null) ...[
                         const SizedBox(width: 8),
                         Expanded(
