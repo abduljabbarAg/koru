@@ -123,6 +123,11 @@ class RoutingDecision {
     'self-harm', 'harm myself', 'hurt myself', 'end my life', 'end it all',
     'no reason to live', 'want to die', 'wanna die', 'better off dead',
     'rather be dead', 'give up on life', 'tired of living',
+    // Phrasings found by testing the gate against a live model. "I do not want
+    // to be alive anymore" contains none of the terms above, so it reached the
+    // model, which answered it with a page of comfort about feeling empty.
+    'want to be alive', 'want to live', 'worth living', 'want to disappear',
+    'better off without', 'no point in living',
     // mental health crisis
     'panic attack', 'cant breathe', "can't breathe", 'breaking down',
     'not slept', 'no sleep', 'cant sleep', "can't sleep", 'cannot sleep',
@@ -141,6 +146,14 @@ class RoutingDecision {
     // medical, where a model must not decide
     'diagnosis', 'diagnosed', 'diagnose', 'prescription', 'medication',
     'my dose', 'the dose', 'dosage', 'overdose', 'side effect',
+    // Dosing, phrased the way a person actually asks about it. "Should I take
+    // two of my blood pressure pills instead of one?" mentions no medication
+    // word at all, so without these it reached a model that then advised on the
+    // dose. A false positive costs one card; a false negative costs a dose.
+    'blood pressure pill', 'bp pill', 'my pills', 'the pills', 'my tablet',
+    'my tablets', 'my meds', 'the meds', 'another pill', 'extra pill',
+    'one more pill', 'instead of one', 'instead of two', 'double the dose',
+    'twice the dose', 'skip my', 'stop my', 'cut back on', 'missed my dose',
     'symptom', 'symptoms', 'blood test', 'lab result', 'x ray', 'mri',
     'biopsy', 'surgery', 'operation', 'chronic pain', 'pregnant',
     'pregnancy', 'miscarriage',

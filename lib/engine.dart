@@ -160,7 +160,7 @@ class ModelOutputGuard {
   /// word boundaries, so "illegalise this contract" is not treated as a ruling.
   static const _clinical = [
     'take double', 'double your dose', 'double the dose', 'twice the dose',
-    'increase your dose', 'stop taking', 'skip the dose', 'dose of',
+    'increase your dose', 'stop taking', 'skip the dose',
     'you have a rash', 'this is cancer', 'this is diabetes',
     'you should stop taking', 'safe to take', 'safe dosage',
   ];

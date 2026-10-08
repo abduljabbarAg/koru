@@ -423,7 +423,9 @@ void main() {
       await pumpFrames(tester);
 
       expect(find.textContaining('two more clients'), findsOneWidget);
-      expect(find.text('ON DEVICE'), findsWidgets);
+      // The badge names the engine, so it says which one answered rather than
+      // just claiming it was local.
+      expect(find.text('FROM YOUR RECORDS'), findsWidgets);
     });
 
     testWidgets('a question needing a person shows the handoff card', (tester) async {
@@ -450,7 +452,7 @@ void main() {
       await tester.tap(find.byTooltip('Send'));
       await pumpFrames(tester);
 
-      expect(find.textContaining('do not have a cloud key'), findsOneWidget);
+      expect(find.textContaining('no cloud key is set'), findsOneWidget);
     });
 
     testWidgets('the thread is written to the store', (tester) async {
