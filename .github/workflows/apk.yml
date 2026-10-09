@@ -20,6 +20,10 @@ jobs:
     # have by default, so this is allowed to fail without taking the APK with
     # it. The app ships either way; without the binary it falls back to the
     # built-in engine and Settings says the build has no bundled model.
+    #
+    # Note: continue-on-error makes needs.glen.result report "success" even when
+    # the job failed, so the model step gates on this job's output instead, which
+    # is only set when a binary was actually produced.
     continue-on-error: true
     runs-on: ubuntu-latest
     outputs:
@@ -97,7 +101,7 @@ jobs:
       # A 17 MB app that says "this build has no bundled model" is far more
       # useful than a gigabyte that does nothing.
       - name: fetch the model
-        if: needs.glen.result == 'success'
+        if: needs.glen.outputs.binary != ''
         env:
           MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
         run: |
