@@ -146,19 +146,29 @@ class MainActivity : FlutterActivity() {
     private fun modelFile(): File? {
         val target = File(filesDir, "models/qwen2.5-0.5b-instruct-q4_k_m.gguf")
         if (target.exists() && target.length() > 1_000_000) return target
-        val assetName = "assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
-        return try {
-            assets.open(assetName).use { input ->
-                target.parentFile?.mkdirs()
-                target.outputStream().use { output -> input.copyTo(output, 1 shl 16) }
+        // Flutter puts app assets under assets/flutter_assets/, so the asset
+        // that sits at assets/flutter_assets/assets/models/ in the package is
+        // reached as flutter_assets/assets/models/ here. Asking for the shorter
+        // path failed quietly and the engine never launched.
+        val assetNames = listOf(
+            "flutter_assets/assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            "assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        )
+        for (assetName in assetNames) {
+            try {
+                assets.open(assetName).use { input ->
+                    target.parentFile?.mkdirs()
+                    target.outputStream().use { output -> input.copyTo(output, 1 shl 16) }
+                }
+                if (target.exists() && target.length() > 1_000_000) return target
+            } catch (e: IOException) {
+                // Not at this path; try the next one.
             }
-            if (target.exists() && target.length() > 1_000_000) target else null
-        } catch (e: Exception) {
-            // Asset absent. Not an error: the app still works with an external
-            // server, it just cannot start the bundled engine.
-            target.delete()
-            null
         }
+        // Absent. Not an error: the app still works with an external server, it
+        // just cannot start the bundled engine.
+        target.delete()
+        return null
     }
 
     /**
@@ -169,11 +179,25 @@ class MainActivity : FlutterActivity() {
      * the return value, because a process can be alive and still be loading.
      */
     private fun startEngine(requestedPort: Int): Boolean {
-        val binary = engineBinary() ?: return false
-        val model = modelFile() ?: return false
-        if (engine?.isAlive == true) return true
-
         val log = File(filesDir, "glen.log")
+
+        // Every failure below writes why into the log. Returning a bare false
+        // made "would not start" mean the same thing whether Android refused the
+        // exec, the model was missing, or the engine exited in a millisecond,
+        // which is no way to debug a launch.
+        fun fail(why: String): Boolean {
+            log.writeText(why)
+            return false
+        }
+
+        val binary = engineBinary()
+            ?: return fail("The engine binary is missing or not executable.")
+        val model = modelFile()
+            ?: return fail(
+                "The model could not be unpacked. Free space is likely the cause:\n" +
+                    File(filesDir, "models").absolutePath,
+            )
+        if (engine?.isAlive == true) return true
         return try {
             log.delete()
             val builder = ProcessBuilder(
@@ -190,7 +214,12 @@ class MainActivity : FlutterActivity() {
             builder.redirectOutput(log)
             builder.directory(filesDir)
 
-            val started = builder.start()
+            val started = try {
+                builder.start()
+            } catch (e: Exception) {
+                // Most often Android refusing to exec from nativeLibraryDir.
+                return fail("exec failed for ${binary.absolutePath}:\n$e")
+            }
             engine = started
             // Deliberately not waited on: the process outlives this call, and a
             // reaper thread would race with onDestroy.
@@ -201,10 +230,30 @@ class MainActivity : FlutterActivity() {
                     Thread.currentThread().interrupt()
                 }
             }.apply { isDaemon = true }.start()
-            started.isAlive
+
+            if (started.isAlive) return true
+
+            // It launched and died. The exit code separates a clean argument
+            // error from a crash on load, which nothing else here can tell.
+            try {
+                started.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            val how = try {
+                "exit code ${started.exitValue()}"
+            } catch (e: IllegalThreadStateException) {
+                "still running but reported dead"
+            }
+            engine = null
+            return fail(
+                "glen exited immediately ($how).\n" +
+                    "model: ${model.absolutePath} (${model.length()} bytes)\n" +
+                    "stderr and stdout follow:\n${log.readText()}",
+            )
         } catch (e: Exception) {
             engine = null
-            false
+            fail("Could not launch the engine:\n$e")
         }
     }
 
