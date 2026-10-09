@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/engine.dart';
+import 'package:koru/local/bundled_engine.dart';
 import 'package:koru/local/local_model_client.dart';
 import 'package:koru/models.dart';
 import 'package:koru/packet.dart';
@@ -308,6 +309,29 @@ void main() {
           reason: 'must never reach an engine: "$question"',
         );
       }
+    });
+  });
+
+  group('bundled engine results', () {
+    test('a build without a model says so plainly', () {
+      const result = BundledStartResult.notBundled();
+      expect(result.started, isFalse);
+      expect(result.reason, contains('does not include a model'));
+      expect(result.kind, BundledStartKind.notBundled);
+    });
+
+    test('a failure carries the reason', () {
+      const result = BundledStartResult.failed('out of memory');
+      expect(result.started, isFalse);
+      expect(result.reason, 'out of memory');
+      expect(result.kind, BundledStartKind.failed);
+    });
+
+    test('a ready result carries the endpoint', () {
+      const result = BundledStartResult.ready('http://127.0.0.1:8099');
+      expect(result.started, isTrue);
+      expect(result.endpoint, 'http://127.0.0.1:8099');
+      expect(result.reason, isNull);
     });
   });
 }

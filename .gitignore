@@ -6,3 +6,7 @@ android/local.properties
 android/.gradle/
 *.iml
 .DS_Store
+
+# Built by CI, never committed: the arm64 glen binary and the model file.
+android/app/src/main/jniLibs/
+assets/models/

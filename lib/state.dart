@@ -7,6 +7,7 @@ import 'cloud_providers.dart';
 import 'engine.dart';
 import 'guide.dart';
 import 'handoff.dart';
+import 'local/bundled_engine.dart';
 import 'local/local_assistant.dart';
 import 'local/local_model_client.dart';
 import 'models.dart';
@@ -444,6 +445,13 @@ LocalModelConfig localModelConfigFrom(String? raw) {
 
 final localModelClientProvider =
     Provider<LocalModelClient>((ref) => const LocalModelClient());
+
+final bundledEngineProvider = Provider<BundledEngine>((ref) => const BundledEngine());
+
+/// Whether this APK actually contains an engine and a model.
+final bundledEngineAvailableProvider = FutureProvider<bool>((ref) async {
+  return ref.read(bundledEngineProvider).available;
+});
 
 /// Height, pulled out because three different screens need it to compute BMI.
 final heightProvider = FutureProvider<double?>((ref) async {

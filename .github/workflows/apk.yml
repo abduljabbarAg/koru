@@ -12,10 +12,113 @@ permissions:
   contents: write
 
 jobs:
-  apk:
+  # Builds the on-device inference engine for Android arm64. Separate from the
+  # APK job because it needs the NDK and a Rust toolchain, and because a failure
+  # here should say "glen would not build" rather than "the app would not build".
+  glen:
     runs-on: ubuntu-latest
+    outputs:
+      binary: ${{ steps.build.outputs.path }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: build glen for android
+        id: build
+        run: |
+          set -eu
+          chmod +x tool/build_glen_android.sh
+          NDK_ROOT="${{ steps.ndk.outputs.ndkPath }}" ./tool/build_glen_android.sh
+          {
+            echo "path=android/app/src/main/jniLibs/arm64-v8a/libglen.so"
+            echo "size=$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libglen.so)"
+          } >> "$GITHUB_OUTPUT"
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: confirm it is an arm64 bionic binary
+        run: |
+          set -eu
+          FILE=android/app/src/main/jniLibs/arm64-v8a/libglen.so
+          # Machine must be aarch64 and the interpreter must be bionic's linker,
+          # not glibc's, or Android will refuse to run it.
+          readelf -h "$FILE" | grep -E 'Machine'
+          readelf -l "$FILE" | grep -i interpreter
+          readelf -l "$FILE" | grep -q "ld-android" \
+            || { echo "not linked against bionic"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libglen-android-arm64
+          path: android/app/src/main/jniLibs/arm64-v8a/libglen.so
+          retention-days: 30
+
+  # Fetches the model. Kept out of git: it is 491 MB and would dominate the
+  # repository, while the file it comes from is versioned and its hash is pinned.
+  model:
+    runs-on: ubuntu-latest
+    outputs:
+      sha256: ${{ steps.check.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: fetch the model
+        id: fetch
+        run: |
+          set -eu
+          mkdir -p assets/models
+          url="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+          curl -sL --retry 5 -C - -o assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf "$url"
+          echo "bytes=$(wc -c < assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf)" >> "$GITHUB_OUTPUT"
+
+      - name: verify size and hash
+        id: check
+        run: |
+          set -eu
+          FILE=assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          EXPECTED=74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+          ACTUAL="$(sha256sum "$FILE" | cut -d' ' -f1)"
+          echo "sha256=$ACTUAL" >> "$GITHUB_OUTPUT"
+          # A truncated GGUF does not fail cleanly. glen panics deep in its
+          # parser, so this has to be checked before it is ever loaded.
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "model hash mismatch: got $ACTUAL"
+            exit 1
+          fi
+          echo "model verified"
+
+  apk:
+    runs-on: ubuntu-latest
+    needs: [glen, model]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: libglen-android-arm64
+          path: android/app/src/main/jniLibs/arm64-v8a
+
+      - name: fetch the model
+        env:
+          MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+        run: |
+          set -eu
+          mkdir -p assets/models
+          curl -sL --retry 5 -C - -o assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf "$MODEL_URL"
+          test "$(sha256sum assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf | cut -d' ' -f1)" \
+            = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+          ls -la assets/models/
 
       - uses: actions/setup-java@v4
         with:
@@ -31,14 +134,9 @@ jobs:
       - name: pub get
         run: flutter pub get
 
-      # Unused imports, variables and elements are errors in
-      # analysis_options.yaml, so this step also guards against dead code
-      # creeping back in. A third of the original codebase was unreachable.
       - name: analyze
         run: flutter analyze
 
-      # Per-test timeout lives in dart_test.yaml, where the test runner actually
-      # reads it.
       - name: test
         run: flutter test
 
@@ -52,7 +150,6 @@ jobs:
         run: |
           set -eu
           cd build/app/outputs/flutter-apk
-          # --split-per-abi names them app-<abi>-release.apk
           for abi in arm64-v8a armeabi-v7a x86_64; do
             if [ -f "app-${abi}-release.apk" ]; then
               cp "app-${abi}-release.apk" "koru-${abi}.apk"
@@ -67,27 +164,18 @@ jobs:
           path: build/app/outputs/flutter-apk/koru-*.apk
           retention-days: 30
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: koru-aab
-          path: build/app/outputs/bundle/release/*.aab
-          retention-days: 30
-
-      # Only on a tag, and only after everything above passed.
       - name: publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            build/app/outputs/flutter-apk/koru-*.apk
-            build/app/outputs/bundle/release/*.aab
+          files: build/app/outputs/flutter-apk/koru-*.apk
           generate_release_notes: true
           body: |
             ## Koru ${{ github.ref_name }}
 
-            Download the APK for your device, or the AAB if you are installing
-            through a store.
+            This build bundles the glen inference engine and a 0.5B model, so the
+            on-device model engine needs no separate setup.
 
-            These are built with the debug signing key unless a release keystore
-            is configured in the repository secrets. Installing a later build
-            over this one will fail until that is set up properly.
+            Install the arm64 APK. The debug signing key is still in use, so an
+            upgrade over an earlier build of Koru will not work until a release
+            keystore is configured.

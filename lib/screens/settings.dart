@@ -7,6 +7,7 @@ import '../cloud.dart';
 import '../cloud_providers.dart';
 import '../engine.dart';
 import '../guide.dart';
+import '../local/bundled_engine.dart';
 import '../local/local_model_client.dart';
 import '../secrets.dart';
 import '../state.dart';
@@ -712,6 +713,14 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                const _BundledModelPanel(),
+                const SizedBox(height: 6),
+                const Divider(height: 24),
+                const Text(
+                  'Or point Koru at a server you already run',
+                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
+                ),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     FilledButton(
@@ -756,6 +765,157 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Starts the engine that ships inside the APK.
+///
+/// This is the path a normal user should never have to think about: the binary
+/// and the model are already in the app, so "on-device model" works with no
+/// setup. The first start copies several hundred megabytes out of the APK, which
+/// takes a while, so the progress is shown rather than a spinner.
+class _BundledModelPanel extends ConsumerStatefulWidget {
+  const _BundledModelPanel();
+
+  @override
+  ConsumerState<_BundledModelPanel> createState() => _BundledModelPanelState();
+}
+
+class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
+  bool _starting = false;
+  int? _progress;
+  String? _message;
+  bool _ready = false;
+
+  Future<void> _start() async {
+    setState(() {
+      _starting = true;
+      _progress = 0;
+      _message = null;
+    });
+
+    final engine = ref.read(bundledEngineProvider);
+    final client = ref.read(localModelClientProvider);
+    final result = await engine.start(
+      onProgress: (percent) {
+        if (mounted) setState(() => _progress = percent);
+      },
+      isHealthy: () async {
+        final check = await client.check('http://127.0.0.1:${BundledEngine.defaultPort}');
+        return check is LocalReply;
+      },
+    );
+
+    if (!mounted) return;
+    if (result.started && result.endpoint != null) {
+      final store = await ref.read(storeProvider.future);
+      await store.put('engine', KoruEngine.onDevice.name);
+      await store.put(
+        'local_model',
+        jsonEncode(LocalModelConfig(
+          endpoint: result.endpoint!,
+          modelId: 'qwen2.5-0.5b-instruct',
+          label: 'Bundled',
+          sizeBytes: 491400032,
+        ).toMap()),
+      );
+      ref.invalidate(engineProvider);
+      ref.invalidate(localModelProvider);
+    }
+    setState(() {
+      _starting = false;
+      _ready = result.started;
+      _message = result.started
+          ? 'Model running on this phone. It is now the active engine.'
+          : result.reason;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final available = ref.watch(bundledEngineAvailableProvider).valueOrNull;
+    final progress = _progress;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _ready ? KoruColors.leafSoft : KoruColors.cream,
+        borderRadius: BorderRadius.circular(KoruRadius.field),
+        border: Border.all(color: _ready ? KoruColors.leaf : KoruColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.memory_rounded, size: 19, color: KoruColors.leaf),
+              const SizedBox(width: 9),
+              const Expanded(
+                child: Text(
+                  'Bundled model',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                ),
+              ),
+              if (available == false)
+                const KoruPill(
+                  label: 'NOT IN THIS BUILD',
+                  color: KoruColors.clay,
+                  background: KoruColors.claySoft,
+                )
+              else if (_ready)
+                const KoruPill(
+                  label: 'RUNNING',
+                  color: KoruColors.leaf,
+                  background: KoruColors.leafSoft,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'A 0.5B model already inside this app. The first start copies it out '
+            'of the package, so expect it to take a minute.',
+            style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
+          ),
+          if (_starting) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(KoruRadius.pill),
+              child: LinearProgressIndicator(
+                value: (progress ?? 0) / 100,
+                minHeight: 6,
+                backgroundColor: KoruColors.line,
+                valueColor: const AlwaysStoppedAnimation(KoruColors.leaf),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Loading the model... ${progress ?? 0}%',
+              style: const TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+            ),
+          ],
+          if (_message != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _message!,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: _ready ? KoruColors.leaf : KoruColors.clay,
+              ),
+            ),
+          ],
+          if (!_starting && !_ready) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+              onPressed: available == false ? null : _start,
+              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              label: const Text('Start the bundled model'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
