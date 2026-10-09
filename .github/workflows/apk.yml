@@ -16,10 +16,9 @@ jobs:
   # APK job because it needs the NDK and a Rust toolchain, and because a failure
   # here should say "glen would not build" rather than "the app would not build".
   glen:
-    # Not required. glen is a private repository and needs a token CI does not
-    # have by default, so this is allowed to fail without taking the APK with
-    # it. The app ships either way; without the binary it falls back to the
-    # built-in engine and Settings says the build has no bundled model.
+    # Not required. If the cross-compile ever breaks, the app still ships: it
+    # falls back to the built-in engine and Settings says the build has no
+    # bundled model.
     #
     # Note: continue-on-error makes needs.glen.result report "success" even when
     # the job failed, so the model step gates on this job's output instead, which
@@ -46,15 +45,12 @@ jobs:
 
       - name: build glen for android
         id: build
-        env:
-          GLEN_REPO_TOKEN: ${{ secrets.GLEN_REPO_TOKEN }}
         run: |
           set -eu
           chmod +x tool/build_glen_android.sh
-          # The script locates the NDK itself, from the clang the setup action
-          # put on PATH. Doing it here in YAML was fragile: the action exports an
-          # empty ndkPath, and the runner's ANDROID_NDK_ROOT already carries a
-          # "NDK_ROOT=" prefix that doubles into a path that does not exist.
+          # Builds from the copy vendored in third_party/glen, so no token and no
+          # public window on another repository is needed. The script locates the
+          # NDK itself from the clang the setup action put on PATH.
           ./tool/build_glen_android.sh
           {
             echo "path=android/app/src/main/jniLibs/arm64-v8a/libglen.so"

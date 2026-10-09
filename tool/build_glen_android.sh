@@ -17,8 +17,13 @@
 
 set -euo pipefail
 
+# glen is a private repository, so CI cannot clone it and a token scoped to this
+# repo cannot read another one. The source is vendored at a pinned revision under
+# third_party/glen instead; see third_party/README.md. GLEN_REPO still overrides
+# it for local experiments.
 REPO="${GLEN_REPO:-https://github.com/AbduljabbarBXR/glen.git}"
 REF="${GLEN_REF:-main}"
+VENDORED="$ROOT/third_party/glen"
 # Finds the NDK root from the clang the NDK installs.
 #
 # Two traps this avoids. The clang lives at
@@ -85,31 +90,28 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# glen is a private repository, so cloning it needs a token. GLEN_REPO_TOKEN is
-# optional: when it is absent the clone is attempted anonymously and fails with a
-# clear message rather than a git credential prompt.
-echo "==> fetching glen ($REF)"
-CLONE_ARGS=(--depth 1 --branch "$REF")
-if [[ -n "${GLEN_REPO_TOKEN:-}" ]]; then
-  CLONE_ARGS+=("https://x-access-token:${GLEN_REPO_TOKEN}@github.com/AbduljabbarBXR/glen.git")
+if [[ -d "$VENDORED/src" ]]; then
+  echo "==> using the vendored glen at $(cat "$ROOT/third_party/GLEN_COMMIT" 2>/dev/null || echo unknown)"
+  cp -r "$VENDORED" "$WORK/glen"
 else
-  CLONE_ARGS+=("$REPO")
-fi
-if ! git clone "${CLONE_ARGS[@]}" "$WORK/glen"; then
-  cat >&2 <<'MSG'
-Could not clone glen.
+  # Fallback for trying a branch that is not vendored yet. Fails cleanly rather
+  # than sitting on a credential prompt when glen is private.
+  echo "==> fetching glen ($REF)"
+  CLONE_ARGS=(--depth 1 --branch "$REF")
+  if [[ -n "${GLEN_REPO_TOKEN:-}" ]]; then
+    CLONE_ARGS+=("https://x-access-token:${GLEN_REPO_TOKEN}@github.com/AbduljabbarBXR/glen.git")
+  else
+    CLONE_ARGS+=("$REPO")
+  fi
+  if ! git clone "${CLONE_ARGS[@]}" "$WORK/glen"; then
+    cat >&2 <<'MSG'
+Could not clone glen and no vendored copy was found.
 
-It is a private repository, so an anonymous clone has no credentials and git
-prompts instead of failing. Two ways forward:
-
-  1. Add a repository secret named GLEN_REPO_TOKEN holding a token with read
-     access to the glen repo.
-  2. Make glen public.
-
-Without it the app still builds and works; it just ships without the bundled
-engine and falls back to the built-in one.
+It is a private repository. Either add a GLEN_REPO_TOKEN repository secret, or
+restore third_party/glen from third_party/README.md.
 MSG
-  exit 3
+    exit 3
+  fi
 fi
 
 echo "==> building for aarch64-linux-android"
