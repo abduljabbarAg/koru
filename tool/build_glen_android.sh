@@ -23,7 +23,6 @@ set -euo pipefail
 # it for local experiments.
 REPO="${GLEN_REPO:-https://github.com/AbduljabbarBXR/glen.git}"
 REF="${GLEN_REF:-main}"
-VENDORED="$ROOT/third_party/glen"
 # Finds the NDK root from the clang the NDK installs.
 #
 # Two traps this avoids. The clang lives at
@@ -56,6 +55,7 @@ detect_ndk_root() {
 OUT="${1:-}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+VENDORED="$ROOT/third_party/glen"
 
 if [[ -z "$OUT" ]]; then
   OUT="$ROOT/android/app/src/main/jniLibs/arm64-v8a/libglen.so"
