@@ -211,6 +211,15 @@ class MainActivity : FlutterActivity() {
             // commands or reach the network on its own.
             builder.environment()["Glen_TOOLS"] = "0"
             builder.environment()["Glen_CTX"] = "1024"
+            // Measured on this phone with the bundled 0.5B, decoding one token:
+            // 1 thread 412ms, 2 threads 397ms, 4 threads 255-259ms across three
+            // runs, 8 threads anywhere between 213ms and 511ms. glen otherwise
+            // defaults to available_parallelism().min(8), and on this memory
+            // constrained device that pool contends with itself: fast on a good
+            // run, slow on a bad one, which is what a caller sees as the model
+            // being erratic. Four threads is both quicker on average and
+            // repeatable, which matters more than a lucky best case.
+            builder.environment()["Glen_THREADS"] = "4"
             builder.redirectErrorStream(true)
             builder.redirectOutput(log)
             builder.directory(filesDir)
