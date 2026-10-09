@@ -201,18 +201,53 @@ class LocalAssistant {
       return 'No clients yet. Add one from the Business tab and I can track '
           'delivered versus paid, and flag anything overdue.';
     }
-    final lines = _businessLines(f);
-    final needsFollowUp = f.clients
-        .where((c) => c.status == 'lead' || c.status == 'active')
-        .toList();
-    if (needsFollowUp.isNotEmpty) {
-      lines.add('Worth a nudge: ${needsFollowUp.map((c) => c.name).join(', ')}.');
+    // Two separate questions, asked together here: what work is done and what
+    // is still pending, and what money has landed and what has not. Keeping
+    // them apart is the point. "Delivered" is finished work nobody has paid for,
+    // "active" is work still in hand, and neither is the same thing.
+    final today = f.today;
+    double sum(Iterable<Client> g) => g.fold<double>(0, (a, c) => a + (c.amount ?? 0));
+
+    final paid = f.clients.where((c) => c.status == 'paid').toList();
+    final delivered = f.clients.where((c) => c.status == 'delivered').toList();
+    final active = f.clients.where((c) => c.status == 'active').toList();
+    final leads = f.clients.where((c) => c.status == 'lead').toList();
+    final overdue = f.clients.where((c) => c.isOverdueOn(today)).toList();
+    final openWork = [...active, ...leads];
+
+    final lines = <String>[];
+
+    // The audit comes first and the opinion second, deliberately. Advice before
+    // the numbers is how a small assistant ends up confidently wrong.
+    lines.add('Work done: ${paid.length + delivered.length} of ${f.clients.length}'
+        '${paid.isNotEmpty || delivered.isNotEmpty ? '' : ' clients'}'
+        ' finished and delivered'
+        '${paid.isNotEmpty ? ', of which ${paid.length} paid' : ''}.');
+    if (openWork.isNotEmpty) {
+      lines.add('Work pending: ${openWork.length}'
+          '${leads.isNotEmpty && active.isNotEmpty ? ' (${active.length} in progress, ${leads.length} still a lead)' : ''}'
+          ', worth ${sum(openWork).toStringAsFixed(0)} AED.');
     }
-    final unpaid = f.clients.where((c) => c.status == 'delivered').toList();
-    if (unpaid.isNotEmpty) {
-      final sum = unpaid.fold<double>(0, (a, c) => a + (c.amount ?? 0));
-      lines.add('Chasing ${sum.toStringAsFixed(0)} AED is the single highest '
-          'value thing on this list.');
+    lines.add('Paid in: ${sum(paid).toStringAsFixed(0)} AED. '
+        'Still owed for delivered work: ${sum(delivered).toStringAsFixed(0)} AED.');
+
+    if (overdue.isNotEmpty) {
+      lines.add('Past their due date: ${overdue.map((c) => c.name).join(', ')}.');
+    }
+
+    // Then, and only then, an opinion.
+    if (overdue.isNotEmpty) {
+      lines.add('Chase ${overdue.map((c) => c.name).join(', ')} first: that is '
+          'money already earned and already late.');
+    } else if (delivered.isNotEmpty) {
+      lines.add('Chasing ${sum(delivered).toStringAsFixed(0)} AED is the single '
+          'highest value thing on this list.');
+    } else if (openWork.isNotEmpty) {
+      lines.add('Nothing is overdue, so the pressure is on finishing '
+          '${openWork.map((c) => c.name).join(', ')} rather than chasing.');
+    } else if (paid.isNotEmpty) {
+      lines.add('Everything is paid and nothing is pending. That is a clean '
+          'sheet; the next risk is an empty pipeline.');
     }
     return lines.join('\n');
   }
