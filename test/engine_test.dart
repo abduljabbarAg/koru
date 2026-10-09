@@ -384,4 +384,39 @@ void main() {
       expect(status.path, contains('libglen.so'));
     });
   });
+
+  group('the local prompt does not pay for the cloud packet twice', () {
+    test('drops the cloud packet when local facts exist', () {
+      final prompt = LocalModelPrompt.build(
+        packet: const ContextPacket(
+          nickname: '',
+          lifeStage: 'freelance',
+          business: 'design',
+          goals: 'ship more',
+          fitness: 'weight 79kg',
+          focus: 'money',
+        ),
+        question: 'how am i doing',
+        facts: const LocalEngineFacts(goals: 'ship more'),
+      );
+      // Duplicated prefill the user waits through before the first token.
+      expect(prompt, isNot(contains('fitness: weight 79kg')));
+    });
+
+    test('keeps it as a fallback when there are no facts at all', () {
+      final prompt = LocalModelPrompt.build(
+        packet: const ContextPacket(
+          nickname: '',
+          lifeStage: 'freelance',
+          business: 'design',
+          goals: '',
+          fitness: '',
+          focus: '',
+        ),
+        question: 'hello',
+        facts: const LocalEngineFacts(),
+      );
+      expect(prompt, contains('stage: freelance'));
+    });
+  });
 }
