@@ -75,43 +75,9 @@ jobs:
           path: android/app/src/main/jniLibs/arm64-v8a/libglen.so
           retention-days: 30
 
-  # Fetches the model. Kept out of git: it is 491 MB and would dominate the
-  # repository, while the file it comes from is versioned and its hash is pinned.
-  model:
-    runs-on: ubuntu-latest
-    outputs:
-      sha256: ${{ steps.check.outputs.sha256 }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: fetch the model
-        id: fetch
-        run: |
-          set -eu
-          mkdir -p assets/models
-          url="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
-          curl -sL --retry 5 -C - -o assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf "$url"
-          echo "bytes=$(wc -c < assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf)" >> "$GITHUB_OUTPUT"
-
-      - name: verify size and hash
-        id: check
-        run: |
-          set -eu
-          FILE=assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf
-          EXPECTED=74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
-          ACTUAL="$(sha256sum "$FILE" | cut -d' ' -f1)"
-          echo "sha256=$ACTUAL" >> "$GITHUB_OUTPUT"
-          # A truncated GGUF does not fail cleanly. glen panics deep in its
-          # parser, so this has to be checked before it is ever loaded.
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "model hash mismatch: got $ACTUAL"
-            exit 1
-          fi
-          echo "model verified"
-
   apk:
     runs-on: ubuntu-latest
-    needs: [glen, model]
+    needs: [glen]
     steps:
       - uses: actions/checkout@v4
 
@@ -124,7 +90,14 @@ jobs:
           name: libglen-android-arm64
           path: android/app/src/main/jniLibs/arm64-v8a
 
+      # Bundled only when there is an engine to run it.
+      #
+      # The model is 491 MB and is copied into every per-ABI APK, so shipping it
+      # without the binary means a 1.4 GB artifact that still cannot use it.
+      # A 17 MB app that says "this build has no bundled model" is far more
+      # useful than a gigabyte that does nothing.
       - name: fetch the model
+        if: needs.glen.result == 'success'
         env:
           MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
         run: |
@@ -134,6 +107,14 @@ jobs:
           test "$(sha256sum assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf | cut -d' ' -f1)" \
             = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
           ls -la assets/models/
+
+      - name: say whether the model is going in
+        run: |
+          if [ -f assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf ]; then
+            echo "Bundling the model: $(du -h assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf | cut -f1)"
+          else
+            echo "No engine binary, so no bundled model. The app still works."
+          fi
 
       - uses: actions/setup-java@v4
         with:
