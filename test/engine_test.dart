@@ -153,7 +153,19 @@ void main() {
       );
       final rendered = facts.renderForModel();
       expect(rendered, contains('Clients: 2, paid 1, delivered but unpaid 1'));
-      expect(rendered, contains('7400 AED'));
+      // A has already paid, so only B is owed. Summing every client gave 7400
+      // and told the model to chase money that was already in the bank.
+      expect(rendered, contains('Unpaid value across clients: 2400 AED'));
+      expect(rendered, isNot(contains('7400 AED')));
+    });
+
+    test('work still in progress is not counted as money owed', () {
+      const facts = LocalEngineFacts(
+        clients: [
+          Client(name: 'Bilal', status: 'active', amount: 900, created: '2026-01-03'),
+        ],
+      );
+      expect(facts.renderForModel(), contains('Unpaid value across clients: 0 AED'));
     });
 
     test('includes goals and focus', () {

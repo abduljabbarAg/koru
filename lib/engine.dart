@@ -129,12 +129,17 @@ class LocalEngineFacts {
     }
 
     if (clients.isNotEmpty) {
-      final total = clients.fold<double>(0, (a, c) => a + (c.amount ?? 0));
+      // Only delivered work is owed money. Summing every client counted money
+      // that had already been paid, and money for work not finished yet, as
+      // "unpaid", so the model was told to chase money it already had.
+      final unpaidValue = clients
+          .where((c) => c.status == 'delivered')
+          .fold<double>(0, (a, c) => a + (c.amount ?? 0));
       final paid = clients.where((c) => c.status == 'paid').length;
       final delivered = clients.where((c) => c.status == 'delivered').length;
       final overdue = clients.where((c) => c.isOverdueOn(DateTime.now())).length;
       lines.add('Clients: ${clients.length}, paid $paid, delivered but unpaid $delivered');
-      lines.add('Unpaid value across clients: ${total.toStringAsFixed(0)} AED');
+      lines.add('Unpaid value across clients: ${unpaidValue.toStringAsFixed(0)} AED');
       if (overdue > 0) lines.add('$overdue client(s) are past their due date');
     }
 
