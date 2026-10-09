@@ -85,8 +85,32 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# glen is a private repository, so cloning it needs a token. GLEN_REPO_TOKEN is
+# optional: when it is absent the clone is attempted anonymously and fails with a
+# clear message rather than a git credential prompt.
 echo "==> fetching glen ($REF)"
-git clone --depth 1 --branch "$REF" "$REPO" "$WORK/glen"
+CLONE_ARGS=(--depth 1 --branch "$REF")
+if [[ -n "${GLEN_REPO_TOKEN:-}" ]]; then
+  CLONE_ARGS+=("https://x-access-token:${GLEN_REPO_TOKEN}@github.com/AbduljabbarBXR/glen.git")
+else
+  CLONE_ARGS+=("$REPO")
+fi
+if ! git clone "${CLONE_ARGS[@]}" "$WORK/glen"; then
+  cat >&2 <<'MSG'
+Could not clone glen.
+
+It is a private repository, so an anonymous clone has no credentials and git
+prompts instead of failing. Two ways forward:
+
+  1. Add a repository secret named GLEN_REPO_TOKEN holding a token with read
+     access to the glen repo.
+  2. Make glen public.
+
+Without it the app still builds and works; it just ships without the bundled
+engine and falls back to the built-in one.
+MSG
+  exit 3
+fi
 
 echo "==> building for aarch64-linux-android"
 (
