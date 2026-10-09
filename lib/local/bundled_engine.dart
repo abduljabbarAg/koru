@@ -123,7 +123,3 @@ class BundledStartResult {
 }
 
 enum BundledStartKind { ready, failed, notBundled }
-
-/// Not used outside tests; keeps the default-argument indirection honest.
-@visibleForTesting
-const bundledEngineChannel = MethodChannel('koru/local_engine');
