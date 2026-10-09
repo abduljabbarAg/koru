@@ -334,4 +334,42 @@ void main() {
       expect(result.reason, isNull);
     });
   });
+
+  group('bundled engine status', () {
+    test('an unavailable status explains itself', () {
+      const status = BundledEngineStatus.unavailable('libglen.so is not extracted');
+      expect(status.available, isFalse);
+      expect(status.summary, contains('not extracted'));
+    });
+
+    test('ready says both the engine and the model are there', () {
+      const status = BundledEngineStatus(
+        available: true,
+        path: '/data/app/lib/arm64/libglen.so',
+        exists: true,
+        executable: true,
+        modelAvailable: true,
+      );
+      expect(status.summary, contains('on disk'));
+    });
+
+    test('engine without a model is called out rather than claimed ready', () {
+      const status = BundledEngineStatus(
+        available: true,
+        modelAvailable: false,
+      );
+      expect(status.summary, contains('not been unpacked'));
+    });
+
+    test('a missing file names where it looked', () {
+      const status = BundledEngineStatus(
+        available: false,
+        path: '/data/app/~~x/com.abduljabbar.koru/lib/arm64/libglen.so',
+        exists: false,
+        reason: 'libglen.so is not there',
+      );
+      expect(status.summary, contains('not there'));
+      expect(status.path, contains('libglen.so'));
+    });
+  });
 }

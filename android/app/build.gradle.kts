@@ -48,6 +48,20 @@ android {
         versionName = flutter.versionName
     }
 
+    // The bundled engine has to exist as a file on disk, because the app execs
+    // it. Since Android 6 the default is to map native libraries straight out of
+    // the APK and never extract them, which leaves nothing to exec: the app
+    // reported "no bundled model" while the binary was plainly in the package.
+    //
+    // Legacy packaging restores extraction into nativeLibraryDir, which is the
+    // one location an app can still run a binary from on a modern Android. The
+    // cost is install size and a slightly slower install.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {

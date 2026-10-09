@@ -448,9 +448,14 @@ final localModelClientProvider =
 
 final bundledEngineProvider = Provider<BundledEngine>((ref) => const BundledEngine());
 
-/// Whether this APK actually contains an engine and a model.
+/// Whether this APK actually contains an engine and a model, and why not if it
+/// does not.
+final bundledEngineStatusProvider = FutureProvider<BundledEngineStatus>((ref) async {
+  return ref.read(bundledEngineProvider).status();
+});
+
 final bundledEngineAvailableProvider = FutureProvider<bool>((ref) async {
-  return ref.read(bundledEngineProvider).available;
+  return (await ref.watch(bundledEngineStatusProvider.future)).available;
 });
 
 /// Height, pulled out because three different screens need it to compute BMI.

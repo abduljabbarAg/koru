@@ -70,8 +70,7 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(messenger, engineChannelName).setMethodCallHandler { call, result ->
             when (call.method) {
-                "available" -> result.success(engineBinary() != null)
-                "modelPath" -> result.success(modelFile()?.absolutePath)
+                "status" -> result.success(engineStatus())
                 "start" -> result.success(startEngine(call.argument<Int>("port") ?: enginePort))
                 "stop" -> {
                     stopEngine()
@@ -100,6 +99,41 @@ class MainActivity : FlutterActivity() {
     private fun engineBinary(): File? {
         val candidate = File(applicationInfo.nativeLibraryDir, "libglen.so")
         return if (candidate.exists() && candidate.canExecute()) candidate else null
+    }
+
+    /**
+     * A diagnostic map rather than a bare boolean.
+     *
+     * The binary was present in the APK and the app still said "no bundled
+     * model", because modern Android maps native libraries straight out of the
+     * package instead of extracting them, so the file this app looks for was
+     * never created. A boolean cannot tell you that; these fields can.
+     */
+    private fun engineStatus(): Map<String, Any?> {
+        val candidate = File(applicationInfo.nativeLibraryDir, "libglen.so")
+        val usable = candidate.exists() && candidate.canExecute()
+        val model = modelFile()
+        // modelFile() has already been called above, so a first run has
+        // materialised it.
+        val reason = when {
+            usable -> null
+            !candidate.exists() ->
+                "libglen.so is not in ${applicationInfo.nativeLibraryDir}. " +
+                    "Native libraries were probably not extracted, so there is " +
+                    "nothing on disk to run."
+            !candidate.canExecute() ->
+                "libglen.so is at ${candidate.absolutePath} but is not marked executable."
+            else -> "unknown"
+        }
+        return mapOf(
+            "available" to usable,
+            "path" to candidate.absolutePath,
+            "exists" to candidate.exists(),
+            "executable" to candidate.canExecute(),
+            "modelPath" to model?.absolutePath,
+            "modelAvailable" to (model != null),
+            "reason" to reason,
+        )
     }
 
     /**

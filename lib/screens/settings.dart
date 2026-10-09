@@ -834,7 +834,8 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final available = ref.watch(bundledEngineAvailableProvider).valueOrNull;
+    final status = ref.watch(bundledEngineStatusProvider).valueOrNull;
+    final available = status?.available;
     final progress = _progress;
 
     return Container(
@@ -913,6 +914,22 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
               icon: const Icon(Icons.play_arrow_rounded, size: 18),
               label: const Text('Start the bundled model'),
             ),
+          ],
+          // When it is unavailable, say why. A bare "NOT IN THIS BUILD" is what
+          // made this hard to diagnose: the binary was in the package.
+          if (_message == null && status != null && !status.available) ...[
+            const SizedBox(height: 10),
+            Text(
+              status.summary,
+              style: const TextStyle(fontSize: 12, color: KoruColors.clay, height: 1.4),
+            ),
+            if (status.path != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'looked in ${status.path}',
+                style: const TextStyle(fontSize: 11, color: KoruColors.inkFaint),
+              ),
+            ],
           ],
         ],
       ),

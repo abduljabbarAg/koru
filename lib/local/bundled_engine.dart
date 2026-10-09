@@ -19,11 +19,30 @@ class BundledEngine {
   static const int defaultPort = 8099;
 
   /// Whether the binary is present and executable.
-  Future<bool> get available async {
+  Future<bool> get available async => (await status()).available;
+
+  /// Full status, including why it is unavailable.
+  ///
+  /// A bare boolean was not enough. The binary was sitting in the APK and the
+  /// app still said "no bundled model", because modern Android maps native
+  /// libraries straight out of the package instead of extracting them, so the
+  /// file the app looks for was never created. The paths and flags here make that
+  /// visible instead of leaving a shrug.
+  Future<BundledEngineStatus> status() async {
     try {
-      return await _channel.invokeMethod<bool>('available') ?? false;
-    } catch (_) {
-      return false;
+      final raw = await _channel.invokeMapMethod<String, dynamic>('status');
+      if (raw == null) return const BundledEngineStatus.unavailable('No status from the platform.');
+      return BundledEngineStatus(
+        available: raw['available'] == true,
+        path: raw['path'] as String?,
+        exists: raw['exists'] == true,
+        executable: raw['executable'] == true,
+        modelPath: raw['modelPath'] as String?,
+        modelAvailable: raw['modelAvailable'] == true,
+        reason: raw['reason'] as String?,
+      );
+    } catch (e) {
+      return BundledEngineStatus.unavailable('Could not ask the platform: $e');
     }
   }
 
@@ -127,3 +146,42 @@ class BundledStartResult {
 }
 
 enum BundledStartKind { ready, failed, notBundled }
+
+/// What the platform says about the bundled engine.
+class BundledEngineStatus {
+  const BundledEngineStatus({
+    required this.available,
+    this.path,
+    this.exists = false,
+    this.executable = false,
+    this.modelPath,
+    this.modelAvailable = false,
+    this.reason,
+  });
+
+  const BundledEngineStatus.unavailable(String this.reason)
+      : available = false,
+        path = null,
+        exists = false,
+        executable = false,
+        modelPath = null,
+        modelAvailable = false;
+
+  final bool available;
+  final String? path;
+  final bool exists;
+  final bool executable;
+  final String? modelPath;
+  final bool modelAvailable;
+  final String? reason;
+
+  /// One line for the settings screen.
+  String get summary {
+    if (available) {
+      return modelAvailable
+          ? 'Engine and model are on disk.'
+          : 'Engine is on disk, but the model has not been unpacked yet.';
+    }
+    return reason ?? 'The bundled engine is not available.';
+  }
+}
