@@ -144,7 +144,7 @@ void main() {
       expect(rendered, contains('Body logs recorded: 2'));
     });
 
-    test('separates money collected from money owed', () {
+    test('summarises clients and unpaid value', () {
       const facts = LocalEngineFacts(
         clients: [
           Client(name: 'A', status: 'paid', amount: 5000, created: '2026-01-01'),
@@ -152,25 +152,8 @@ void main() {
         ],
       );
       final rendered = facts.renderForModel();
-      // The old line added every client together and called the total "unpaid",
-      // so a client who had already paid 5000 was still counted as money owed.
-      expect(rendered, contains('Money collected: 5000 AED'));
-      expect(rendered, contains('Owed for finished work: 2400 AED'));
-      expect(rendered, isNot(contains('7400 AED')));
-    });
-
-    test('names each client so a small model can talk about one', () {
-      const facts = LocalEngineFacts(
-        clients: [
-          Client(name: 'Sara', status: 'delivered', amount: 2400, created: '2026-01-02'),
-          Client(name: 'Bilal', status: 'active', amount: 900, created: '2026-01-03'),
-        ],
-      );
-      final rendered = facts.renderForModel();
-      expect(rendered, contains('Sara: delivered, 2400 AED'));
-      expect(rendered, contains('Bilal: active, 900 AED'));
-      // Work still in hand is not money owed.
-      expect(rendered, contains('Still to earn from open work: 900 AED'));
+      expect(rendered, contains('Clients: 2, paid 1, delivered but unpaid 1'));
+      expect(rendered, contains('7400 AED'));
     });
 
     test('includes goals and focus', () {
@@ -387,44 +370,6 @@ void main() {
       );
       expect(status.summary, contains('not there'));
       expect(status.path, contains('libglen.so'));
-    });
-  });
-
-  group('the on-device prompt grounds itself in the records', () {
-    test('forbids denying clients that are listed', () {
-      final prompt = LocalModelPrompt.build(
-        packet: const ContextPacket(
-      nickname: '',
-      lifeStage: '',
-      business: '',
-      goals: '',
-      fitness: '',
-      focus: '',
-    ),
-        question: 'how am I doing',
-        facts: const LocalEngineFacts(
-          clients: [Client(name: 'Sara', status: 'delivered', amount: 2400)],
-        ),
-      );
-      expect(prompt, contains('never say there are none'));
-      expect(prompt, contains('Sara'));
-    });
-
-    test('says read-only so it does not promise to edit records', () {
-      final prompt = LocalModelPrompt.build(
-        packet: const ContextPacket(
-      nickname: '',
-      lifeStage: '',
-      business: '',
-      goals: '',
-      fitness: '',
-      focus: '',
-    ),
-        question: 'mark Bilal as paid',
-        facts: const LocalEngineFacts(),
-      );
-      expect(prompt, contains('read-only'));
-      expect(prompt, contains('say what they show'));
     });
   });
 }

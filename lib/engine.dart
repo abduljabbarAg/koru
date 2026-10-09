@@ -54,16 +54,7 @@ class LocalModelPrompt {
       ..writeln('Answer in at most three short sentences. Plain text, no markdown.')
       ..writeln('Be concrete. Never invent a name, a number, or a date that is not given below.')
       ..writeln('If the answer is not in the context, say what you do not know.')
-      ..writeln('Never give a diagnosis, a dose, or a legal ruling.')
-      // Measured failure: given records listing three clients, the model still
-      // opened with "no clients yet". It reads the instruction above as a script
-      // to fill in rather than as a fact to use.
-      ..writeln('The records below are the only truth. If they name a client, '
-          'you have clients, and you must never say there are none.')
-      ..writeln('Read the records first, say what they show, then if you give '
-          'an opinion, give it after that.')
-      ..writeln('You are read-only. Never claim to add, change or delete '
-          'anything, and never ask the user to do it for you.');
+      ..writeln('Never give a diagnosis, a dose, or a legal ruling.');
 
     final cloud = packet.renderForCloud();
     if (cloud.isNotEmpty) buffer.writeln(cloud);
@@ -138,42 +129,13 @@ class LocalEngineFacts {
     }
 
     if (clients.isNotEmpty) {
-      final today = DateTime.now();
-      double sum(Iterable<Client> group) =>
-          group.fold<double>(0, (a, c) => a + (c.amount ?? 0));
-
-      final paid = clients.where((c) => c.status == 'paid').toList();
-      final delivered = clients.where((c) => c.status == 'delivered').toList();
-      final active = clients.where((c) => c.status == 'active').toList();
-      final leads = clients.where((c) => c.status == 'lead').toList();
-      final lost = clients.where((c) => c.status == 'lost').toList();
-      final overdue = clients.where((c) => c.isOverdueOn(today)).toList();
-
-      // Work is one axis and payment is another. Conflating them is what made
-      // this read as unaware: "delivered" is finished work that has not been
-      // paid, "active" is work still in hand, and neither is owed money yet.
-      final openWork = [...active, ...leads];
-
-      lines.add('Client work, ${clients.length} total: '
-          'paid ${paid.length}, delivered and awaiting payment ${delivered.length}, '
-          'in progress ${active.length}, still a lead ${leads.length}, lost ${lost.length}.');
-      lines.add('Money collected: ${sum(paid).toStringAsFixed(0)} AED. '
-          'Owed for finished work: ${sum(delivered).toStringAsFixed(0)} AED. '
-          'Still to earn from open work: ${sum(openWork).toStringAsFixed(0)} AED.');
-      if (overdue.isNotEmpty) {
-        lines.add('Past their due date: ${overdue.map((c) => c.name).join(', ')}.');
-      }
-
-      // Each client is named because a 0.5B model will not hold a total in mind
-      // across the paragraph above. Given only a count it answers about
-      // "clients" generically and drifts back to an empty-sounding reply.
-      for (final c in clients.take(12)) {
-        final bits = <String>[c.status];
-        if (c.amount != null) bits.add('${c.amount!.toStringAsFixed(0)} AED');
-        if (c.due != null && c.due!.isNotEmpty) bits.add('due ${c.due}');
-        if (c.isOverdueOn(today)) bits.add('OVERDUE');
-        lines.add('- ${c.name}: ${bits.join(', ')}');
-      }
+      final total = clients.fold<double>(0, (a, c) => a + (c.amount ?? 0));
+      final paid = clients.where((c) => c.status == 'paid').length;
+      final delivered = clients.where((c) => c.status == 'delivered').length;
+      final overdue = clients.where((c) => c.isOverdueOn(DateTime.now())).length;
+      lines.add('Clients: ${clients.length}, paid $paid, delivered but unpaid $delivered');
+      lines.add('Unpaid value across clients: ${total.toStringAsFixed(0)} AED');
+      if (overdue > 0) lines.add('$overdue client(s) are past their due date');
     }
 
     return lines.join('\n');
