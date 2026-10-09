@@ -111,10 +111,14 @@ class BundledStartResult {
       : this._(started: true, endpoint: endpoint);
 
   const BundledStartResult.failed(String reason)
-      : this._(started: false, reason: reason);
+      : this._(started: false, reason: reason, kind: BundledStartKind.failed);
 
   const BundledStartResult.notBundled()
-      : this._(started: false, reason: 'This build does not include a model.');
+      : this._(
+          started: false,
+          reason: 'This build does not include a model.',
+          kind: BundledStartKind.notBundled,
+        );
 
   final bool started;
   final String? endpoint;
