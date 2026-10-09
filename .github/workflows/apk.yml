@@ -58,16 +58,36 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
 
-      - name: confirm it is an arm64 bionic binary
+      # Prove the binary is what we think it is.
+      #
+      # There is no interpreter check here, because glen links statically and a
+      # static binary has no PT_INTERP at all. The earlier version grepped for one
+      # and failed every time. What actually matters is the architecture, and that
+      # nothing pulled glibc in, which is what an Android device would reject.
+      - name: confirm the binary is arm64 and not glibc linked
         run: |
           set -eu
           FILE=android/app/src/main/jniLibs/arm64-v8a/libglen.so
-          # Machine must be aarch64 and the interpreter must be bionic's linker,
-          # not glibc's, or Android will refuse to run it.
-          readelf -h "$FILE" | grep -E 'Machine'
-          readelf -l "$FILE" | grep -i interpreter
-          readelf -l "$FILE" | grep -q "ld-android" \
-            || { echo "not linked against bionic"; exit 1; }
+
+          readelf -h "$FILE" | grep -q 'AArch64' || {
+            echo "not an aarch64 binary"; exit 1; }
+          echo "architecture: $(readelf -h "$FILE" | grep Machine | cut -d: -f2 | xargs)"
+
+          if readelf -d "$FILE" 2>/dev/null | grep -q NEEDED; then
+            echo "dynamic dependencies:"
+            readelf -d "$FILE" | grep NEEDED | sed 's/^/  /'
+          else
+            echo "statically linked, no NEEDED entries"
+          fi
+
+          # A glibc-linked binary will not start on Android. This is the failure
+          # that would otherwise show up as a crash on first launch.
+          if strings "$FILE" | grep -q 'GLIBC_2'; then
+            echo "binary references glibc and will not run on Android"
+            strings "$FILE" | grep -o 'GLIBC_2\.[0-9]*' | sort -u | head
+            exit 1
+          fi
+          echo "no glibc references"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -158,6 +178,14 @@ jobs:
         with:
           name: koru-apk
           path: build/app/outputs/flutter-apk/koru-*.apk
+          retention-days: 30
+
+      # Separate, because bundling the model makes each APK roughly 500 MB and
+      # downloading all three architectures to get one is a lot of wasted data.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: koru-apk-arm64
+          path: build/app/outputs/flutter-apk/koru-arm64-v8a.apk
           retention-days: 30
 
       - name: publish release
