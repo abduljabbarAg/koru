@@ -19,6 +19,35 @@ set -euo pipefail
 
 REPO="${GLEN_REPO:-https://github.com/AbduljabbarBXR/glen.git}"
 REF="${GLEN_REF:-main}"
+# Finds the NDK root from the clang the NDK installs.
+#
+# Two traps this avoids. The clang lives at
+# <ndk>/toolchains/llvm/prebuilt/<host>/bin/, so counting dirname calls to climb
+# out is fragile. And the GitHub runner exports ANDROID_NDK_ROOT with the value
+# already prefixed by "NDK_ROOT=", which silently produces a doubled prefix.
+detect_ndk_root() {
+  local clang
+  clang="$(command -v aarch64-linux-android24-clang 2>/dev/null || true)"
+  if [[ -n "$clang" ]]; then
+    case "$clang" in
+      */toolchains/*) echo "${clang%%/toolchains/*}"; return 0 ;;
+    esac
+  fi
+
+  local candidate="${ANDROID_NDK_ROOT:-}"
+  if [[ -n "$candidate" ]]; then
+    candidate="${candidate#NDK_ROOT=}"
+    if [[ -d "$candidate" ]]; then echo "$candidate"; return 0; fi
+  fi
+
+  local root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+  if [[ -n "$root" && -d "$root/ndk" ]]; then
+    candidate="$(ls -d "$root"/ndk/* 2>/dev/null | sort -V | tail -1 || true)"
+    if [[ -n "$candidate" && -d "$candidate" ]]; then echo "$candidate"; return 0; fi
+  fi
+  return 1
+}
+
 OUT="${1:-}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -28,12 +57,14 @@ if [[ -z "$OUT" ]]; then
 fi
 mkdir -p "$(dirname "$OUT")"
 
+# NDK_ROOT is optional: it is resolved from whatever the machine already has,
+# so the same script works in CI and on a laptop with the NDK installed.
 if [[ -z "${NDK_ROOT:-}" ]]; then
-  echo "NDK_ROOT is not set. Install the NDK or set it in the environment." >&2
-  exit 1
+  NDK_ROOT="$(detect_ndk_root || true)"
 fi
-if [[ ! -d "$NDK_ROOT" ]]; then
-  echo "NDK_ROOT does not exist: $NDK_ROOT" >&2
+if [[ -z "${NDK_ROOT:-}" || ! -d "${NDK_ROOT:-}" ]]; then
+  echo "Could not find the Android NDK." >&2
+  echo "Set NDK_ROOT, or install the NDK so aarch64-linux-android*-clang is on PATH." >&2
   exit 1
 fi
 

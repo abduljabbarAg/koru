@@ -35,32 +35,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: resolve the ndk location
-        id: ndkpath
-        run: |
-          set -eu
-          # The action put the toolchain on PATH but exported an empty
-          # ndkPath, so it is resolved from the clang it installed. The
-          # fallbacks cover the other layouts the runner might hand us.
-          CLANG="$(command -v aarch64-linux-android24-clang || true)"
-          if [ -n "$CLANG" ]; then
-            echo "NDK_ROOT=$(dirname "$(dirname "$CLANG")")" >> "$GITHUB_OUTPUT"
-          elif [ -n "${ANDROID_NDK_ROOT:-}" ]; then
-            echo "NDK_ROOT=$ANDROID_NDK_ROOT" >> "$GITHUB_OUTPUT"
-          else
-            FOUND="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* 2>/dev/null | head -1 || true)"
-            test -n "$FOUND" || { echo "no NDK found"; exit 1; }
-            echo "NDK_ROOT=$FOUND" >> "$GITHUB_OUTPUT"
-          fi
-          echo "NDK_ROOT=$(cat "$GITHUB_OUTPUT" | tail -1)"
-
       - name: build glen for android
         id: build
         run: |
           set -eu
           chmod +x tool/build_glen_android.sh
-          NDK_ROOT="$(grep '^NDK_ROOT=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)" \
-            ./tool/build_glen_android.sh
+          # The script locates the NDK itself, from the clang the setup action
+          # put on PATH. Doing it here in YAML was fragile: the action exports an
+          # empty ndkPath, and the runner's ANDROID_NDK_ROOT already carries a
+          # "NDK_ROOT=" prefix that doubles into a path that does not exist.
+          ./tool/build_glen_android.sh
           {
             echo "path=android/app/src/main/jniLibs/arm64-v8a/libglen.so"
             echo "size=$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libglen.so)"
