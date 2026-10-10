@@ -139,17 +139,36 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -eu
-          url="https://github.com/${{ github.repository }}/releases/download/$TAG/libglen.so"
-          echo "trying $url"
-          # The authorisation header is not optional. This repository is
-          # private, and an unauthenticated request for a release asset answers
-          # 404 rather than 401, which reads exactly like the asset not being
-          # there yet.
-          if curl -fsSL --retry 3 \
-               -H "Authorization: Bearer $GH_TOKEN" \
-               -o android/app/src/main/jniLibs/arm64-v8a/libglen.so "$url"; then
-            echo "fetched libglen.so from the release"
-            ls -la android/app/src/main/jniLibs/arm64-v8a/
+          dest="android/app/src/main/jniLibs/arm64-v8a/libglen.so"
+
+          # Asked for by asset id through the API rather than by the
+          # browser_download_url. The CDN path answers 404 for a short while
+          # after an upload even though the API already reports the asset as
+          # uploaded, and curl's --retry does not retry a 404, so the download
+          # failed on an asset that was plainly there.
+          asset_id=""
+          for attempt in 1 2 3 4 5 6; do
+            asset_id=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" |
+              python3 -c "
+import json,sys
+try:
+    assets = json.load(sys.stdin).get('assets', [])
+except Exception:
+    assets = []
+print(next((a['id'] for a in assets if a['name'] == 'libglen.so'), ''))")
+            [ -n "$asset_id" ] && break
+            echo "release asset not listed yet, attempt $attempt"
+            sleep 10
+          done
+
+          if [ -n "$asset_id" ]; then
+            echo "fetching libglen.so as asset $asset_id"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/octet-stream" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id" \
+              -o "$dest"
+            ls -la "$(dirname "$dest")"
           else
             echo "no engine available from either route; building without one"
           fi
