@@ -193,7 +193,8 @@ class BusinessScreen extends ConsumerWidget {
     Client c,
     double alreadyReceived,
   ) async {
-    final store = await ref.read(storeProvider.future);
+    // Read synchronously: the sheet below is shown with this context, and
+    // awaiting anything first is exactly what the linter is warning about.
     final currency = ref.read(currencyProvider).valueOrNull ?? defaultCurrency;
     final balance = c.balanceWith(alreadyReceived);
 
@@ -263,6 +264,7 @@ class BusinessScreen extends ConsumerWidget {
       return;
     }
 
+    final store = await ref.read(storeProvider.future);
     await store.addPayment(Payment(
       clientId: c.id!,
       amount: amount,
