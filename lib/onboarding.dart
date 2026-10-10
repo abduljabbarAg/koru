@@ -335,9 +335,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          Text(
+          const Text(
             'You can change this any time in Settings.',
-            style: const TextStyle(fontSize: 13, color: KoruColors.inkFaint),
+            style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
           ),
         ],
       );
