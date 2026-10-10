@@ -22,20 +22,23 @@ void main() {
     store = await openTestStore();
   });
 
-  /// Mounts [child] when given, otherwise just steps frames.
-  Future<void> pump(WidgetTester tester, [Widget? child], {int frames = 8}) async {
-    if (child != null) {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            storeProvider.overrideWith((ref) async => store),
-            cloudKeyProvider.overrideWith((ref, providerId) async => ''),
-            secretsProvider.overrideWithValue(MemoryKeyStore()),
-          ],
-          child: MaterialApp(home: child),
-        ),
-      );
-    }
+  /// Mounts a screen inside the overrides every test here needs.
+  Future<void> mount(WidgetTester tester, Widget child) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          storeProvider.overrideWith((ref) async => store),
+          cloudKeyProvider.overrideWith((ref, providerId) async => ''),
+          secretsProvider.overrideWithValue(MemoryKeyStore()),
+        ],
+        child: MaterialApp(home: child),
+      ),
+    );
+    await pump(tester);
+  }
+
+  /// Steps frames so provider futures resolve and animations settle.
+  Future<void> pump(WidgetTester tester, {int frames = 8}) async {
     for (var i = 0; i < frames; i++) {
       await tester.pump(const Duration(milliseconds: 40));
     }
@@ -86,7 +89,7 @@ void main() {
       await seed(tester, name: 'A Lead', amount: 100, status: 'lead');
       await seed(tester, name: 'Settled', amount: 100, status: 'paid');
 
-      await pump(tester, const BusinessScreen());
+      await mount(tester, const BusinessScreen());
 
       // Two, not four: a lead is a hope and a settled client is history.
       expect(find.text('2 of 4'), findsOneWidget);
@@ -97,7 +100,7 @@ void main() {
       await store.putNumber('capacity', 1);
       await seed(tester, name: 'Only One', amount: 100, status: 'active');
 
-      await pump(tester, const BusinessScreen());
+      await mount(tester, const BusinessScreen());
 
       expect(find.text('1 of 1'), findsOneWidget);
       expect(find.text('at capacity'), findsOneWidget);
@@ -106,7 +109,7 @@ void main() {
 
     testWidgets('falls back to five when nothing was ever chosen', (tester) async {
       await seed(tester, name: 'Only One', amount: 100, status: 'active');
-      await pump(tester, const BusinessScreen());
+      await mount(tester, const BusinessScreen());
       expect(find.text('1 of 5'), findsOneWidget);
     });
   });
@@ -117,7 +120,7 @@ void main() {
       await seed(tester, name: 'Older', status: 'active', created: '2026-01-01');
       await seed(tester, name: 'Settled', status: 'paid', created: '2026-01-01');
 
-      await pump(tester, const BusinessScreen());
+      await mount(tester, const BusinessScreen());
 
       expect(find.text('Pipeline (2)'), findsOneWidget);
       // The settled client is not in the pipeline.
@@ -133,7 +136,7 @@ void main() {
         created: '${old.year}-01-01',
       );
 
-      await pump(tester, const BusinessScreen());
+      await mount(tester, const BusinessScreen());
       await tapVisible(tester, find.text('Gone Cold'));
 
       expect(find.text('Gone Cold'), findsWidgets);
@@ -147,7 +150,7 @@ void main() {
       await store.addPayment(Payment(clientId: id, amount: 1200, date: '2026-02-01', note: 'part'));
       await store.addDeadline(Deadline(clientId: id, title: 'Send invoice', due: '2026-06-01'));
 
-      await pump(tester, const ClientDetailScreen(clientId: 1));
+      await mount(tester, const ClientDetailScreen(clientId: 1));
 
       expect(find.text('Acme'), findsOneWidget);
       expect(find.text('1800'), findsOneWidget, reason: 'invoiced 3000, received 1200');
@@ -166,7 +169,7 @@ void main() {
       );
       await store.addPayment(Payment(clientId: id, amount: 2500, date: '2026-01-15'));
 
-      await pump(tester, const ClientDetailScreen(clientId: 1));
+      await mount(tester, const ClientDetailScreen(clientId: 1));
 
       expect(find.textContaining('per month'), findsOneWidget);
       expect(find.textContaining('Next due'), findsOneWidget);
@@ -176,7 +179,7 @@ void main() {
     testWidgets('a retainer that has never been paid says so', (tester) async {
       await seed(tester, name: 'Quiet Co', status: 'active', monthly: 1500, amount: 1500);
 
-      await pump(tester, const ClientDetailScreen(clientId: 1));
+      await mount(tester, const ClientDetailScreen(clientId: 1));
 
       expect(find.textContaining('Never paid'), findsOneWidget);
     });
@@ -185,14 +188,14 @@ void main() {
       final id = await seed(tester, name: 'Acme', amount: 500, status: 'delivered');
       await store.addPayment(Payment(clientId: id, amount: 500, date: '2026-02-01'));
 
-      await pump(tester, const ClientDetailScreen(clientId: 1));
+      await mount(tester, const ClientDetailScreen(clientId: 1));
       await tapVisible(tester, find.byTooltip('Undo this payment'));
 
       expect(await tester.runAsync(() => store.payments()), isEmpty);
     });
 
     testWidgets('a deleted client does not crash the screen', (tester) async {
-      await pump(tester, const ClientDetailScreen(clientId: 999));
+      await mount(tester, const ClientDetailScreen(clientId: 999));
       expect(find.text('That client is gone'), findsOneWidget);
     });
   });
@@ -200,7 +203,7 @@ void main() {
   group('editing a client', () {
     testWidgets('a retainer can be set and cleared', (tester) async {
       await seed(tester, name: 'Acme', amount: 100, status: 'active');
-      await pump(tester, const BusinessScreen());
+      await mount(tester, const BusinessScreen());
 
       await tapVisible(tester, find.text('Edit'));
       await pump(tester);
