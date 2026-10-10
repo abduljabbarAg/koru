@@ -305,11 +305,24 @@ void main() {
         expect(line, isNot(contains('owes')));
       });
 
+      test('a client marked paid but never actually paid still reads as owing', () {
+        // The ledger is the only thing that settles a client. Status alone is
+        // a label someone typed, so this is a data-entry mistake worth
+        // surfacing rather than hiding behind the flag.
+        final line = Guide.forBusiness(facts(
+          clients: const [Client(id: 1, name: 'B', status: 'paid', amount: 100)],
+        ));
+        expect(line, contains('B owes you 100 AED'));
+      });
+
       test('mentions the pipeline when nothing is unpaid', () {
-        final line = Guide.forBusiness(facts(clients: const [
-          Client(id: 1, name: 'A', status: 'active', created: '2026-01-01'),
-          Client(id: 2, name: 'B', status: 'paid', amount: 100, created: '2026-01-02'),
-        ]));
+        final line = Guide.forBusiness(facts(
+          clients: const [
+            Client(id: 1, name: 'A', status: 'active'),
+            Client(id: 2, name: 'B', status: 'paid', amount: 100),
+          ],
+          received: const {2: 100},
+        ));
         expect(line, contains('pipeline'));
       });
     });

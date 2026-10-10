@@ -554,6 +554,19 @@ void main() {
       await pumpFrames(tester);
     }
 
+    /// Scrolls a target into view, then taps it.
+    ///
+    /// The screen is a long list and the test surface is 800x600, so the pay
+    /// button on a client row sits below the fold. Tapping blind would either
+    /// miss or need warnIfMissed turned off, and that silence would also hide a
+    /// button that had genuinely moved out of reach.
+    Future<void> tapVisible(WidgetTester tester, Finder finder) async {
+      await tester.ensureVisible(finder);
+      await pumpFrames(tester);
+      await tester.tap(finder);
+      await pumpFrames(tester);
+    }
+
     testWidgets('shows what is owed rather than counting statuses', (tester) async {
       await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
@@ -567,16 +580,14 @@ void main() {
       final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
 
-      await tester.tap(find.text('Mark paid'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Mark paid'));
 
       // Defaults to the balance, so the common case is one tap.
       expect(find.text('Payment from Bilal'), findsOneWidget);
       expect(find.widgetWithText(TextField, '2000'), findsOneWidget);
 
       await tester.enterText(find.widgetWithText(TextField, '2000'), '500');
-      await tester.tap(find.text('Record payment'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Record payment'));
 
       final payments = await tester.runAsync(() => store.payments(clientId: bilal.id));
       expect(payments!.single.amount, 500);
@@ -590,10 +601,8 @@ void main() {
       final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
 
-      await tester.tap(find.text('Mark paid'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Record payment'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Mark paid'));
+      await tapVisible(tester, find.text('Record payment'));
 
       final client =
           await tester.runAsync(() async => (await store.clients()).single);
@@ -608,11 +617,9 @@ void main() {
       final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
 
-      await tester.tap(find.text('Mark paid'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Mark paid'));
       await tester.enterText(find.widgetWithText(TextField, '2000'), '500');
-      await tester.tap(find.text('Record payment'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Record payment'));
 
       final client =
           await tester.runAsync(() async => (await store.clients()).single);
@@ -625,11 +632,9 @@ void main() {
       final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
 
-      await tester.tap(find.text('Mark paid'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Mark paid'));
       await tester.enterText(find.widgetWithText(TextField, '2000'), '');
-      await tester.tap(find.text('Record payment'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Record payment'));
 
       expect(await tester.runAsync(() => store.payments(clientId: bilal.id)), isEmpty);
     });
@@ -638,16 +643,13 @@ void main() {
       await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
 
-      await tester.tap(find.text('Mark paid'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Mark paid'));
       await tester.enterText(find.widgetWithText(TextField, '2000'), '750');
-      await tester.tap(find.text('Record payment'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Record payment'));
 
       expect(find.text('750 AED  ·  Bilal'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Undo this payment'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.byTooltip('Undo this payment'));
 
       expect(await tester.runAsync(() => store.payments()), isEmpty);
       expect(find.text('2000'), findsWidgets);
@@ -659,16 +661,13 @@ void main() {
 
       expect(find.text('Nothing scheduled'), findsOneWidget);
 
-      await tester.tap(find.text('Add'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Add'));
       await tester.enterText(find.widgetWithText(TextField, 'What'), 'Send invoice');
-      await tester.tap(find.text('Add deadline'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.text('Add deadline'));
 
       expect(find.textContaining('Send invoice'), findsWidgets);
 
-      await tester.tap(find.byTooltip('Mark Send invoice done'));
-      await pumpFrames(tester);
+      await tapVisible(tester, find.byTooltip('Mark Send invoice done'));
 
       expect(await tester.runAsync(() => store.deadlines()), isEmpty);
     });

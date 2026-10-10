@@ -185,8 +185,13 @@ class LocalModelClient {
   /// comment is ignored by conforming readers by definition, which is why the
   /// engine can report progress without a stock OpenAI client choking on it.
   static (int, int)? parseProgress(String line) {
-    if (!line.startsWith(': prefill')) return null;
-    final parts = line.substring(9).trim().split('/');
+    if (!line.startsWith(':')) return null;
+    // The space after the colon is optional. An SSE comment is the whole line
+    // after ':', so both ': prefill 1/2' and ':prefill 1/2' are the same thing
+    // and the engine is free to write whichever.
+    final rest = line.substring(1).trim();
+    if (!rest.startsWith('prefill')) return null;
+    final parts = rest.substring('prefill'.length).trim().split('/');
     if (parts.length != 2) return null;
     final done = int.tryParse(parts[0].trim());
     final total = int.tryParse(parts[1].trim());
