@@ -87,6 +87,7 @@ class WriteIntentParser {
   /// sentence and "Bilal for the website" becomes a client called "Bilal for
   /// the website".
   static const _nameStops = [
+    ' as ',
     ' for ',
     ' with ',
     ' worth ',
@@ -233,6 +234,47 @@ class WriteIntentParser {
   bool _hasCue(String lower, List<String> cues) => _earliestCue(lower, cues) != null;
 
   /// Everything after the first cue, up to the first name stop.
+  /// Trims a name down to just the name.
+  ///
+  /// Stops are space delimited on purpose, so they are found with a plain
+  /// search rather than the word boundary rule used for cues. That rule wants
+  /// non-word characters either side of a match, and a stop ends in a space
+  /// followed by a word, so it never qualifies.
+  String? _trimName(String clean, String lower) {
+    if (clean.isEmpty) return null;
+    var rest = clean;
+    for (final stop in _nameStops) {
+      final cut = lower.indexOf(stop);
+      if (cut > 0) rest = rest.substring(0, cut);
+    }
+    rest = _dropTrailingStops(rest.split(RegExp(r'[.,]')).first);
+    if (rest.isEmpty) return null;
+    return _shortenName(rest);
+  }
+
+  /// Removes trailing function words, repeated until none are left.
+  ///
+  /// Cutting only removes stops that are followed by something. The match in
+  /// "mark Acme as paid" ends at "acme as", with the stop word hanging off the
+  /// end where no cut can reach it, so it has to be trimmed off the tail.
+  String _dropTrailingStops(String s) {
+    var out = s.trim();
+    var changed = true;
+    while (changed) {
+      changed = false;
+      final lower = out.toLowerCase();
+      for (final stop in _nameStops) {
+        final bare = stop.trim();
+        if (out.length > bare.length && lower.endsWith(bare)) {
+          out = out.substring(0, out.length - bare.length).trim();
+          changed = true;
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
   String? _tailAfterCue(String clean, String lower, List<String> cues) {
     final found = _earliestCue(lower, cues);
     if (found == null) return null;
@@ -244,12 +286,7 @@ class WriteIntentParser {
       }
     }
     if (rest.isEmpty) return null;
-    for (final stop in _nameStops) {
-      final cut = _findCue(rest.toLowerCase(), stop);
-      if (cut > 0) rest = rest.substring(0, cut);
-    }
-    rest = rest.split(RegExp(r'[.,]')).first.trim();
-    return rest.isEmpty ? null : rest;
+    return _trimName(rest, rest.toLowerCase());
   }
 
   double? _amountIn(String lower) {
@@ -310,10 +347,11 @@ class WriteIntentParser {
       r'(?:payment|payments)\s+(?:of\s+)?(\d[\d,]*(?:\.\d+)?)\s*(?:aed)?\s+from\s+(.+)',
     ).firstMatch(lower);
     if (from != null) {
-      final name = _shortenName(clean.substring(
-        lower.indexOf(from.group(2)!),
-      ).trim());
-      if (name.isNotEmpty) {
+      final name = _trimName(
+        clean.substring(lower.indexOf(from.group(2)!)),
+        from.group(2)!,
+      );
+      if (name != null) {
         return RecordPaymentIntent(
           clientName: name,
           amount: double.tryParse(from.group(1)!.replaceAll(',', '')),
@@ -321,13 +359,18 @@ class WriteIntentParser {
       }
     }
 
-    // "bilal paid", "bilal paid me", "acme studio paid 1000".
+    // "bilal paid", "bilal paid me", "acme studio paid 1200", "mark acme as paid".
     final paid = RegExp(r'\b([\w]+(?: [\w]+)?) paid(?: me)?\s*(\d[\d,]*(?:\.\d+)?)?')
         .firstMatch(lower);
     if (paid != null) {
       final raw = double.tryParse((paid.group(2) ?? '').replaceAll(',', ''));
+      // The trailing "as" in "mark Acme as paid" rides along when a second word
+      // is allowed, so the name is trimmed like any other rather than trusted
+      // to the regex.
+      final name = _trimName(_slice(clean, lower, paid.group(1)!), paid.group(1)!);
+      if (name == null || name.length < 2) return null;
       return RecordPaymentIntent(
-        clientName: _shortenName(_slice(clean, lower, paid.group(1)!)),
+        clientName: name,
         amount: (raw == null || raw <= 0) ? null : raw,
       );
     }
