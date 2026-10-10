@@ -1,12 +1,17 @@
 # Koru
 
-A local-first personal AI companion for Android. It knows your work, your
-training and your goals, and it runs on your phone.
+A local-first business buddy for freelancers, on Android. It knows your clients,
+what they owe you and what is due, and it runs on your phone.
 
-Koru is built around one rule: **your life is not training data for anyone else.**
-Questions about your work, your training and your goals are answered on the
-device. Only questions that genuinely need a frontier model are sent upstream,
-and even then a pseudonymous summary goes with them, never your name.
+Koru is built around one rule: **your clients and your money are not training
+data for anyone else.** Questions about your work are answered on the device.
+Only questions that genuinely need a frontier model are sent upstream, and even
+then a pseudonymous summary goes with them, never your name.
+
+The loop it exists for is: **clients, what is owed, what is due, and money
+received.** It started as a general life companion with fitness and learning
+tracks, and those were cut because breadth had produced shallow features nobody
+used and a mascot that talked about body measurements instead of invoices.
 
 The name is the koru: the unfurling fern frond that is a Māori symbol for new
 growth. He is also the app icon, the splash screen, and the character in the
@@ -16,11 +21,13 @@ chat bar who blinks, thinks and waves when you tap him.
 
 | Tab | What it is for |
 | --- | --- |
-| Talk | Ask questions. Business, training and goals are answered on device. |
-| Business | Clients, amounts, due dates, status, payment capture, overdue flags. |
-| Fitness | Weight and measurements, with a real trend rather than a single number. |
-| Learn | Topics you are working through, with progress. |
-| Settings | Edit your context, manage the cloud key, export or delete everything. |
+| Talk | Ask questions, and say things like "add client Bilal for 2000". |
+| Business | Clients, balances, deadlines, the pipeline, and a capacity meter. |
+| Settings | Currency, client capacity, the cloud key, backup and deletion. |
+
+Fitness, learning and drafts were removed. Each existed with zero writers, so
+the drafts screen showed nothing forever. The tables survive for older installs
+and are still cleared by "delete everything"; the features are gone.
 
 ## How routing works
 

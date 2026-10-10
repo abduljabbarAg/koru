@@ -503,13 +503,13 @@ Row(
               if (payments.isNotEmpty) ...[
                 const SectionLabel('Recent payments'),
                 const SizedBox(height: 8),
-                ...payments.map((p) => _paymentRow(ref, p, byId[p.clientId])),
+                ...payments.map((p) => _paymentRow(ref, p, byId[p.clientId], currency)),
               ],
               if (pipeline.isNotEmpty) ...[
                 const SizedBox(height: 18),
                 SectionLabel('Pipeline (${pipeline.length})'),
                 const SizedBox(height: 8),
-                ...pipeline.map((c) => _pipelineRow(context, ref, c, today)),
+                ...pipeline.map((c) => _pipelineRow(context, ref, c, today, currency)),
               ],
               const SizedBox(height: 18),
               const SectionLabel('Clients'),
@@ -525,8 +525,8 @@ Row(
                   ),
                 )
               else
-                ...list.map((c) => _row(context, ref, c, today, received[c.id] ?? 0,
-                    statusColor, statusBg)),
+                ...list.map((c) => _row(context, ref, c, today, currency,
+                    received[c.id] ?? 0, statusColor, statusBg)),
             ],
           );
         },
@@ -616,7 +616,13 @@ Row(
   }
 
   /// A prospect, with how long it has been sitting.
-  Widget _pipelineRow(BuildContext context, WidgetRef ref, Client c, DateTime today) {
+  Widget _pipelineRow(
+    BuildContext context,
+    WidgetRef ref,
+    Client c,
+    DateTime today,
+    Currency currency,
+  ) {
     final born = DateTime.tryParse(c.created);
     final days = born == null ? null : today.difference(born).inDays;
     final stale = days != null && days >= 21;
@@ -724,7 +730,7 @@ Row(
     );
   }
 
-  Widget _paymentRow(WidgetRef ref, Payment p, Client? client) {
+  Widget _paymentRow(WidgetRef ref, Payment p, Client? client, Currency currency) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
@@ -766,6 +772,7 @@ Row(
     WidgetRef ref,
     Client c,
     DateTime today,
+    Currency currency,
     double alreadyReceived,
     Color Function(String) sc,
     Color Function(String) sb,

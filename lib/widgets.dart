@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'handoff.dart';
 import 'mascot/mascot.dart';
-import 'currency.dart';
 import 'proposed_write.dart';
 import 'theme.dart';
 

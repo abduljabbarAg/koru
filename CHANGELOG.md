@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.4.0
+
+The freelancer loop, made real. The tables for payments and deadlines existed
+with tests and no UI, and the pay button did not use them.
+
+### Added
+
+- **Money as a ledger.** The pay button used to set a client to paid and
+  overwrite the invoiced amount with whatever was typed in, which destroyed the
+  original figure and could not express a part payment at all. Money is now
+  appended to a ledger, and a client settles only when the ledger says so.
+- **A client screen.** Payments, deadlines, notes and retainer terms for one
+  client. The data was per client across three tables with nowhere to show it.
+- **Retainers.** A separate monthly amount that reports last paid and next due.
+  Deliberately not folded into the balance: a retainer has no invoice to be
+  behind on, so a balance would invent money owed that nobody billed.
+- **A capacity limit.** Asked for in onboarding, changeable in Settings, shown
+  as a bar. Below capacity is an opportunity; at capacity is a warning. Only
+  work actually under way counts.
+- **A pipeline sorted by age**, flagging prospects untouched for 21 days.
+- **Backup and restore.** Readable JSON handed to the share sheet, and an
+  additive restore that never overwrites what is already there.
+- **A currency setting**, asked for in onboarding. Display and prompt only;
+  amounts are stored as bare doubles so there is no migration.
+- **Writes from chat.** "add client Bilal for 2000" and "Bilal paid 500" are
+  recognised by a plain Dart parser, resolved against the real clients, and
+  shown as an editable card. Nothing is written until you approve it.
+- **The model is told what clients owe**, so it can discuss it rather than
+  guess from a status column.
+
+### Fixed
+
+- **The chat went silent while the model read the prompt.** The engine ran the
+  whole prefill loop before writing the SSE headers, so the client had received
+  no bytes at all and `send()` had not returned. Prefill carries your records
+  and takes seconds; the answer then arrived a quarter-second at a time, which
+  read as a hang followed by a drip. Headers now go out first and prefill
+  reports progress.
+- **The built-in assistant told you to chase money you already had.** It summed
+  invoice amounts rather than reading the ledger.
+- **"Delete everything" left the payments and deadlines behind.** `wipe()` had
+  never been updated when those tables were added.
+- **"What is coming up" was a shrug.** It is one of the app's own suggestions
+  and matched none of the assistant's keywords.
+
+### Removed
+
+- **Fitness.** A whole tab, with the loudest claims in the product. Gone from
+  the screen, nav, packet, guide, model prompt and assistant. Onboarding asks
+  for a client capacity instead of your weight and height.
+- **Learning and drafts.** Both existed with zero writers.
+
 ## 0.2.0
 
 The local-first promise, made real.

@@ -306,7 +306,7 @@ class ClientDetailScreen extends ConsumerWidget {
       return;
     }
     final open = await store.deadlines(clientId: client.id!);
-    final stamp = _iso(next);
+    final stamp = _RetainerPanel.iso(next);
     if (open.any((d) => d.due == stamp && d.title.contains('Retainer'))) {
       if (context.mounted) toast(context, 'Already on the calendar for $stamp');
       return;
@@ -418,7 +418,7 @@ class _RetainerPanel extends ConsumerWidget {
     );
   }
 
-  static String _iso(DateTime d) =>
+  static String iso(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';

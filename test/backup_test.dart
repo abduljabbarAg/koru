@@ -140,7 +140,7 @@ void main() {
     });
 
     test('a backup from a newer Koru is refused rather than half read', () async {
-      final future = '{"format":"koru-backup","format_version":99}';
+      const future = '{"format":"koru-backup","format_version":99}';
       await expectLater(
         Backup.restore(store, future),
         throwsA(isA<FormatException>()),
