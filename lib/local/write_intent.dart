@@ -348,8 +348,9 @@ class WriteIntentParser {
     var rest = clean.substring(found.$1 + found.$2.length).trim();
     final restLower = rest.toLowerCase();
 
-    // The date phrase belongs to the due date, not to the title.
-    for (final pattern in const [
+    // The date phrase belongs to the due date, not to the title. Not a const list
+    // because _inDays is a compiled pattern rather than a literal.
+    for (final pattern in <RegExp>[
       RegExp(r'\s+(on|by|due|before)\s'),
       _inDays,
       RegExp(r'\s+(today|tomorrow)\b'),
