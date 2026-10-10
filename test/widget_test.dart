@@ -603,16 +603,23 @@ void main() {
     /// button on a client row is well below the fold. ensureVisible is not
     /// enough on its own: a ListView only builds what is near the viewport, so
     /// a target that has not been built yet cannot be made visible and the
-    /// finder simply reports nothing. scrollUntilVisible drives the scroll
-    /// until the widget exists, and is only used when it is missing, because a
-    /// button inside a bottom sheet has no list to scroll.
+    /// finder simply reports nothing, so scrollUntilVisible drives the list until
+    /// the widget exists. A target that is already built only needs nudging into
+    /// view, which is what ensureVisible does, and the two cases are kept apart
+    /// because ensureVisible throws on a finder that matches nothing.
     Future<void> tapVisible(WidgetTester tester, Finder finder) async {
       if (finder.evaluate().isEmpty) {
+        // Not built yet, so the list has to be driven until it exists.
         final scrollable = find.byType(Scrollable);
         if (scrollable.evaluate().isNotEmpty) {
           await tester.scrollUntilVisible(finder, 150, scrollable: scrollable.first);
           await pumpFrames(tester);
         }
+      } else {
+        // Built, but possibly straddling the edge of the viewport, where a tap
+        // lands on whatever is painted over it instead.
+        await tester.ensureVisible(finder);
+        await pumpFrames(tester);
       }
       await tester.tap(finder);
       await pumpFrames(tester);
