@@ -635,7 +635,7 @@ void main() {
     });
 
     testWidgets('a recorded payment can be undone', (tester) async {
-      final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
+      await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
 
       await tester.tap(find.text('Mark paid'));

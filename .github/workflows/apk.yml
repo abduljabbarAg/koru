@@ -93,7 +93,7 @@ jobs:
         with:
           name: libglen-android-arm64
           path: android/app/src/main/jniLibs/arm64-v8a/libglen.so
-          retention-days: 30
+          retention-days: 7
 
   apk:
     runs-on: ubuntu-latest
@@ -174,19 +174,22 @@ jobs:
           done
           ls -la
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: koru-apk
-          path: build/app/outputs/flutter-apk/koru-*.apk
-          retention-days: 30
-
-      # Separate, because bundling the model makes each APK roughly 500 MB and
-      # downloading all three architectures to get one is a lot of wasted data.
+      # Only the arm64 build is published.
+      #
+      # The all-ABI artifact used to be uploaded too and was 1.39 GB, against
+      # 464 MB for arm64, because the model is copied into each per-ABI APK and
+      # the model is 491 MB. Nobody installs the other two architectures, and
+      # keeping it cost about three quarters of the storage every run, which is
+      # what exhausted the Actions quota: eleven runs on one day stopped the
+      # build producing any APK at all.
+      #
+      # Retention is 3 days rather than 30 for the same reason. These are
+      # regenerable from any commit, and the one you want is always the newest.
       - uses: actions/upload-artifact@v4
         with:
           name: koru-apk-arm64
           path: build/app/outputs/flutter-apk/koru-arm64-v8a.apk
-          retention-days: 30
+          retention-days: 3
 
       - name: publish release
         if: startsWith(github.ref, 'refs/tags/v')

@@ -327,7 +327,7 @@ void main() {
       expect(await store.payments(limit: 3), hasLength(3));
       // The cap is for display only. A total that silently stopped counting
       // past the page size would under-report money owed.
-      expect(await store.receivedTotals()[bilal.id!], 50);
+      expect((await store.receivedTotals())[bilal.id!], 50);
     });
   });
 

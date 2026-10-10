@@ -176,7 +176,6 @@ class BusinessScreen extends ConsumerWidget {
     Client c,
     double alreadyReceived,
   ) async {
-    final store = await ref.read(storeProvider.future);
     final balance = c.balanceWith(alreadyReceived);
 
     // Defaults to what is outstanding, not to the invoice. Offering the full
@@ -201,7 +200,7 @@ class BusinessScreen extends ConsumerWidget {
             controller: controller,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Amount received',
               suffixText: 'AED',
               helperText: 'Part payments are fine.',
@@ -245,6 +244,7 @@ class BusinessScreen extends ConsumerWidget {
       return;
     }
 
+    final store = await ref.read(storeProvider.future);
     await store.addPayment(Payment(
       clientId: c.id!,
       amount: amount,
@@ -272,7 +272,6 @@ class BusinessScreen extends ConsumerWidget {
 
   Future<void> _addDeadline(BuildContext context, WidgetRef ref, List<Client> clients) async {
     final title = TextEditingController();
-    final store = await ref.read(storeProvider.future);
     Client? client;
     var date = DateTime.now().add(const Duration(days: 7));
 
@@ -322,6 +321,7 @@ class BusinessScreen extends ConsumerWidget {
     );
 
     if (ok != true || title.text.trim().isEmpty) return;
+    final store = await ref.read(storeProvider.future);
     await store.addDeadline(Deadline(
       clientId: client?.id,
       title: title.text.trim(),
