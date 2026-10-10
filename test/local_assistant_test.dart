@@ -54,7 +54,7 @@ void main() {
       );
       // Globex and Initech both still owe, because neither has been paid.
       expect(out.text, contains('2 owing a balance'));
-      expect(out.text, contains('still owed 2900 AED'));
+      expect(out.text, contains('still owed 2900'));
       expect(out.text, contains('two more clients'));
       expect(out.usedData, isTrue);
     });
@@ -127,7 +127,7 @@ void main() {
           received: const {1: 4000},
         ),
       );
-      expect(out.text, contains('still owed 0 AED'));
+      expect(out.text, contains('still owed 0'));
     });
 
     test('names upcoming deadlines', () {

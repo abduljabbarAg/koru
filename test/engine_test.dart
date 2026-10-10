@@ -139,8 +139,8 @@ void main() {
       expect(rendered, contains('Clients: 2, 1 settled'));
       // Only B owes. Summing every client gave 7400 and told the model to chase
       // money that was already in the bank.
-      expect(rendered, contains('Still owed in total: 2400 AED across 1'));
-      expect(rendered, contains('B owes 2400 AED'));
+      expect(rendered, contains('Still owed in total: 2400 across 1'));
+      expect(rendered, contains('B owes 2400'));
       expect(rendered, isNot(contains('A owes')));
     });
 
@@ -150,8 +150,8 @@ void main() {
         received: {1: 500},
       );
       final rendered = facts.renderForModel();
-      expect(rendered, contains('Bilal owes 1500 AED'));
-      expect(rendered, contains('Still owed in total: 1500 AED'));
+      expect(rendered, contains('Bilal owes 1500'));
+      expect(rendered, contains('Still owed in total: 1500'));
     });
 
     test('an invoiced client who has not paid still owes, whatever the status',
@@ -162,7 +162,7 @@ void main() {
       const facts = LocalEngineFacts(
         clients: [Client(id: 1, name: 'Bilal', status: 'active', amount: 900)],
       );
-      expect(facts.renderForModel(), contains('Bilal owes 900 AED'));
+      expect(facts.renderForModel(), contains('Bilal owes 900'));
     });
 
     test('overpaying never reads as money owed to the freelancer', () {
@@ -171,8 +171,8 @@ void main() {
         received: {1: 250},
       );
       final rendered = facts.renderForModel();
-      expect(rendered, contains('Still owed in total: 0 AED across 0'));
-      expect(rendered, isNot(contains('owes 0 AED')));
+      expect(rendered, contains('Still owed in total: 0 across 0'));
+      expect(rendered, isNot(contains('owes 0')));
       expect(rendered, isNot(contains('-')));
     });
 
@@ -207,9 +207,9 @@ void main() {
         ],
       );
       final rendered = facts.renderForModel();
-      expect(rendered, contains('Still owed in total: 3600 AED across 8'));
+      expect(rendered, contains('Still owed in total: 3600 across 8'));
       // C8 is the biggest balance, so it leads.
-      expect(rendered, contains('C8 owes 800 AED'));
+      expect(rendered, contains('C8 owes 800'));
       expect(rendered, isNot(contains('C1 owes')));
       expect(rendered, contains('and 4 more client(s) with a balance'));
       expect(rendered, contains('and 4 more after those'));

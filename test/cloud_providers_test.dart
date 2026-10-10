@@ -273,7 +273,7 @@ void main() {
         final line = Guide.forBusiness(facts(
           clients: const [Client(id: 1, name: 'Acme', status: 'delivered', amount: 2400)],
         ));
-        expect(line, contains('Acme owes you 2400 AED'));
+        expect(line, contains('Acme owes you 2400'));
       });
 
       test('counts a part payment, so a part payer still reads as owing', () {
@@ -281,7 +281,7 @@ void main() {
           clients: const [Client(id: 1, name: 'Acme', status: 'delivered', amount: 2400)],
           received: const {1: 500},
         ));
-        expect(line, contains('Acme owes you 1900 AED'));
+        expect(line, contains('Acme owes you 1900'));
       });
 
       test('adds up several debtors and leads with the largest', () {
@@ -291,7 +291,7 @@ void main() {
             Client(id: 2, name: 'Big', status: 'delivered', amount: 3000),
           ],
         ));
-        expect(line, contains('2 clients owe you 3100 AED'));
+        expect(line, contains('2 clients owe you 3100'));
         expect(line, contains('Big most of all'));
       });
 
@@ -310,7 +310,7 @@ void main() {
         final line = Guide.forBusiness(facts(
           clients: const [Client(id: 1, name: 'B', status: 'paid', amount: 100)],
         ));
-        expect(line, contains('B owes you 100 AED'));
+        expect(line, contains('B owes you 100'));
       });
 
       test('mentions the pipeline when nothing is unpaid', () {

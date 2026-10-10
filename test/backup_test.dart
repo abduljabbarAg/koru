@@ -90,25 +90,36 @@ void main() {
       expect((await empty.deadlines()).map((d) => d.title), containsAll(['Send invoice', 'File taxes']));
     });
 
-    test('restoring twice does not double anything', () async {
+    test('restoring twice changes nothing', () async {
+      // Restoring is additive, which means a second tap has to be a no-op
+      // rather than a second copy. Otherwise tapping restore twice would
+      // quietly double someone's income and every balance would be wrong.
       final empty = await openTestStore();
       addTearDown(empty.close);
 
       await Backup.restore(empty, json);
       final second = await Backup.restore(empty, json);
 
-      expect(second.total, 0, reason: 'clients are matched by name and already exist');
-      expect(second.payments, greaterThan(0),
-          reason: 'payments are events, so a second copy is a real duplicate');
+      expect(second.total, 0);
       expect((await empty.clients()), hasLength(1));
+      expect(await empty.payments(), hasLength(1));
+      expect(await empty.deadlines(openOnly: false), hasLength(2));
     });
 
     test('a retainer survives the round trip', () async {
+      final source = await openTestStore();
+      addTearDown(source.close);
+      await source.addClient(const Client(
+        name: 'Retainer Co',
+        amount: 2500,
+        monthly: 2500,
+        status: 'active',
+        created: '2026-01-01',
+      ));
+
       final empty = await openTestStore();
       addTearDown(empty.close);
-      await client('Retainer Co', amount: 2500, monthly: 2500);
-
-      await Backup.restore(empty, await Backup.toJson(store));
+      await Backup.restore(empty, await Backup.toJson(source));
       final c = (await empty.clients()).single;
 
       expect(c.monthly, 2500);

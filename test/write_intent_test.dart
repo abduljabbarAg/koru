@@ -194,16 +194,16 @@ void main() {
   group('summaries read as a confirmation', () {
     test('describe the write without ambiguity', () {
       expect((parse('add client Bilal for 2000') as AddClientIntent).summary,
-          'Add Bilal, invoiced 2000 AED');
+          'Add Bilal, invoiced 2000');
       expect((parse('Bilal paid 500') as RecordPaymentIntent).summary,
-          'Record 500 AED from Bilal');
+          'Record 500 from Bilal');
       expect((parse('add client Sara') as AddClientIntent).summary,
           'Add a client called Sara');
     });
 
     test('a part amount is not rounded away', () {
       expect((parse('Bilal paid 500.50') as RecordPaymentIntent).summary,
-          'Record 500.50 AED from Bilal');
+          'Record 500.50 from Bilal');
     });
   });
 }

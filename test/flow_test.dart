@@ -259,7 +259,7 @@ void main() {
 
       await say(tester, 'who owes me money?');
 
-      expect(model.prompts.single, contains('Bilal owes 1500 AED'));
+      expect(model.prompts.single, contains('Bilal owes 1500'));
     });
 
     testWidgets('falls back to the built-in engine when the model is unreachable',

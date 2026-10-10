@@ -174,6 +174,14 @@ class Backup {
 
     var payments = 0;
     var orphans = 0;
+    // Already-known payments, so a second restore is a no-op rather than a
+    // second copy. Without this, restoring the same file twice would quietly
+    // double someone's income, and the balance they trust would be wrong.
+    final existing = <String>{};
+    for (final p in await store.payments(limit: 100000)) {
+      existing.add('${p.clientId}|${p.amount}|${p.date}|${p.note ?? ''}');
+    }
+
     for (final row in _rows(decoded['payments'])) {
       final client = resolve(row['client']);
       final amount = _num(row['amount']);
@@ -181,26 +189,36 @@ class Backup {
         orphans++;
         continue;
       }
-      await store.addPayment(Payment(
-        clientId: client.id!,
-        amount: amount,
-        date: row['date'] as String? ?? '',
-        note: row['note'] as String?,
-      ));
+      final date = row['date'] as String? ?? '';
+      final note = row['note'] as String?;
+      final key = '${client.id}|$amount|$date|${note ?? ''}';
+      if (existing.contains(key)) continue;
+      await store.addPayment(
+        Payment(clientId: client.id!, amount: amount, date: date, note: note),
+      );
+      existing.add(key);
       payments++;
     }
 
     var deadlines = 0;
+    final knownDeadlines = <String>{};
+    for (final d in await store.deadlines(openOnly: false)) {
+      knownDeadlines.add('${d.clientId ?? ''}|${d.title}|${d.due}');
+    }
     for (final row in _rows(decoded['deadlines'])) {
       final title = row['title'];
       if (title is! String || title.trim().isEmpty) continue;
       final client = resolve(row['client']);
+      final due = row['due'] as String? ?? '';
+      final key = '${client?.id ?? ''}|$title|$due';
+      if (knownDeadlines.contains(key)) continue;
       await store.addDeadline(Deadline(
         clientId: client?.id,
         title: title,
-        due: row['due'] as String? ?? '',
+        due: due,
         done: row['done'] == true,
       ));
+      knownDeadlines.add(key);
       deadlines++;
     }
 
