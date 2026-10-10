@@ -75,6 +75,10 @@ class LocalAssistant {
     if (has(const [
       'client', 'invoice', 'payment', 'paid', 'pipeline', 'revenue', 'lead',
       'money', 'business', 'sale', 'quote', 'price', 'pricing',
+      // Deadlines are part of the same loop, and "what is coming up" is one of
+      // the suggestions the chat itself offers, so it has to land somewhere.
+      'deadline', 'coming up', 'upcoming', 'schedule', 'this week',
+      'next week', 'chase', 'owe', 'owed', 'outstanding', 'balance',
     ])) {
       return _Intent.business;
     }

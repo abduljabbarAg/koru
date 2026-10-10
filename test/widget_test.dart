@@ -165,7 +165,7 @@ void main() {
       await pumpFrames(tester);
 
       // stage
-      await tester.tap(find.text('Early career'));
+      await tester.tap(find.text('A few years in'));
       await pumpFrames(tester);
       await tester.tap(find.text('Continue'));
       await pumpFrames(tester);
@@ -200,7 +200,7 @@ void main() {
           }))!;
       expect(saved['onboarded'], '1');
       expect(saved['nickname'], 'kami');
-      expect(saved['stage'], 'Early career');
+      expect(saved['stage'], 'A few years in');
       expect(saved['business'], 'Employee');
       expect(saved['goals'], 'ship two more clients');
     });
@@ -597,9 +597,23 @@ void main() {
     /// button on a client row sits below the fold. Tapping blind would either
     /// miss or need warnIfMissed turned off, and that silence would also hide a
     /// button that had genuinely moved out of reach.
+    /// Scrolls a target into view, then taps it.
+    ///
+    /// The screen is a long list and the test surface is 800x600, so the pay
+    /// button on a client row is well below the fold. ensureVisible is not
+    /// enough on its own: a ListView only builds what is near the viewport, so
+    /// a target that has not been built yet cannot be made visible and the
+    /// finder simply reports nothing. scrollUntilVisible drives the scroll
+    /// until the widget exists, and is only used when it is missing, because a
+    /// button inside a bottom sheet has no list to scroll.
     Future<void> tapVisible(WidgetTester tester, Finder finder) async {
-      await tester.ensureVisible(finder);
-      await pumpFrames(tester);
+      if (finder.evaluate().isEmpty) {
+        final scrollable = find.byType(Scrollable);
+        if (scrollable.evaluate().isNotEmpty) {
+          await tester.scrollUntilVisible(finder, 150, scrollable: scrollable.first);
+          await pumpFrames(tester);
+        }
+      }
       await tester.tap(finder);
       await pumpFrames(tester);
     }
