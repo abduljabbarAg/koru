@@ -190,7 +190,8 @@ void main() {
       });
 
       final state = result!;
-      expect(state.clients, ['Bilal:delivered', 'Sara:paid']);
+      // A client created with an invoice is active work, not a bare lead.
+      expect(state.clients, ['Bilal:active', 'Sara:paid']);
       expect(state.bilal, 1500, reason: 'a part payment leaves the rest owed');
       expect(state.sara, 0);
       expect(state.total, 1500);
@@ -241,7 +242,7 @@ void main() {
       final chat = await tester.runAsync(() => store.chat());
       expect(chat!.last.role, 'koru');
       expect(chat.last.text, contains('Bilal owes'));
-      expect(chat.last.why, contains('on device'));
+      expect(chat.last.why, contains('on this phone'));
     });
 
     testWidgets('the prompt carries the balances, so the model can discuss them',

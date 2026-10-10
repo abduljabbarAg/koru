@@ -64,6 +64,23 @@ void main() {
     return id;
   }
 
+  /// Brings a target into the built part of the list.
+  ///
+  /// Read-only assertions on a long screen need this. A ListView only builds
+  /// what is near the viewport, so a section further down simply is not in the
+  /// tree and the finder reports nothing, which is indistinguishable from the
+  /// section not existing at all.
+  Future<void> reveal(WidgetTester tester, Finder finder) async {
+    if (finder.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        finder,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await pump(tester);
+    }
+  }
+
   Future<void> tapVisible(WidgetTester tester, Finder finder) async {
     if (finder.evaluate().isEmpty) {
       final scrollable = find.byType(Scrollable);
@@ -122,9 +139,10 @@ void main() {
       await seed(tester, name: 'Settled', status: 'paid', created: '2026-01-01');
 
       await mount(tester, const BusinessScreen());
+      await reveal(tester, find.text('Pipeline (2)'));
 
       expect(find.text('Pipeline (2)'), findsOneWidget);
-      // The settled client is not in the pipeline.
+      // The settled client is not in the pipeline, only in the client list.
       expect(find.text('Settled'), findsOneWidget, reason: 'still in the client list');
     });
 
@@ -138,9 +156,10 @@ void main() {
       );
 
       await mount(tester, const BusinessScreen());
-      await tapVisible(tester, find.text('Gone Cold'));
+      await reveal(tester, find.text('GOING COLD'));
 
-      expect(find.text('Gone Cold'), findsWidgets);
+      expect(find.text('GOING COLD'), findsOneWidget);
+      expect(find.textContaining('added 40 days ago'), findsOneWidget);
     });
   });
 
@@ -168,13 +187,40 @@ void main() {
         monthly: 2500,
         amount: 2500,
       );
-      await store.addPayment(Payment(clientId: id, amount: 2500, date: '2026-01-15'));
+      // Paid this month, so the next one is genuinely ahead rather than late.
+      final now = DateTime.now();
+      final stamp =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      await store.addPayment(Payment(clientId: id, amount: 2500, date: stamp));
 
       await mount(tester, const ClientDetailScreen(clientId: 1));
 
       expect(find.textContaining('per month'), findsOneWidget);
       expect(find.textContaining('Next due'), findsOneWidget);
       expect(find.text('RETAINER'), findsOneWidget);
+    });
+
+    testWidgets('a retainer that stopped paying says so', (tester) async {
+      final id = await seed(
+        tester,
+        name: 'Late Co',
+        status: 'active',
+        monthly: 1500,
+        amount: 1500,
+      );
+      // Three months ago, so it is a month overdue.
+      final old = DateTime.now().subtract(const Duration(days: 90));
+      await store.addPayment(
+        Payment(
+          clientId: id,
+          amount: 1500,
+          date: '${old.year}-${old.month.toString().padLeft(2, '0')}-01',
+        ),
+      );
+
+      await mount(tester, const ClientDetailScreen(clientId: 1));
+
+      expect(find.textContaining('has not landed'), findsOneWidget);
     });
 
     testWidgets('a retainer that has never been paid says so', (tester) async {
