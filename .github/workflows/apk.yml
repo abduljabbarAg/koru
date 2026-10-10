@@ -89,11 +89,30 @@ jobs:
           fi
           echo "no glibc references"
 
+      # Best effort. Artifact storage is an account-level condition with a
+      # 0.5 GB monthly allowance, and when it is full this upload is the only
+      # thing that fails. The release below carries the same file for tagged
+      # builds, where release assets are not billed against Actions storage.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: libglen-android-arm64
           path: android/app/src/main/jniLibs/arm64-v8a/libglen.so
           retention-days: 7
+
+      # Published first, so the APK job has an engine even when artifacts are
+      # unavailable. The APK job needs this job, so the release exists by the
+      # time it looks. Running the APK job first would race this.
+      - name: publish the engine to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/src/main/jniLibs/arm64-v8a/libglen.so
+          fail_on_unmatched_files: false
+          body: |
+            The on-device inference engine. The APK job picks this up if the
+            Actions artifact store is unavailable.
 
   apk:
     runs-on: ubuntu-latest
@@ -101,24 +120,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: fetch the bundled engine, if it was built
+      - name: fetch the bundled engine from the artifact store
         # Missing when the glen job could not produce or upload a binary. The
         # APK still builds; the app then reports it has no bundled model.
-        id: engine
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: libglen-android-arm64
           path: android/app/src/main/jniLibs/arm64-v8a
 
+      # Second route to the same 450 KB file, and the one that works when the
+      # artifact quota is full. Costs one API call and is why a tagged build
+      # still gets a working engine.
+      - name: fetch the engine from the release if the artifact is missing
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && hashFiles('android/app/src/main/jniLibs/arm64-v8a/libglen.so') == '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          url="https://github.com/${{ github.repository }}/releases/download/$TAG/libglen.so"
+          echo "trying $url"
+          if curl -fsSL --retry 3 -o android/app/src/main/jniLibs/arm64-v8a/libglen.so "$url"; then
+            echo "fetched libglen.so from the release"
+            ls -la android/app/src/main/jniLibs/arm64-v8a/
+          else
+            echo "no engine available from either route; building without one"
+          fi
+
       # Checked on disk rather than trusted from the job output.
       #
       # The glen job sets its output when the binary is *built*, which happens
-      # before the upload. When the upload fails, the output still says yes, the
-      # model gets downloaded, and the result is a 464 MB APK carrying a 491 MB
-      # model and no way to run it. A small app that admits it has no model is
-      # far more useful than a large one that silently cannot answer anything.
+      # before it is uploaded or fetched. When both routes fail, the output still
+      # says yes, the model gets downloaded, and the result is a 464 MB APK
+      # carrying a 491 MB model and no way to run it. A small app that admits it
+      # has no model is far more useful than a large one that silently cannot
+      # answer anything.
       - name: decide whether the engine actually arrived
+        id: engine
         run: |
           set -eu
           if [ -f android/app/src/main/jniLibs/arm64-v8a/libglen.so ]; then
