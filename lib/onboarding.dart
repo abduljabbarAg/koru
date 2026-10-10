@@ -98,7 +98,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     await store.put('business', _biz ?? '');
     await store.put('goals', _goals.text.trim());
     await store.put('help_focus', _help.join(', '));
-    await store.putNumber('capacity', _capacity);
+    await store.putNumber('capacity', _capacity.toDouble());
     await store.completeOnboarding();
     ref.invalidate(packetProvider);
     ref.invalidate(guideFactsProvider);

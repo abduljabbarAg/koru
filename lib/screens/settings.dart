@@ -956,7 +956,7 @@ class _CapacityCard extends ConsumerWidget {
                       child: InkWell(
                         onTap: () async {
                           final store = await ref.read(storeProvider.future);
-                          await store.putNumber('capacity', n);
+                          await store.putNumber('capacity', n.toDouble());
                           ref.invalidate(capacityProvider);
                         },
                         borderRadius: BorderRadius.circular(KoruRadius.field),

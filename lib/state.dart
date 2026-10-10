@@ -495,7 +495,8 @@ final openDeadlinesProvider = FutureProvider<List<Deadline>>((ref) async {
 /// the whole capacity idea silently does nothing on a fresh install.
 final capacityProvider = FutureProvider<int>((ref) async {
   final store = await ref.watch(storeProvider.future);
-  return await store.number('capacity') ?? defaultCapacity;
+  final stored = await store.number('capacity');
+  return stored == null ? defaultCapacity : stored.toInt();
 });
 
 /// The default, exported so the screen and the settings control cannot

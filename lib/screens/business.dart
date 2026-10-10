@@ -351,7 +351,7 @@ class BusinessScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final clients = ref.watch(clientsProvider);
     final received = ref.watch(receivedTotalsProvider).valueOrNull ?? const <int, double>{};
     final payments = ref.watch(paymentsProvider).valueOrNull ?? const <Payment>[];
