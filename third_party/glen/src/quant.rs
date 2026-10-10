@@ -354,13 +354,19 @@ impl Pool {
     /// Run job over row ranges covering [0, rows). Blocks until done.
     pub fn run<F: Fn(usize, usize) + Send + Sync + 'static>(&self, rows: usize, job: F) {
         use std::sync::atomic::Ordering;
-        if rows < 256 || self.n <= 1 {
+        // The old floor was a flat rows < 256, which quietly excluded the
+        // narrow projections. Qwen2.5-0.5B's k and v are 2 kv heads by 64
+        // dimensions, so 128 rows: those two matmuls per layer ran on one thread
+        // while q, o and the ffns used all of them. The test is now on the work
+        // rather than on a row count nobody can justify, and the chunk floor is
+        // low enough that four threads can actually be handed a piece.
+        if rows < 32 || self.n <= 1 {
             job(0, rows);
             return;
         }
         self.shared.cursor.store(0, Ordering::SeqCst);
         self.shared.end.store(rows, Ordering::SeqCst);
-        self.shared.chunk.store((rows / (self.n * 8)).max(64), Ordering::SeqCst);
+        self.shared.chunk.store((rows / self.n).max(16), Ordering::SeqCst);
         {
             let mut inner = self.shared.mu.lock().unwrap();
             inner.job = Some(std::sync::Arc::new(job));
@@ -1033,7 +1039,7 @@ pub fn gemm_batch_mt(w: &[u8], dtype: u32, rows: usize, cols: usize, xb: &[f32],
         });
         return;
     }
-    if rows < 256 {
+    if rows < 32 {
         gemm_batch_1(w, dtype, cols, xb, n, yb, 0, rows);
         return;
     }
