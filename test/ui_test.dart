@@ -22,6 +22,13 @@ void main() {
     store = await openTestStore();
   });
 
+  /// Steps frames so provider futures resolve and animations settle.
+  Future<void> pump(WidgetTester tester, {int frames = 8}) async {
+    for (var i = 0; i < frames; i++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+  }
+
   /// Mounts a screen inside the overrides every test here needs.
   Future<void> mount(WidgetTester tester, Widget child) async {
     await tester.pumpWidget(
@@ -35,13 +42,6 @@ void main() {
       ),
     );
     await pump(tester);
-  }
-
-  /// Steps frames so provider futures resolve and animations settle.
-  Future<void> pump(WidgetTester tester, {int frames = 8}) async {
-    for (var i = 0; i < frames; i++) {
-      await tester.pump(const Duration(milliseconds: 40));
-    }
   }
 
   Future<int> seed(
