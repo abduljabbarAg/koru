@@ -115,7 +115,10 @@ class WriteIntentParser {
     'log client',
     'create a client',
     'create client',
+    'create a customer',
+    'create customer',
     'register a client',
+    'register a customer',
     'add a customer',
     'add customer',
   ];
@@ -242,11 +245,15 @@ class WriteIntentParser {
   /// followed by a word, so it never qualifies.
   String? _trimName(String clean, String lower) {
     if (clean.isEmpty) return null;
-    var rest = clean;
+    // The earliest stop is the boundary, and it is cut once. Cutting at every
+    // stop in turn reuses an index measured against the original string, so the
+    // second cut lands past the end of the already shortened one and throws.
+    var cut = -1;
     for (final stop in _nameStops) {
-      final cut = lower.indexOf(stop);
-      if (cut > 0) rest = rest.substring(0, cut);
+      final at = lower.indexOf(stop);
+      if (at > 0 && (cut < 0 || at < cut)) cut = at;
     }
+    var rest = cut > 0 ? clean.substring(0, cut) : clean;
     rest = _dropTrailingStops(rest.split(RegExp(r'[.,]')).first);
     if (rest.isEmpty) return null;
     return _shortenName(rest);
