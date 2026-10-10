@@ -151,9 +151,11 @@ void main() {
       // SectionLabel uppercases its text, so this is PIPELINE on screen.
       await reveal(tester, find.text('PIPELINE (2)'));
 
+      // The count is the assertion that a settled client is excluded. Checking
+      // for its name would not work, because after scrolling down to the
+      // pipeline the client list below is no longer built.
       expect(find.text('PIPELINE (2)'), findsOneWidget);
-      // The settled client is not in the pipeline, only in the client list.
-      expect(find.text('Settled'), findsOneWidget, reason: 'still in the client list');
+      expect(find.text('Older'), findsOneWidget, reason: 'the active client is here');
     });
 
     testWidgets('marks a prospect that has gone cold', (tester) async {
