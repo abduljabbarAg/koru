@@ -48,13 +48,18 @@ class LocalModelPrompt {
     required ContextPacket packet,
     required String question,
     required LocalEngineFacts facts,
+    String currency = 'AED',
   }) {
     final buffer = StringBuffer()
       ..writeln('You are Koru, a personal assistant running on this phone.')
       ..writeln('Answer in at most three short sentences. Plain text, no markdown.')
       ..writeln('Be concrete. Never invent a name, a number, or a date that is not given below.')
       ..writeln('If the answer is not in the context, say what you do not know.')
-      ..writeln('Never give a diagnosis, a dose, or a legal ruling.');
+      ..writeln('Never give a diagnosis, a dose, or a legal ruling.')
+      // Stated once here rather than repeated on every figure below. Every
+      // amount in the facts is in this currency, and saying it one place is
+      // both shorter and harder for a small model to get inconsistent.
+      ..writeln('All amounts below are in $currency. Use $currency when you quote one.');
 
     // Rendered before the fallback check on purpose. isEmpty only looks at
     // clients and deadlines, so a user with goals set and no records yet counts
@@ -145,9 +150,9 @@ class LocalEngineFacts {
       final overdue = clients.where((c) => c.isOverdueOn(DateTime.now())).length;
 
       lines.add('Clients: ${clients.length}, $paid settled');
-      lines.add('Still owed in total: ${outstanding.toStringAsFixed(0)} AED across ${owing.length}');
+      lines.add('Still owed in total: ${outstanding.toStringAsFixed(0)} across ${owing.length} client(s)');
       for (final c in owing.take(4)) {
-        lines.add('${c.name} owes ${balanceOf(c).toStringAsFixed(0)} AED');
+        lines.add('${c.name} owes ${balanceOf(c).toStringAsFixed(0)}');
       }
       if (owing.length > 4) {
         lines.add('and ${owing.length - 4} more client(s) with a balance');

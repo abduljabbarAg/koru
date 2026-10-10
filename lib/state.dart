@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'cloud.dart';
+import 'currency.dart';
 import 'cloud_providers.dart';
 import 'engine.dart';
 import 'guide.dart';
@@ -114,7 +115,7 @@ class ChatState {
 }
 
 const _greeting = 'I am here, and I run on this phone. Ask about your work, '
-    'your training, or anything else. I will tell you when a person should '
+    'your money and your deadlines. I will tell you when a person should '
     'answer instead of me.';
 
 class ChatNotifier extends Notifier<ChatState> {
@@ -318,6 +319,7 @@ class ChatNotifier extends Notifier<ChatState> {
       packet: await store.packet(),
       question: q,
       facts: await _modelFacts(store),
+      currency: (await ref.read(currencyProvider.future)).code,
     );
 
     final buffer = StringBuffer();

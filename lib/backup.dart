@@ -111,4 +111,144 @@ class Backup {
     await file.writeAsString(await toJson(store), flush: true);
     return file;
   }
+
+  /// Reads a backup back.
+  ///
+  /// Returns a count of what was applied, or throws with something a person can
+  /// act on. Import is additive and never destructive: everything is merged
+  /// into what is already there and nothing is deleted or overwritten, because
+  /// the likely reason someone is restoring is that they lost the current data
+  /// and overwriting it with an older file would be a second loss.
+  ///
+  /// Clients are matched by name. A payment is attached to the client it names,
+  /// or to the first client with that name if there are several, and is skipped
+  /// entirely when there is none: a payment with no client cannot be shown and
+  /// a made-up one would be a fiction.
+  static Future<RestoreReport> restore(ProfileStore store, String json) async {
+    final decoded = jsonDecode(json);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('That file is not a Koru backup.');
+    }
+    if (decoded['format'] != 'koru-backup') {
+      throw const FormatException('That file is not a Koru backup.');
+    }
+    final version = decoded['format_version'];
+    if (version is! int || version > formatVersion) {
+      throw FormatException(
+        'That backup was made by a newer version of Koru (format $version). '
+        'Update the app first.',
+      );
+    }
+
+    final byName = <String, List<Client>>{};
+    for (final c in await store.clients()) {
+      byName.putIfAbsent(c.name.toLowerCase(), () => <Client>[]).add(c);
+    }
+
+    Client? resolve(Object? name) {
+      if (name is! String) return null;
+      final matches = byName[name.toLowerCase()];
+      return (matches == null || matches.isEmpty) ? null : matches.first;
+    }
+
+    var clients = 0;
+    for (final row in _rows(decoded['clients'])) {
+      final name = row['name'];
+      if (name is! String || name.trim().isEmpty) continue;
+      if (byName.containsKey(name.toLowerCase())) continue;
+      final created = await store.addClient(Client(
+        name: name,
+        status: row['status'] as String? ?? 'lead',
+        amount: _num(row['amount']),
+        due: row['due'] as String?,
+        leadSource: row['lead_source'] as String?,
+        note: row['note'] as String?,
+        monthly: _num(row['monthly']),
+        created: row['created'] as String? ?? '',
+      ));
+      byName
+          .putIfAbsent(name.toLowerCase(), () => <Client>[])
+          .add((await store.clients()).firstWhere((c) => c.id == created));
+      clients++;
+    }
+
+    var payments = 0;
+    var orphans = 0;
+    for (final row in _rows(decoded['payments'])) {
+      final client = resolve(row['client']);
+      final amount = _num(row['amount']);
+      if (client == null || amount == null) {
+        orphans++;
+        continue;
+      }
+      await store.addPayment(Payment(
+        clientId: client.id!,
+        amount: amount,
+        date: row['date'] as String? ?? '',
+        note: row['note'] as String?,
+      ));
+      payments++;
+    }
+
+    var deadlines = 0;
+    for (final row in _rows(decoded['deadlines'])) {
+      final title = row['title'];
+      if (title is! String || title.trim().isEmpty) continue;
+      final client = resolve(row['client']);
+      await store.addDeadline(Deadline(
+        clientId: client?.id,
+        title: title,
+        due: row['due'] as String? ?? '',
+        done: row['done'] == true,
+      ));
+      deadlines++;
+    }
+
+    return RestoreReport(
+      clients: clients,
+      payments: payments,
+      deadlines: deadlines,
+      skipped: orphans,
+    );
+  }
+
+  static List<Map<String, dynamic>> _rows(Object? raw) {
+    if (raw is! List) return const [];
+    return raw.whereType<Map<String, dynamic>>().toList();
+  }
+
+  static double? _num(Object? v) => v is num ? v.toDouble() : null;
+}
+
+/// What a restore actually did, so it can be said plainly rather than as
+/// "import complete" when some of it did not apply.
+class RestoreReport {
+  const RestoreReport({
+    required this.clients,
+    required this.payments,
+    required this.deadlines,
+    required this.skipped,
+  });
+
+  final int clients;
+  final int payments;
+  final int deadlines;
+
+  /// Payments that named a client this install does not have. They are counted
+  /// and dropped rather than attached to whoever happens to be first in the
+  /// list, which would be a fabricated record of money.
+  final int skipped;
+
+  int get total => clients + payments + deadlines;
+
+  String get summary {
+    if (total == 0) return 'Nothing new in that backup';
+    final parts = <String>[
+      if (clients > 0) '$clients client${clients == 1 ? '' : 's'}',
+      if (payments > 0) '$payments payment${payments == 1 ? '' : 's'}',
+      if (deadlines > 0) '$deadlines deadline${deadlines == 1 ? '' : 's'}',
+    ];
+    final base = 'Restored ${parts.join(', ')}';
+    return skipped == 0 ? base : '$base. $skipped payment${skipped == 1 ? '' : 's'} skipped, no matching client';
+  }
 }

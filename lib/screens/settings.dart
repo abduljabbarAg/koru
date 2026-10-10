@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../backup.dart';
+import '../currency.dart';
 import '../cloud.dart';
 import '../cloud_providers.dart';
 import '../engine.dart';
@@ -140,6 +142,9 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 22),
+          const SectionLabel('Currency'),
+          const _CurrencyCard(),
+          const SizedBox(height: 22),
           const SectionLabel('Capacity'),
           const _CapacityCard(),
           const SizedBox(height: 22),
@@ -153,6 +158,13 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: const Text(
                       'Saves a readable copy of your clients, payments and deadlines'),
                   onTap: () => _backup(context, ref),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.settings_backup_restore_rounded, color: KoruColors.leaf),
+                  title: const Text('Restore from a backup'),
+                  subtitle: const Text('Merges a saved file into what is already here'),
+                  onTap: () => _restore(context, ref),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -282,6 +294,34 @@ class SettingsScreen extends ConsumerWidget {
       await Share.shareXFiles([XFile(path, mimeType: 'application/json')]);
     } catch (e) {
       if (context.mounted) toast(context, 'Could not back up: $e');
+    }
+  }
+
+  /// Restores from a file the user picked.
+  ///
+  /// Additive on purpose. The reason anyone restores is that they lost the
+  /// current data, so replacing it with an older copy would be a second loss.
+  Future<void> _restore(BuildContext context, WidgetRef ref) async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      final path = picked?.files.single.path;
+      if (path == null) return;
+      final store = await ref.read(storeProvider.future);
+      final report = await Backup.restore(store, await File(path).readAsString());
+      ref
+        ..invalidate(clientsProvider)
+        ..invalidate(paymentsProvider)
+        ..invalidate(receivedTotalsProvider)
+        ..invalidate(openDeadlinesProvider)
+        ..invalidate(guideFactsProvider);
+      if (context.mounted) toast(context, report.summary);
+    } on FormatException catch (e) {
+      if (context.mounted) toast(context, e.message);
+    } catch (e) {
+      if (context.mounted) toast(context, 'Could not restore: $e');
     }
   }
 
@@ -1013,6 +1053,75 @@ class _CapacityCard extends ConsumerWidget {
                     ),
                   ),
                 ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Which money the app counts in.
+///
+/// Display and prompt only. Amounts are stored as bare doubles, so switching
+/// this changes no stored value and no balance, and there is no migration to
+/// think about before someone can change it.
+class _CurrencyCard extends ConsumerWidget {
+  const _CurrencyCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(currencyProvider).valueOrNull ?? defaultCurrency;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Everything is counted in ${current.code}.',
+              style: const TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Only how amounts are written and what the model is told. Your '
+              'figures stay exactly as they are.',
+              style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in kCurrencies)
+                  InkWell(
+                    onTap: () async {
+                      final store = await ref.read(storeProvider.future);
+                      await store.put('currency', c.code);
+                      ref.invalidate(currencyProvider);
+                    },
+                    borderRadius: BorderRadius.circular(KoruRadius.pill),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: current == c ? KoruColors.leafSoft : KoruColors.surface,
+                        borderRadius: BorderRadius.circular(KoruRadius.pill),
+                        border: Border.all(
+                          color: current == c ? KoruColors.leaf : KoruColors.line,
+                          width: current == c ? 1.6 : 1,
+                        ),
+                      ),
+                      child: Text(
+                        c.code,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: current == c ? FontWeight.w700 : FontWeight.w500,
+                          color: KoruColors.ink,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ],

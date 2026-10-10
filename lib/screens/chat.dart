@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../currency.dart';
 import '../engine.dart';
 import '../mascot/mascot.dart';
 import '../state.dart';
@@ -283,6 +284,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (m.proposed != null)
                 WriteCard(
                   write: m.proposed!,
+                  currency:
+                      ref.watch(currencyProvider).valueOrNull?.symbol ?? 'AED',
                   onApprove: () => ref.read(chatProvider.notifier).applyWrite(m.proposed!),
                   onDiscard: () => ref.read(chatProvider.notifier).discardWrite(),
                 ),

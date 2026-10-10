@@ -27,7 +27,7 @@ class ProposedClient extends ProposedWrite {
   @override
   String get summary => amount == null
       ? 'Add a client called $name'
-      : 'Add $name, invoiced ${_plain(amount!)} AED';
+      : 'Add $name, invoiced ${_plain(amount!)}';
 
   @override
   Future<void> apply(ProfileStore store) => store.addClient(Client(
@@ -49,7 +49,7 @@ class ProposedPayment extends ProposedWrite {
   @override
   String get summary => amount == null
       ? 'Record a payment from ${client.name}'
-      : 'Record ${_plain(amount!)} AED from ${client.name}';
+      : 'Record ${_plain(amount!)} from ${client.name}';
 
   @override
   Future<void> apply(ProfileStore store) async {

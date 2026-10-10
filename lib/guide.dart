@@ -31,10 +31,10 @@ class Guide {
     if (owing.isNotEmpty) {
       final top = owing.first;
       if (owing.length == 1) {
-        return '${top.name} owes you ${f.balanceOf(top).toStringAsFixed(0)} AED. '
+        return '${top.name} owes you ${f.balanceOf(top).toStringAsFixed(0)}. '
             'That is the easiest money in this list.';
       }
-      return '${owing.length} clients owe you ${f.outstanding.toStringAsFixed(0)} AED in '
+      return '${owing.length} clients owe you ${f.outstanding.toStringAsFixed(0)} in '
           'total, ${top.name} most of all. Chasing that beats landing anything new.';
     }
 

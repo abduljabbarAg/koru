@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'handoff.dart';
 import 'mascot/mascot.dart';
+import 'currency.dart';
 import 'proposed_write.dart';
 import 'theme.dart';
 
@@ -165,11 +166,16 @@ class WriteCard extends StatefulWidget {
     required this.write,
     required this.onApprove,
     required this.onDiscard,
+    this.currency = 'AED',
   });
 
   final ProposedWrite write;
   final VoidCallback onApprove;
   final VoidCallback onDiscard;
+
+  /// Shown beside the amount. Defaults so a caller that has not been updated
+  /// still renders, but every real caller passes the user's currency.
+  final String currency;
 
   @override
   State<WriteCard> createState() => _WriteCardState();
@@ -257,7 +263,7 @@ class _WriteCardState extends State<WriteCard> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
                 labelText: 'Amount received',
-                suffixText: 'AED',
+                suffixText: widget.currency,
                 isDense: true,
                 errorText: amountError ? 'Enter an amount' : null,
               ),

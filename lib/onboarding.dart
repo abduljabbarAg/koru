@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'currency.dart';
 import 'state.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// Onboarding is the highest-leverage screen in the product: without context a
-/// memory-based companion has nothing to remember against. Kept to 8 taps.
+/// Onboarding is the highest-leverage screen in the product: without context
+/// there is nothing to answer questions about. Kept to 8 taps.
 ///
 /// It asks for a client capacity because that is the one number the rest of the
 /// product measures itself against, and asking once here is better than nagging
@@ -31,6 +32,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// run because it is the number every other part of the product measures
   /// against, and guessing it later feels like the app nagging.
   int _capacity = 5;
+  String _currency = 'AED';
 
   /// Multi-select: people usually want help with more than one thing, and
   /// forcing a single pick quietly threw the rest away.
@@ -99,6 +101,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     await store.put('goals', _goals.text.trim());
     await store.put('help_focus', _help.join(', '));
     await store.putNumber('capacity', _capacity.toDouble());
+    await store.put('currency', _currency);
     await store.completeOnboarding();
     ref.invalidate(packetProvider);
     ref.invalidate(guideFactsProvider);
@@ -332,6 +335,42 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   ),
                 ),
               ],
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'And what are you paid in?',
+            style: TextStyle(fontSize: 15, color: KoruColors.inkSoft, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in kCurrencies)
+                InkWell(
+                  onTap: () => setState(() => _currency = c.code),
+                  borderRadius: BorderRadius.circular(KoruRadius.pill),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: _currency == c.code ? KoruColors.leafSoft : KoruColors.surface,
+                      borderRadius: BorderRadius.circular(KoruRadius.pill),
+                      border: Border.all(
+                        color: _currency == c.code ? KoruColors.leaf : KoruColors.line,
+                        width: _currency == c.code ? 1.6 : 1,
+                      ),
+                    ),
+                    child: Text(
+                      c.code,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: _currency == c.code ? FontWeight.w700 : FontWeight.w500,
+                        color: KoruColors.ink,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 14),

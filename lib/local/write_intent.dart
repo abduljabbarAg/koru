@@ -42,7 +42,7 @@ class AddClientIntent extends WriteIntent {
   @override
   String get summary => amount == null
       ? 'Add a client called $name'
-      : 'Add $name, invoiced ${_plain(amount!)} AED';
+      : 'Add $name, invoiced ${_plain(amount!)}';
 }
 
 /// Money arriving from someone already on file.
@@ -58,7 +58,7 @@ class RecordPaymentIntent extends WriteIntent {
   @override
   String get summary => amount == null
       ? 'Record a payment from $clientName'
-      : 'Record ${_plain(amount!)} AED from $clientName';
+      : 'Record ${_plain(amount!)} from $clientName';
 }
 
 /// Something dated that has to happen.

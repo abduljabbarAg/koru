@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../currency.dart';
 import '../guide.dart';
 import '../models.dart';
 import '../state.dart';
@@ -35,6 +36,7 @@ class BusinessScreen extends ConsumerWidget {
       };
 
   Future<void> _edit(BuildContext context, WidgetRef ref, {Client? existing}) async {
+    final currency = await ref.read(currencyProvider.future);
     final name = TextEditingController(text: existing?.name ?? '');
     final amount = TextEditingController(text: existing?.amount?.toStringAsFixed(0) ?? '');
     final source = TextEditingController(text: existing?.leadSource ?? '');
@@ -47,7 +49,7 @@ class BusinessScreen extends ConsumerWidget {
       context,
       title: existing == null ? 'New client' : 'Edit client',
       subtitle: existing == null
-          ? 'Amounts are in AED. This is what you invoiced them.'
+          ? 'Amounts are in ${currency.code}. This is what you invoiced them.'
           : 'Changes are kept on this device.',
       builder: (ctx) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +63,7 @@ class BusinessScreen extends ConsumerWidget {
                 child: TextField(
                   controller: amount,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Invoiced', suffixText: 'AED'),
+                  decoration: InputDecoration(labelText: 'Invoiced', suffixText: currency.symbol),
                 ),
               ),
               const SizedBox(width: 12),
@@ -84,7 +86,7 @@ class BusinessScreen extends ConsumerWidget {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: 'Monthly retainer',
-              suffixText: 'AED',
+              suffixText: currency.symbol,
               helperText: 'Only if they pay you the same amount every month.',
             ),
           ),
@@ -204,7 +206,7 @@ class BusinessScreen extends ConsumerWidget {
       context,
       title: 'Payment from ${c.name}',
       subtitle: balance > 0
-          ? '${money(balance)} AED still outstanding of ${money(c.amount ?? 0)} invoiced.'
+          ? '${money(balance)} ${currency.code} still outstanding of ${money(c.amount ?? 0)} invoiced.'
           : 'Nothing outstanding. Recording more will show as overpaid.',
       builder: (ctx) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -213,9 +215,9 @@ class BusinessScreen extends ConsumerWidget {
             controller: controller,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Amount received',
-              suffixText: 'AED',
+              suffixText: currency.symbol,
               helperText: 'Part payments are fine.',
             ),
           ),
@@ -279,7 +281,7 @@ class BusinessScreen extends ConsumerWidget {
       context,
       settled
           ? '${c.name} settled'
-          : '${c.name}: ${money(left)} AED still outstanding',
+          : '${c.name}: ${money(left)} ${currency.code} still outstanding',
     );
   }
 
@@ -370,6 +372,7 @@ class BusinessScreen extends ConsumerWidget {
     final payments = ref.watch(paymentsProvider).valueOrNull ?? const <Payment>[];
     final deadlines = ref.watch(openDeadlinesProvider).valueOrNull ?? const <Deadline>[];
     final capacity = ref.watch(capacityProvider).valueOrNull ?? defaultCapacity;
+    final currency = ref.watch(currencyProvider).valueOrNull ?? defaultCurrency;
     final today = DateTime.now();
     final guide = ref.watch(guideFactsProvider).valueOrNull;
 
@@ -420,7 +423,7 @@ class BusinessScreen extends ConsumerWidget {
                     child: StatTile(
                       label: 'OWED',
                       value: money(outstanding),
-                      sub: owing.isEmpty ? 'AED, all clear' : 'AED, ${owing.length} to chase',
+                      sub: owing.isEmpty ? '${currency.code}, all clear' : '${currency.code}, ${owing.length} to chase',
                       tint: KoruColors.clay,
                       tintBg: KoruColors.claySoft,
                     ),
@@ -430,7 +433,7 @@ class BusinessScreen extends ConsumerWidget {
                     child: StatTile(
                       label: 'RECEIVED',
                       value: money(receivedTotal),
-                      sub: 'AED, all time',
+                      sub: '${currency.code}, all time',
                       tint: KoruColors.leaf,
                       tintBg: KoruColors.leafSoft,
                     ),
@@ -462,7 +465,7 @@ class BusinessScreen extends ConsumerWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          '${money(overdue.fold(0.0, (a, c) => a + balanceOf(c)))} AED is late: '
+                          '${money(overdue.fold(0.0, (a, c) => a + balanceOf(c)))} ${currency.code} is late: '
                           '${overdue.take(3).map((c) => c.name).join(', ')}',
                           style: const TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
                         ),
@@ -641,7 +644,7 @@ Row(
                   const SizedBox(height: 2),
                   Text(
                     [
-                      if (c.amount != null) '${money(c.amount!)} AED',
+                      if (c.amount != null) '${money(c.amount!)} ${currency.code}',
                       if (days != null) days == 0 ? 'added today' : 'added $days days ago',
                     ].join('  ·  '),
                     style: TextStyle(
@@ -734,7 +737,7 @@ Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${money(p.amount)} AED  ·  ${client?.name ?? 'unknown'}',
+                  '${money(p.amount)} ${currency.code}  ·  ${client?.name ?? 'unknown'}',
                   style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 2),
@@ -767,7 +770,7 @@ Row(
     final balance = c.balanceWith(alreadyReceived);
     final late = c.isOverdueOn(today);
     final meta = <String>[
-      if (c.amount != null) '${money(c.amount!)} AED invoiced',
+      if (c.amount != null) '${money(c.amount!)} ${currency.code} invoiced',
       if (alreadyReceived > 0) '${money(alreadyReceived)} received',
       if (c.leadSource != null) 'via ${c.leadSource}',
       if (c.parsedDue != null) 'due ${c.due}',
@@ -838,7 +841,7 @@ Row(
             Row(
               children: [
                 KoruPill(
-                  label: '${money(balance)} AED OUTSTANDING',
+                  label: '${money(balance)} ${currency.code} OUTSTANDING',
                   color: late ? KoruColors.clay : KoruColors.gold,
                   background: late ? KoruColors.claySoft : KoruColors.goldSoft,
                 ),

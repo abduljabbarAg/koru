@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../currency.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -53,6 +54,7 @@ class ClientDetailScreen extends ConsumerWidget {
       );
     }
 
+    final currency = ref.watch(currencyProvider).valueOrNull ?? defaultCurrency;
     final balance = client.balanceWith(received[clientId] ?? 0);
     final today = DateTime.now();
 
@@ -61,12 +63,15 @@ class ClientDetailScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          _statusPill(client, balance),
+          _statusPill(client, balance, currency),
           const SizedBox(height: 14),
-          _moneySummary(client, balance, received[clientId] ?? 0),
+          _moneySummary(client, balance, received[clientId] ?? 0, currency),
           if (client.isRetainer) ...[
             const SizedBox(height: 14),
-            _RetainerPanel(client: client),
+            _RetainerPanel(
+              client: client,
+              onAddNext: () => _addNextRetainerDeadline(context, ref, client),
+            ),
           ],
           if (client.note != null && client.note!.trim().isNotEmpty) ...[
             const SizedBox(height: 18),
@@ -96,7 +101,7 @@ class ClientDetailScreen extends ConsumerWidget {
               style: TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4),
             )
           else
-            ...payments.map((p) => _paymentRow(ref, p)),
+            ...payments.map((p) => _paymentRow(ref, p, currency)),
           const SizedBox(height: 18),
           const SectionLabel('Deadlines'),
           const SizedBox(height: 4),
@@ -112,7 +117,7 @@ class ClientDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _statusPill(Client c, double balance) {
+  Widget _statusPill(Client c, double balance, Currency currency) {
     final (color, background) = switch (c.status) {
       'paid' => (KoruColors.leaf, KoruColors.leafSoft),
       'active' => (KoruColors.gold, KoruColors.goldSoft),
@@ -126,7 +131,7 @@ class ClientDetailScreen extends ConsumerWidget {
         if (balance > 0) ...[
           const SizedBox(width: 8),
           KoruPill(
-            label: '${money(balance)} OUTSTANDING',
+            label: '${money(balance)} ${currency.code} OUTSTANDING',
             color: late ? KoruColors.clay : KoruColors.gold,
             background: late ? KoruColors.claySoft : KoruColors.goldSoft,
           ),
@@ -143,9 +148,9 @@ class ClientDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _moneySummary(Client c, double balance, double received) {
+  Widget _moneySummary(Client c, double balance, double received, Currency currency) {
     final meta = <String>[
-      if (c.amount != null) '${money(c.amount!)} AED invoiced',
+      if (c.amount != null) '${money(c.amount!)} ${currency.code} invoiced',
       if (received > 0) '${money(received)} received',
       if (c.leadSource != null) 'via ${c.leadSource}',
     ];
@@ -170,7 +175,9 @@ class ClientDetailScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            balance > 0 ? 'AED still owed' : 'AED received, nothing outstanding',
+            balance > 0
+                ? '${currency.code} still owed'
+                : '${currency.code} received, nothing outstanding',
             style: const TextStyle(fontSize: 13, color: KoruColors.inkFaint),
           ),
           if (meta.isNotEmpty) ...[
@@ -185,7 +192,7 @@ class ClientDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _paymentRow(WidgetRef ref, Payment p) {
+  Widget _paymentRow(WidgetRef ref, Payment p, Currency currency) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
@@ -201,7 +208,7 @@ class ClientDetailScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${money(p.amount)} AED',
+                  '${money(p.amount)} ${currency.code}',
                   style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 2),
@@ -278,6 +285,41 @@ class ClientDetailScreen extends ConsumerWidget {
     );
   }
 
+  /// Puts next month's retainer on the calendar.
+  ///
+  /// The whole reason a retainer is worth a field of its own is that it is the
+  /// same amount every month, and a job you retype each month is the chore the
+  /// feature exists to remove.
+  Future<void> _addNextRetainerDeadline(
+    BuildContext context,
+    WidgetRef ref,
+    Client client,
+  ) async {
+    final store = await ref.read(storeProvider.future);
+    final next = await store.nextRetainerDue(client);
+    if (next == null) {
+      // Never paid, so there is no anchor for "next month" and guessing one
+      // would be a date nobody agreed to.
+      if (context.mounted) {
+        toast(context, 'Record a payment first, then this will know when the next is due');
+      }
+      return;
+    }
+    final open = await store.deadlines(clientId: client.id!);
+    final stamp = _iso(next);
+    if (open.any((d) => d.due == stamp && d.title.contains('Retainer'))) {
+      if (context.mounted) toast(context, 'Already on the calendar for $stamp');
+      return;
+    }
+    await store.addDeadline(Deadline(
+      clientId: client.id,
+      title: '${client.name} retainer',
+      due: stamp,
+    ));
+    ref.invalidate(openDeadlinesProvider);
+    if (context.mounted) toast(context, 'Retainer due $stamp added');
+  }
+
   static void _refresh(WidgetRef ref) {
     ref
       ..invalidate(clientsProvider)
@@ -294,13 +336,15 @@ class ClientDetailScreen extends ConsumerWidget {
 /// answers is "is the retainer actually turning up", and that is a question
 /// about payment dates, not about invoice balances.
 class _RetainerPanel extends ConsumerWidget {
-  const _RetainerPanel({required this.client});
+  const _RetainerPanel({required this.client, required this.onAddNext});
 
   final Client client;
+  final VoidCallback onAddNext;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!client.isRetainer) return const SizedBox.shrink();
+    final currency = ref.watch(currencyProvider).valueOrNull ?? defaultCurrency;
 
     return FutureBuilder<({DateTime? last, DateTime? next})>(
       future: () async {
@@ -340,7 +384,7 @@ class _RetainerPanel extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${money(client.monthly!)} AED per month',
+                      '${money(client.monthly!)} ${currency.code} per month',
                       style: const TextStyle(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w600,
@@ -358,6 +402,15 @@ class _RetainerPanel extends ConsumerWidget {
                   ],
                 ),
               ),
+              if (last != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: onAddNext,
+                    icon: const Icon(Icons.event_repeat_rounded, size: 17),
+                    label: const Text('Add next one to my list'),
+                  ),
+                ),
             ],
           ),
         );

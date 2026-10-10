@@ -153,12 +153,12 @@ class LocalAssistant {
     final out = [
       '${f.clients.length} client${f.clients.length == 1 ? '' : 's'}, '
       '${owing.length} owing a balance, $pipeline still in the pipeline.',
-      'Received ${received.toStringAsFixed(0)} AED, still owed '
-      '${outstanding.toStringAsFixed(0)} AED.',
+      'Received ${received.toStringAsFixed(0)}, still owed '
+      '${outstanding.toStringAsFixed(0)}.',
     ];
     if (owing.isNotEmpty) {
       out.add('Biggest: ${owing.first.name} at '
-          '${f.balanceOf(owing.first).toStringAsFixed(0)} AED.');
+          '${f.balanceOf(owing.first).toStringAsFixed(0)}.');
     }
     final overdue = f.clients.where((c) => c.isOverdueOn(f.today)).toList();
     if (overdue.isNotEmpty) {

@@ -235,7 +235,7 @@ class PromptBuilder {
     required RoutingDecision routing,
   }) {
     final buf = StringBuffer()
-      ..writeln('You are the assistant inside Koru, a personal AI companion.')
+      ..writeln('You are the assistant inside Koru, which helps freelancers.')
       ..writeln('Be brief and concrete. Code first, words second when it is code.')
       ..writeln('The user is pseudonymous: never guess or invent a real name.')
       ..writeln()
