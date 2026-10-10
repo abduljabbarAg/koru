@@ -472,7 +472,7 @@ class BusinessScreen extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: 14),
-              _capacityBar(owing.length + underway, capacity),
+              _capacityBar(underway, capacity),
               const SizedBox(height: 18),
 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -533,6 +533,10 @@ Row(
   ///
   /// Only counts work actually under way. Leads are a hope, not a commitment, and
   /// counting them would make the meter read full for someone who is not.
+  ///
+  /// Deliberately not the number of clients with a balance. An active client who
+  /// owes money is one client, not two, and adding the two counts together said
+  /// someone with a single active job was carrying two.
   ///
   /// The wording below capacity is deliberately an opportunity rather than a
   /// warning. Nagging someone for having too few clients punishes the person

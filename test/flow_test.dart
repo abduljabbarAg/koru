@@ -93,12 +93,20 @@ void main() {
     await pump(tester, frames: 20);
   }
 
-  /// Reads the last thing Koru said.
+  /// The last thing Koru said.
+  ///
+  /// Scoped to the message list. Walking every Text in the tree picks up the
+  /// "Koru" label in the chat bar, which is the kind of test that passes for
+  /// the wrong reason and then fails for a real one.
   String lastReply(WidgetTester tester) {
     final texts = tester
-        .widgetList<Text>(find.byType(Text))
+        .widgetList<Text>(find.descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Text),
+        ))
         .map((t) => t.data)
         .whereType<String>()
+        .where((t) => t.trim().isNotEmpty)
         .toList();
     return texts.isEmpty ? '' : texts.last;
   }
@@ -143,7 +151,7 @@ void main() {
       await tapVisible(tester, find.text('Discard'));
 
       expect(await tester.runAsync(() => store.clients()), isEmpty);
-      expect(find.textContaining('Not saved'), findsOneWidget);
+      expect(find.textContaining('not saved'), findsOneWidget);
     });
 
     testWidgets('a payment for an unknown client is refused, not invented',

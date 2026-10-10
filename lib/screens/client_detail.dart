@@ -66,7 +66,7 @@ class ClientDetailScreen extends ConsumerWidget {
           _moneySummary(client, balance, received[clientId] ?? 0),
           if (client.isRetainer) ...[
             const SizedBox(height: 14),
-            const _RetainerPanel(),
+            _RetainerPanel(client: client),
           ],
           if (client.note != null && client.note!.trim().isNotEmpty) ...[
             const SizedBox(height: 18),
@@ -294,13 +294,13 @@ class ClientDetailScreen extends ConsumerWidget {
 /// answers is "is the retainer actually turning up", and that is a question
 /// about payment dates, not about invoice balances.
 class _RetainerPanel extends ConsumerWidget {
-  const _RetainerPanel();
+  const _RetainerPanel({required this.client});
+
+  final Client client;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final all = ref.watch(clientsProvider).valueOrNull;
-    final client = all == null ? null : _firstClient(all.where((c) => c.isRetainer));
-    if (client == null) return const SizedBox.shrink();
+    if (!client.isRetainer) return const SizedBox.shrink();
 
     return FutureBuilder<({DateTime? last, DateTime? next})>(
       future: () async {

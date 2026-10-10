@@ -61,7 +61,6 @@ void main() {
       created: created,
       due: due,
     ));
-    await pump(tester, frames: 1);
     return id;
   }
 
@@ -93,6 +92,8 @@ void main() {
 
       // Two, not four: a lead is a hope and a settled client is history.
       expect(find.text('2 of 4'), findsOneWidget);
+      // And not three: an active client who owes money is one client, not two.
+      expect(find.text('3 of 4'), findsNothing);
       expect(find.text('2 free'), findsOneWidget);
     });
 
