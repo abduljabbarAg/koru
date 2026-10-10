@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'handoff.dart';
 import 'mascot/mascot.dart';
+import 'proposed_write.dart';
 import 'theme.dart';
 
 class KoruMark extends StatelessWidget {
@@ -143,6 +144,145 @@ class EmptyHint extends StatelessWidget {
             const SizedBox(height: 16),
             action!,
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A write waiting to be approved.
+///
+/// Nothing reaches the database until this is tapped. That is the whole point:
+/// the parser reads plain language and will occasionally read it wrongly, and
+/// the cheapest possible recovery from a wrong read is seeing it before it
+/// happens rather than undoing it after.
+///
+/// An amount can be corrected in place, because "Bilal paid 500" where 5000
+/// was meant is the most likely wrong read and the easiest to fix.
+class WriteCard extends StatefulWidget {
+  const WriteCard({
+    super.key,
+    required this.write,
+    required this.onApprove,
+    required this.onDiscard,
+  });
+
+  final ProposedWrite write;
+  final VoidCallback onApprove;
+  final VoidCallback onDiscard;
+
+  @override
+  State<WriteCard> createState() => _WriteCardState();
+}
+
+class _WriteCardState extends State<WriteCard> {
+  late final TextEditingController _amount = TextEditingController(
+    text: _suggestedAmount,
+  );
+  bool _busy = false;
+
+  String? get _suggestedAmount {
+    final write = widget.write;
+    if (write is! ProposedPayment) return null;
+    final amount = write.amount;
+    // Blank stays blank. Pre-filling the outstanding balance would silently turn
+    // "Bilal paid" into "Bilal paid everything he owes", which is a different
+    // statement about money.
+    if (amount == null) return null;
+    return amount == amount.roundToDouble()
+        ? amount.toStringAsFixed(0)
+        : amount.toStringAsFixed(2);
+  }
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _approve() async {
+    final write = widget.write;
+    if (write is! ProposedPayment) {
+      widget.onApprove();
+      return;
+    }
+    final entered = double.tryParse(_amount.text.trim());
+    if (entered == null || entered <= 0) {
+      setState(() {});
+      return;
+    }
+    setState(() => _busy = true);
+    widget.onApprove();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final write = widget.write;
+    final amountError = write is ProposedPayment &&
+        (double.tryParse(_amount.text.trim()) ?? 0) <= 0;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: KoruColors.goldSoft,
+        borderRadius: BorderRadius.circular(KoruRadius.card),
+        border: Border.all(color: KoruColors.gold),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.edit_note_rounded, size: 18, color: KoruColors.gold),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  write.summary,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: KoruColors.ink,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (write is ProposedPayment) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _amount,
+              enabled: !_busy,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Amount received',
+                suffixText: 'AED',
+                isDense: true,
+                errorText: amountError ? 'Enter an amount' : null,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42)),
+                  onPressed: _busy || amountError ? null : _approve,
+                  child: const Text('Save it'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(42)),
+                  onPressed: _busy ? null : widget.onDiscard,
+                  child: const Text('Discard'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

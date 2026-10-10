@@ -10,8 +10,10 @@ import 'handoff.dart';
 import 'local/bundled_engine.dart';
 import 'local/local_assistant.dart';
 import 'local/local_model_client.dart';
+import 'local/write_intent.dart';
 import 'models.dart';
 import 'packet.dart';
+import 'proposed_write.dart';
 import 'secrets.dart';
 import 'store.dart';
 
@@ -59,6 +61,10 @@ class Msg {
   /// answer is explained rather than looking broken.
   final double? tokensPerSecond;
 
+  /// A write waiting for the user to approve it. Set instead of an answer when
+  /// the message was understood as an instruction to record something.
+  final ProposedWrite? proposed;
+
   const Msg(
     this.role,
     this.text, {
@@ -68,9 +74,10 @@ class Msg {
     this.engine,
     this.handoff,
     this.tokensPerSecond,
+    this.proposed,
   });
 
-  Msg copyWith({String? text, bool? pending}) => Msg(
+  Msg copyWith({String? text, bool? pending, ProposedWrite? proposed}) => Msg(
         role,
         text ?? this.text,
         why: why,
@@ -79,6 +86,7 @@ class Msg {
         engine: engine,
         handoff: handoff,
         tokensPerSecond: tokensPerSecond,
+        proposed: proposed ?? this.proposed,
       );
 
   AnswerSource get source {
@@ -205,6 +213,30 @@ class ChatNotifier extends Notifier<ChatState> {
       );
     }
 
+    // An instruction to record something never reaches an engine at all. It is
+    // recognised by a plain parser, resolved against the real records, and comes
+    // back as a card to approve. A 0.5B model is a poor tool caller, and waiting
+    // fifteen seconds for a possibly wrong write is a bad trade for a keystroke.
+    final intent = const WriteIntentParser().parse(q);
+    if (intent != null) {
+      final resolution = await const WriteResolver().resolve(intent, store);
+      if (resolution.isWrite) {
+        return Msg(
+          MsgRole.koru,
+          'Here is what I understood. Nothing is saved until you say so.',
+          why: 'Read as an instruction, not a question.',
+          local: true,
+          proposed: resolution.write,
+        );
+      }
+      return Msg(
+        MsgRole.koru,
+        resolution.problem!,
+        why: 'Could not turn that into something to save.',
+        local: true,
+      );
+    }
+
     switch (KoruEngine.parse(await store.get('engine'))) {
       case KoruEngine.builtIn:
         return _askBuiltIn(q, routing, store);
@@ -213,6 +245,46 @@ class ChatNotifier extends Notifier<ChatState> {
       case KoruEngine.cloud:
         return _askCloud(q, routing, store);
     }
+  }
+
+  /// Carries out an approved write and replaces the card with the outcome.
+  ///
+  /// The card is removed either way. Leaving an approved card on screen would
+  /// offer the same write twice.
+  Future<void> applyWrite(ProposedWrite write) async {
+    final store = await ref.read(storeProvider.future);
+    await write.apply(store);
+    ref
+      ..invalidate(clientsProvider)
+      ..invalidate(paymentsProvider)
+      ..invalidate(receivedTotalsProvider)
+      ..invalidate(openDeadlinesProvider)
+      ..invalidate(guideFactsProvider);
+
+    final messages = [...state.messages];
+    final at = messages.lastIndexWhere((m) => m.proposed != null);
+    if (at < 0) return;
+    messages[at] = Msg(
+      MsgRole.koru,
+      'Saved. ${write.summary}.',
+      why: 'You approved this.',
+      local: true,
+    );
+    state = state.copyWith(messages: messages);
+  }
+
+  /// Drops an unapproved card without doing anything.
+  void discardWrite() {
+    final messages = [...state.messages];
+    final at = messages.lastIndexWhere((m) => m.proposed != null);
+    if (at < 0) return;
+    messages[at] = Msg(
+      MsgRole.koru,
+      'Noted, and not saved.',
+      why: 'You discarded this.',
+      local: true,
+    );
+    state = state.copyWith(messages: messages);
   }
 
   /// Deterministic answers from the user's own records. No model, no network,

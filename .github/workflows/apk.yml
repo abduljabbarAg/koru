@@ -163,7 +163,16 @@ jobs:
         with:
           flutter-version: "3.24.0"
           channel: stable
-          cache: true
+          # Only the pub dependencies are cached, not the 763 MB Flutter SDK.
+          #
+          # `cache: true` caches both, and caches count against Actions storage.
+          # The SDK alone was one and a half times the whole 0.5 GB monthly
+          # quota, which stopped every artifact upload in the repository until
+          # the caches were deleted. The pub cache is 22 MB and saves the part
+          # worth saving; re-downloading the SDK costs a couple of minutes on a
+          # build that already takes half an hour.
+          cache: false
+          pub-cache: true
 
       - name: pub get
         run: flutter pub get
@@ -203,7 +212,14 @@ jobs:
       #
       # Retention is 3 days rather than 30 for the same reason. These are
       # regenerable from any commit, and the one you want is always the newest.
+      #
+      # Non-blocking on purpose. A storage quota is an account-level condition
+      # that has nothing to do with whether this build was any good, and a red
+      # cross here reads as "the code is broken" when analyze and test passed.
+      # The APK is also attached to a release on a tag, and release assets do not
+      # count against Actions storage at all.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: koru-apk-arm64
           path: build/app/outputs/flutter-apk/koru-arm64-v8a.apk
@@ -213,7 +229,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/koru-*.apk
+          # Release assets, not artifacts, because release storage is not billed
+          # against the Actions quota. This is the dependable way to get the APK
+          # off a tag when artifact storage is full or unavailable.
+          files: |
+            build/app/outputs/flutter-apk/koru-arm64-v8a.apk
+            android/app/src/main/jniLibs/arm64-v8a/libglen.so
           generate_release_notes: true
           body: |
             ## Koru ${{ github.ref_name }}
