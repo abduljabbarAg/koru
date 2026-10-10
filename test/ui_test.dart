@@ -148,9 +148,10 @@ void main() {
       await seed(tester, name: 'Settled', status: 'paid', created: '2026-01-01');
 
       await mount(tester, const BusinessScreen());
-      await reveal(tester, find.text('Pipeline (2)'));
+      // SectionLabel uppercases its text, so this is PIPELINE on screen.
+      await reveal(tester, find.text('PIPELINE (2)'));
 
-      expect(find.text('Pipeline (2)'), findsOneWidget);
+      expect(find.text('PIPELINE (2)'), findsOneWidget);
       // The settled client is not in the pipeline, only in the client list.
       expect(find.text('Settled'), findsOneWidget, reason: 'still in the client list');
     });
