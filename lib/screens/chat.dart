@@ -261,7 +261,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                   border: isUser ? null : Border.all(color: KoruColors.line),
                 ),
-                child: m.pending
+                child: m.pending && m.text.isEmpty
                     ? const Text('...',
                         style: TextStyle(color: KoruColors.inkFaint, fontSize: 15))
                     : Text(
@@ -269,7 +269,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         style: TextStyle(
                           fontSize: 15,
                           height: 1.45,
-                          color: isUser ? Colors.white : KoruColors.ink,
+                          // Progress text arrives on a pending bubble, so it is
+                          // muted until real tokens land. A pending message that
+                          // has text is progress, never an answer.
+                          color: isUser
+                              ? Colors.white
+                              : (m.pending ? KoruColors.inkFaint : KoruColors.ink),
                         ),
                       ),
               ),

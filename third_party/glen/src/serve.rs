@@ -258,6 +258,37 @@ fn chat(
     if reuse == 0 {
         st.pos = 0;
     }
+
+    let id = format!("glen-{}", now_ms());
+    let model = model_id(m);
+
+    // Headers and the opening chunk go out before prefill, not after.
+    //
+    // This ordering is the whole difference between an answer that appears and
+    // an app that looks frozen. A request carries the caller's records in its
+    // prompt, so prefill is several hundred tokens and takes seconds on a
+    // phone, while decode runs at about 4 tok/s. Writing the headers after the
+    // prefill loop meant the client had received no bytes at all for that entire
+    // window: `send` had not returned, so the chat had nothing to show and no
+    // way to know the model was alive. Every token then landed a quarter second
+    // apart, which reads as a drip arriving after a hang.
+    //
+    // A client that sees headers immediately can show that the request landed
+    // and is still being worked on, which is honest. Latency did not change.
+    if stream {
+        s.write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+        )?;
+        let opening = format!(
+            "{{\"id\":\"{}\",\"object\":\"chat.completion.chunk\",\"created\":{},\"model\":\"{}\",\"choices\":[{{\"index\":0,\"delta\":{{\"role\":\"assistant\",\"content\":\"\"}},\"finish_reason\":null}}]}}",
+            id,
+            now_ms() / 1000,
+            json::esc(&model)
+        );
+        write!(s, "data: {}\n\n", opening).ok();
+        s.flush().ok();
+    }
+
     let t0 = Instant::now();
     let mut logits: Vec<f32> = Vec::new();
     let mut done = start;
@@ -265,19 +296,19 @@ fn chat(
         let end = (done + st.tpb.ncap).min(ids.len());
         logits = forward_batch(m, &ids[done..end], done, caches, &mut st.tpb, m.n_layer);
         done = end;
+        // Progress as an SSE comment, so the stream stays OpenAI compatible.
+        // A comment line is ignored by any conforming reader, which means a
+        // stock client sees the same tokens it always did, while Koru can tell
+        // the user the model is reading rather than hung.
+        if stream && start < ids.len() {
+            let _ = write!(s, ": prefill {}/{}\n\n", done, ids.len());
+            let _ = s.flush();
+        }
     }
     let reused_tok = reuse;
     let prefill_new = ids.len() - start;
     st.pos = ids.len();
 
-    let id = format!("glen-{}", now_ms());
-    let model = model_id(m);
-    if stream {
-        s.write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
-        )?;
-        s.flush().ok();
-    }
     let mut rng = tools::Rng::new();
     let mut gen_ids: Vec<u32> = Vec::new();
     let mut out = String::new();

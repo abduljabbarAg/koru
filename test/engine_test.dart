@@ -270,6 +270,34 @@ void main() {
       expect(LocalModelClient.parseDelta('{"choices":[]}'), '');
       expect(LocalModelClient.parseDelta('{"choices":[1]}'), '');
     });
+
+    // The engine sends prefill progress as an SSE comment, which a conforming
+    // reader ignores. That is the point: a stock OpenAI client must still see
+    // exactly the tokens it always did.
+    test('reads prefill progress out of a comment', () {
+      expect(LocalModelClient.parseProgress(': prefill 128/300'), (128, 300));
+      expect(LocalModelClient.parseProgress(':prefill 1/2'), (1, 2));
+    });
+
+    test('an ordinary line is never mistaken for progress', () {
+      expect(LocalModelClient.parseProgress('data: {"choices":[]}'), isNull);
+      expect(LocalModelClient.parseProgress(''), isNull);
+      expect(LocalModelClient.parseProgress(': something else'), isNull);
+    });
+
+    test('a nonsense comment is ignored rather than crashing the stream', () {
+      expect(LocalModelClient.parseProgress(': prefill'), isNull);
+      expect(LocalModelClient.parseProgress(': prefill 5'), isNull);
+      expect(LocalModelClient.parseProgress(': prefill x/y'), isNull);
+      expect(LocalModelClient.parseProgress(': prefill 5/0'), isNull);
+    });
+
+    test('an opening role chunk carries no text and does not look like one', () {
+      // glen sends this before prefill so the client stops waiting blind. It
+      // must contribute nothing to the answer, or every reply gains a blank.
+      const opening = '{"choices":[{"delta":{"role":"assistant","content":""}}]}';
+      expect(LocalModelClient.parseDelta(opening), '');
+    });
   });
 
   group('KoruEngine', () {

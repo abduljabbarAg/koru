@@ -104,12 +104,19 @@ class LocalModelClient {
   /// callback carries the deltas; the returned future resolves once with the
   /// outcome, so the caller does not have to manage a subscription for something
   /// it only acts on at the end.
+  ///
+  /// [onProgress] covers the window before the first token. Prefill reads the
+  /// caller's records and takes seconds on a phone, and glen sends it as SSE
+  /// comments so the stream stays OpenAI compatible. Without this the user
+  /// watches a blank bubble for the entire prefill and then sees tokens arrive,
+  /// which reads as one long hang followed by a drip rather than as work.
   Future<LocalModelResult> chatStream({
     required String endpoint,
     required String model,
     required String system,
     required String question,
     required void Function(String delta) onToken,
+    void Function(int done, int total)? onProgress,
     int maxTokens = 160,
     double temperature = 0.7,
   }) async {
@@ -140,6 +147,11 @@ class LocalModelClient {
       var emitted = 0;
       await for (final line
           in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+        final progress = parseProgress(line);
+        if (progress != null) {
+          onProgress?.call(progress.$1, progress.$2);
+          continue;
+        }
         if (!line.startsWith('data:')) continue;
         final payload = line.substring(5).trim();
         if (payload == '[DONE]') break;
@@ -164,6 +176,22 @@ class LocalModelClient {
     } finally {
       client.close();
     }
+  }
+
+  /// Reads an SSE comment of the form `: prefill 128/300`.
+  ///
+  /// Returns null for anything else, including every ordinary data line, so the
+  /// caller can run this first and fall through without special-casing. A
+  /// comment is ignored by conforming readers by definition, which is why the
+  /// engine can report progress without a stock OpenAI client choking on it.
+  static (int, int)? parseProgress(String line) {
+    if (!line.startsWith(': prefill')) return null;
+    final parts = line.substring(9).trim().split('/');
+    if (parts.length != 2) return null;
+    final done = int.tryParse(parts[0].trim());
+    final total = int.tryParse(parts[1].trim());
+    if (done == null || total == null || total <= 0) return null;
+    return (done, total);
   }
 
   /// Pulls `choices[0].delta.content` out of one SSE chunk.
