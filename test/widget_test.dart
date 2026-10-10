@@ -567,6 +567,19 @@ void main() {
       await pumpFrames(tester);
     }
 
+    /// Back to the top, where the totals live.
+    ///
+    /// Tapping something near the bottom leaves the summary tiles scrolled out
+    /// of the tree entirely, so an assertion about the header has to come back
+    /// first. A ListView also builds lazily, so scrolling is the only way to
+    /// bring those tiles back rather than a plain lookup.
+    Future<void> scrollToTop(WidgetTester tester) async {
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(find.byType(ListView).first, const Offset(0, 1200));
+        await pumpFrames(tester);
+      }
+    }
+
     testWidgets('shows what is owed rather than counting statuses', (tester) async {
       await seedClient(tester, name: 'Bilal', amount: 2000);
       await open(tester);
@@ -608,6 +621,7 @@ void main() {
           await tester.runAsync(() async => (await store.clients()).single);
       expect(client!.status, 'paid');
       expect(await tester.runAsync(() => store.balanceFor(bilal)), 0);
+      await scrollToTop(tester);
       expect(find.text('AED, all clear'), findsOneWidget);
     });
 
@@ -652,7 +666,9 @@ void main() {
       await tapVisible(tester, find.byTooltip('Undo this payment'));
 
       expect(await tester.runAsync(() => store.payments()), isEmpty);
+      await scrollToTop(tester);
       expect(find.text('2000'), findsWidgets);
+      expect(find.text('AED, 1 to chase'), findsOneWidget);
     });
 
     testWidgets('deadlines can be added and ticked off', (tester) async {
