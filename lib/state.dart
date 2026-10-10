@@ -386,6 +386,8 @@ class ChatNotifier extends Notifier<ChatState> {
         bmi: await store.number('bmi'),
         fitness: await store.fitness(limit: 5),
         clients: await store.clients(),
+        received: await store.receivedTotals(),
+        deadlines: await store.deadlines(),
       );
 }
 

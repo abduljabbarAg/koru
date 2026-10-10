@@ -104,6 +104,13 @@ class LocalEngineFacts {
   final List<FitnessEntry> fitness;
   final List<Client> clients;
 
+  /// Money received per client id, so a balance can be stated without the model
+  /// having to do arithmetic on numbers it was handed as loose text.
+  final Map<int, double> received;
+
+  /// Open deadlines, soonest first.
+  final List<Deadline> deadlines;
+
   const LocalEngineFacts({
     this.nickname = '',
     this.goals = '',
@@ -112,11 +119,21 @@ class LocalEngineFacts {
     this.bmi,
     this.fitness = const [],
     this.clients = const [],
+    this.received = const {},
+    this.deadlines = const [],
   });
 
-  bool get isEmpty => fitness.isEmpty && clients.isEmpty;
+  bool get isEmpty => fitness.isEmpty && clients.isEmpty && deadlines.isEmpty;
+
+  double balanceOf(Client c) =>
+      c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
 
   /// Compact, roughly one line per fact.
+  ///
+  /// Every line is prefill the user waits through before the first word appears,
+  /// so the budget is enforced rather than assumed: clients who owe money are
+  /// named individually because that is the question actually asked, and
+  /// everything past a handful is counted instead of listed.
   String renderForModel() {
     final lines = <String>[];
     if (goals.isNotEmpty) lines.add('Their goal: $goals');
@@ -142,18 +159,33 @@ class LocalEngineFacts {
     }
 
     if (clients.isNotEmpty) {
-      // Only delivered work is owed money. Summing every client counted money
-      // that had already been paid, and money for work not finished yet, as
-      // "unpaid", so the model was told to chase money it already had.
-      final unpaidValue = clients
-          .where((c) => c.status == 'delivered')
-          .fold<double>(0, (a, c) => a + (c.amount ?? 0));
+      // Balances come from the ledger, not from the status. Summing every
+      // client counted money that had already been paid, and money for work not
+      // finished yet, as "unpaid", so the model was told to chase money it
+      // already had.
+      final owing = clients.where((c) => balanceOf(c) > 0).toList()
+        ..sort((a, b) => balanceOf(b).compareTo(balanceOf(a)));
+      final outstanding = owing.fold<double>(0, (a, c) => a + balanceOf(c));
       final paid = clients.where((c) => c.status == 'paid').length;
-      final delivered = clients.where((c) => c.status == 'delivered').length;
       final overdue = clients.where((c) => c.isOverdueOn(DateTime.now())).length;
-      lines.add('Clients: ${clients.length}, paid $paid, delivered but unpaid $delivered');
-      lines.add('Unpaid value across clients: ${unpaidValue.toStringAsFixed(0)} AED');
+
+      lines.add('Clients: ${clients.length}, $paid settled');
+      lines.add('Still owed in total: ${outstanding.toStringAsFixed(0)} AED across ${owing.length}');
+      for (final c in owing.take(4)) {
+        lines.add('${c.name} owes ${balanceOf(c).toStringAsFixed(0)} AED');
+      }
+      if (owing.length > 4) {
+        lines.add('and ${owing.length - 4} more client(s) with a balance');
+      }
       if (overdue > 0) lines.add('$overdue client(s) are past their due date');
+    }
+
+    if (deadlines.isNotEmpty) {
+      final items = deadlines.take(4).map((d) => '${d.title} (due ${d.due})').join('; ');
+      lines.add('Deadlines coming up: $items');
+      if (deadlines.length > 4) {
+        lines.add('and ${deadlines.length - 4} more after those');
+      }
     }
 
     return lines.join('\n');

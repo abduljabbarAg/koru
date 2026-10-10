@@ -102,13 +102,31 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: fetch the bundled engine, if it was built
-        # Missing when the glen job could not clone the private repo. The APK
-        # still builds; the app then reports it has no bundled model.
-        uses: actions/download-artifact@v4
+        # Missing when the glen job could not produce or upload a binary. The
+        # APK still builds; the app then reports it has no bundled model.
+        id: engine
         continue-on-error: true
+        uses: actions/download-artifact@v4
         with:
           name: libglen-android-arm64
           path: android/app/src/main/jniLibs/arm64-v8a
+
+      # Checked on disk rather than trusted from the job output.
+      #
+      # The glen job sets its output when the binary is *built*, which happens
+      # before the upload. When the upload fails, the output still says yes, the
+      # model gets downloaded, and the result is a 464 MB APK carrying a 491 MB
+      # model and no way to run it. A small app that admits it has no model is
+      # far more useful than a large one that silently cannot answer anything.
+      - name: decide whether the engine actually arrived
+        run: |
+          set -eu
+          if [ -f android/app/src/main/jniLibs/arm64-v8a/libglen.so ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No inference engine, so the model is not bundled. The app will say so."
+          fi
 
       # Bundled only when there is an engine to run it.
       #
@@ -117,7 +135,7 @@ jobs:
       # A 17 MB app that says "this build has no bundled model" is far more
       # useful than a gigabyte that does nothing.
       - name: fetch the model
-        if: needs.glen.outputs.binary != ''
+        if: steps.engine.outputs.available == 'true'
         env:
           MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
         run: |

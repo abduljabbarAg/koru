@@ -144,28 +144,62 @@ void main() {
       expect(rendered, contains('Body logs recorded: 2'));
     });
 
-    test('summarises clients and unpaid value', () {
+    test('names who owes what, from the ledger', () {
       const facts = LocalEngineFacts(
         clients: [
-          Client(name: 'A', status: 'paid', amount: 5000, created: '2026-01-01'),
-          Client(name: 'B', status: 'delivered', amount: 2400, created: '2026-01-02'),
+          Client(id: 1, name: 'A', status: 'paid', amount: 5000),
+          Client(id: 2, name: 'B', status: 'delivered', amount: 2400),
         ],
+        received: {1: 5000},
       );
       final rendered = facts.renderForModel();
-      expect(rendered, contains('Clients: 2, paid 1, delivered but unpaid 1'));
-      // A has already paid, so only B is owed. Summing every client gave 7400
-      // and told the model to chase money that was already in the bank.
-      expect(rendered, contains('Unpaid value across clients: 2400 AED'));
-      expect(rendered, isNot(contains('7400 AED')));
+      expect(rendered, contains('Clients: 2, 1 settled'));
+      // Only B owes. Summing every client gave 7400 and told the model to chase
+      // money that was already in the bank.
+      expect(rendered, contains('Still owed in total: 2400 AED across 1'));
+      expect(rendered, contains('B owes 2400 AED'));
+      expect(rendered, isNot(contains('A owes')));
     });
 
-    test('work still in progress is not counted as money owed', () {
+    test('a part payment leaves the rest owed', () {
       const facts = LocalEngineFacts(
-        clients: [
-          Client(name: 'Bilal', status: 'active', amount: 900, created: '2026-01-03'),
-        ],
+        clients: [Client(id: 1, name: 'Bilal', status: 'delivered', amount: 2000)],
+        received: {1: 500},
       );
-      expect(facts.renderForModel(), contains('Unpaid value across clients: 0 AED'));
+      final rendered = facts.renderForModel();
+      expect(rendered, contains('Bilal owes 1500 AED'));
+      expect(rendered, contains('Still owed in total: 1500 AED'));
+    });
+
+    test('an invoiced client who has not paid still owes, whatever the status',
+        () {
+      // The old rendering only counted 'delivered', so an invoice sent to an
+      // active client was invisible to the model until the status happened to
+      // change. The ledger does not care about the label.
+      const facts = LocalEngineFacts(
+        clients: [Client(id: 1, name: 'Bilal', status: 'active', amount: 900)],
+      );
+      expect(facts.renderForModel(), contains('Bilal owes 900 AED'));
+    });
+
+    test('overpaying never reads as money owed to the freelancer', () {
+      const facts = LocalEngineFacts(
+        clients: [Client(id: 1, name: 'A', status: 'paid', amount: 100)],
+        received: {1: 250},
+      );
+      final rendered = facts.renderForModel();
+      expect(rendered, contains('Still owed in total: 0 AED across 0'));
+      expect(rendered, isNot(contains('owes 0 AED')));
+      expect(rendered, isNot(contains('-')));
+    });
+
+    test('deadlines are named so they can be discussed', () {
+      const facts = LocalEngineFacts(
+        deadlines: [Deadline(title: 'Send invoice', due: '2026-03-01')],
+      );
+      expect(facts.renderForModel(), contains('Send invoice (due 2026-03-01)'));
+      expect(const LocalEngineFacts(deadlines: [Deadline(title: 'x', due: 'd')]).isEmpty,
+          isFalse);
     });
 
     test('includes goals and focus', () {
@@ -175,9 +209,30 @@ void main() {
       expect(rendered, contains('They want help with: Career'));
     });
 
+    // Prefill dominates the latency on this phone, so the facts block has to
+    // stay bounded no matter how much the user accumulates. These assert the
+    // caps themselves rather than a line count, so widening a cap is a
+    // deliberate edit rather than a number that drifts.
+    test('names at most four clients and four deadlines, then counts the rest', () {
+      final facts = LocalEngineFacts(
+        clients: [
+          for (var i = 1; i <= 8; i++)
+            Client(id: i, name: 'C$i', status: 'delivered', amount: 100.0 * i),
+        ],
+        deadlines: [
+          for (var i = 1; i <= 8; i++) Deadline(title: 'D$i', due: '2026-03-0$i'),
+        ],
+      );
+      final rendered = facts.renderForModel();
+      expect(rendered, contains('Still owed in total: 3600 AED across 8'));
+      // C8 is the biggest balance, so it leads.
+      expect(rendered, contains('C8 owes 800 AED'));
+      expect(rendered, isNot(contains('C1 owes')));
+      expect(rendered, contains('and 4 more client(s) with a balance'));
+      expect(rendered, contains('and 4 more after those'));
+    });
+
     test('stays short enough to be worth prefilling', () {
-      // Prefill dominates the latency on this phone, so an unbounded facts block
-      // would make every answer feel broken. This is the guard rail.
       const facts = LocalEngineFacts(
         goals: 'g',
         focus: 'f',
@@ -191,9 +246,10 @@ void main() {
           FitnessEntry(day: '2026-01-31', weight: 81.5),
         ],
         clients: [
-          Client(name: 'A', status: 'paid', amount: 100, created: '2026-01-01'),
-          Client(name: 'B', status: 'delivered', amount: 200, created: '2026-01-02'),
+          Client(id: 1, name: 'A', status: 'paid', amount: 100),
+          Client(id: 2, name: 'B', status: 'delivered', amount: 200),
         ],
+        received: {1: 100},
       );
       expect(facts.renderForModel().split('\n').length, lessThanOrEqualTo(10));
     });
