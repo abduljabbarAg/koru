@@ -87,17 +87,30 @@ void main() {
 
   group('an ambiguous client name', () {
     test('is reported rather than picked', () async {
-      await addClient('Acme', amount: 100);
-      await addClient('Acme Holdings', amount: 200);
+      await addClient('North Studio', amount: 100);
+      await addClient('South Studio', amount: 200);
 
-      // "Acme" is an exact match for one of them, so it resolves. A name that
-      // only partly matches several does not.
-      expect((await resolve('Acme paid 10')).write, isA<ProposedPayment>());
-
-      await addClient('Acme Trading', amount: 300);
-      await addClient('Acme Digital', amount: 400);
-      final vague = await resolve('Acme Trad paid 10');
+      // "Studio" contains both and is a prefix of neither, so there is no way to
+      // choose and the resolver says so instead of taking the first.
+      final vague = await resolve('Studio paid 10');
       expect(vague.isWrite, isFalse);
+      expect(vague.problem, contains('North Studio'));
+      expect(vague.problem, contains('South Studio'));
+      expect(await store.payments(), isEmpty);
+    });
+
+    test('an exact name wins even when another contains it', () async {
+      await addClient('Bilal', amount: 100);
+      await addClient('Bilal Studio', amount: 200);
+
+      final exact = await resolve('Bilal paid 10');
+      expect((exact.write! as ProposedPayment).client.name, 'Bilal');
+    });
+
+    test('a prefix still resolves when it identifies one client', () async {
+      await addClient('Bilal', amount: 100);
+      await addClient('Sara', amount: 200);
+      expect((await resolve('Bil paid 10')).write, isA<ProposedPayment>());
     });
   });
 
