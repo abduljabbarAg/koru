@@ -227,9 +227,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               title: 'Local by default',
               body: 'Work, training and goals are answered here, without a network call.'),
           const KoruFeature(
-              icon: Icons.drafts_outlined,
-              title: 'Drafts, never sends',
-              body: 'Anything he writes for you waits for you to send it yourself.'),
+              icon: Icons.payments_outlined,
+              title: 'Knows what you are owed',
+              body: 'Clients, payments and deadlines, so asking about money gets an answer.'),
           const KoruFeature(
               icon: Icons.people_outline_rounded,
               title: 'Knows when to step aside',

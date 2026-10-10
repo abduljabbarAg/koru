@@ -79,10 +79,6 @@ class ProfileStore {
     ''');
   }
 
-  /// Drafts and chat history. The `knowledge` table already existed but nothing
-  /// read or wrote it; drafts and chat were missing entirely even though the
-  /// onboarding screen promised drafts and the app called itself a companion that
-  /// remembers.
   /// Money received, and dated work. Both are per client so "what is owed and
   /// by when" is a query rather than something retyped by hand.
   static Future<void> _migrateToV3(Database d) async {
@@ -106,6 +102,14 @@ class ProfileStore {
     ''');
   }
 
+  /// Chat history, added when onboarding already promised a companion that
+  /// remembers and the app had nowhere to keep the conversation.
+  ///
+  /// The drafts table came with it and was never written to. Both it and the
+  /// older `knowledge` table are still created and still cleared by [wipe],
+  /// because dropping a table needs a migration that destroys whatever a user
+  /// had typed into it, and an empty table costs nothing. Nothing reads or
+  /// writes them.
   static Future<void> _migrateToV2(Database d) async {
     await d.execute('''
       CREATE TABLE drafts(
@@ -196,7 +200,21 @@ class ProfileStore {
   }
 
   Future<void> wipe() async {
-    for (final table in ['profile', 'fitness', 'business', 'knowledge', 'drafts', 'chat']) {
+    // payments and deadlines are in this list because this is the only promise
+    // the app makes about deletion, and a ledger left behind after "delete
+    // everything" is the worst possible thing to leave behind. `knowledge` and
+    // `drafts` still appear: the features are gone but the tables exist on
+    // older installs and must be cleared with everything else.
+    for (final table in [
+      'profile',
+      'fitness',
+      'business',
+      'knowledge',
+      'drafts',
+      'chat',
+      'payments',
+      'deadlines',
+    ]) {
       await _db.delete(table);
     }
   }
@@ -249,38 +267,38 @@ class ProfileStore {
       _db.delete('business', where: 'id = ?', whereArgs: [id]);
 
   // -- knowledge -------------------------------------------------------
-
-  Future<int> addTopic(KnowledgeTopic t) => _db.insert('knowledge', t.toMap());
-
-  Future<List<KnowledgeTopic>> topics() async {
-    const order = 'updated' ' DESC';
-    final rows = await _db.query('knowledge', orderBy: order);
-    return rows.map(KnowledgeTopic.fromMap).toList();
-  }
-
-  Future<void> updateTopic(KnowledgeTopic t) async {
-    final id = t.id;
-    if (id == null) return;
-    await _db.update('knowledge', t.toUpdateMap(), where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> deleteTopic(int id) =>
-      _db.delete('knowledge', where: 'id = ?', whereArgs: [id]);
+  //
+  // Removed. The table survives; these accessors do not.
 
   // -- drafts ----------------------------------------------------------
+  //
+  // Removed. addDraft never had a caller, so the screen showed nothing forever.
 
-  Future<int> addDraft(Draft d) => _db.insert('drafts', d.toMap());
-
-  /// Money received, newest first.
-  Future<List<Payment>> payments({int? clientId}) async {
-    final rows = clientId == null
-        ? await _db.query('payments', orderBy: 'date DESC, id DESC')
-        : await _db.query('payments',
-            where: 'client_id = ?', whereArgs: [clientId], orderBy: 'date DESC, id DESC');
+  /// Money received, newest first, optionally narrowed to one client.
+  ///
+  /// Paged rather than returned whole: a ledger grows every time someone is paid,
+  /// and the only thing the UI ever shows is the latest handful. Totals come from
+  /// [receivedFor], which sums in SQL and so is unaffected by this limit.
+  Future<List<Payment>> payments({int? clientId, int limit = 20}) async {
+    final rows = await _db.query(
+      'payments',
+      where: clientId == null ? null : 'client_id = ?',
+      whereArgs: clientId == null ? null : [clientId],
+      orderBy: 'date DESC, id DESC',
+      limit: limit,
+    );
     return rows.map(Payment.fromMap).toList();
   }
 
   Future<int> addPayment(Payment p) => _db.insert('payments', p.toMap());
+
+  /// Withdraws a payment that was recorded by mistake.
+  ///
+  /// The client is deliberately not re-marked unpaid here. The status is derived
+  /// from the ledger when the screen next reads it, so undoing one row is enough
+  /// and guessing at the resulting status here would be a second source of truth.
+  Future<void> deletePayment(int id) =>
+      _db.delete('payments', where: 'id = ?', whereArgs: [id]);
 
   /// What has been received against one client, in total.
   Future<double> receivedFor(int clientId) async {
@@ -291,17 +309,29 @@ class ProfileStore {
     return (r.first['total'] as num).toDouble();
   }
 
+  /// What has been received against every client, in one query.
+  ///
+  /// Grouped in SQL rather than by summing rows in Dart, because summing rows
+  /// means reading the whole ledger and then only being right about the last
+  /// thousand payments. Clients with no payments are absent from the map, which
+  /// reads as nothing received, which is what they are.
+  Future<Map<int, double>> receivedTotals() async {
+    final rows = await _db.rawQuery(
+      'SELECT client_id, COALESCE(SUM(amount), 0) AS total FROM payments GROUP BY client_id',
+    );
+    return {
+      for (final r in rows) r['client_id'] as int: (r['total'] as num).toDouble(),
+    };
+  }
+
   /// Outstanding balance for a client: invoiced minus everything received.
   ///
-  /// Zero when a client has no amount on file, rather than a negative balance,
-  /// because a negative number here would read as money owed to the freelancer.
+  /// Reads the ledger, so it costs a query per client. The screen shows a whole
+  /// list and so uses [Client.balanceWith] against a single grouped total
+  /// instead; the arithmetic is shared either way.
   Future<double> balanceFor(Client c) async {
-    final invoiced = c.amount ?? 0;
-    if (invoiced <= 0 || c.id == null) return 0;
-    final balance = invoiced - await receivedFor(c.id!);
-    // Floored, because being paid more than invoiced means nothing is owed and
-    // a negative figure here reads as money owed to the freelancer.
-    return balance < 0 ? 0 : balance;
+    if (c.id == null) return 0;
+    return c.balanceWith(await receivedFor(c.id!));
   }
 
   Future<List<Deadline>> deadlines({int? clientId, bool openOnly = true}) async {
@@ -323,22 +353,11 @@ class ProfileStore {
 
   Future<int> addDeadline(Deadline d) => _db.insert('deadlines', d.toMap());
 
-  Future<List<Draft>> drafts({DraftStatus? status}) async {
-    final rows = await _db.query(
-      'drafts',
-      where: status == null ? null : 'status = ?',
-      whereArgs: status == null ? null : [status.name],
-      orderBy: 'id DESC',
-    );
-    return rows.map(Draft.fromMap).toList();
-  }
+  Future<void> setDeadlineDone(int id, bool done) =>
+      _db.update('deadlines', {'done': done ? 1 : 0}, where: 'id = ?', whereArgs: [id]);
 
-  Future<void> setDraftStatus(int id, DraftStatus status) async {
-    await _db.update('drafts', {'status': status.name}, where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> deleteDraft(int id) =>
-      _db.delete('drafts', where: 'id = ?', whereArgs: [id]);
+  Future<void> deleteDeadline(int id) =>
+      _db.delete('deadlines', where: 'id = ?', whereArgs: [id]);
 
   // -- chat ------------------------------------------------------------
 

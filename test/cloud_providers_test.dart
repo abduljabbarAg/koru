@@ -254,17 +254,16 @@ void main() {
     ScreenFacts facts({
       List<Client> clients = const [],
       List<FitnessEntry> fitness = const [],
-      List<KnowledgeTopic> topics = const [],
+      Map<int, double> received = const {},
       double? bmi,
       bool hasProfile = false,
     }) =>
         ScreenFacts(
           clients: clients,
           fitness: fitness,
-          topics: topics,
+          received: received,
           bmi: bmi,
           hasProfile: hasProfile,
-          today: DateTime(2026, 3, 1),
         );
 
     group('business', () {
@@ -272,25 +271,44 @@ void main() {
         expect(Guide.forBusiness(facts()), contains('No clients yet'));
       });
 
-      test('names who is overdue, first', () {
-        final line = Guide.forBusiness(facts(clients: const [
-          Client(name: 'Acme', status: 'delivered', amount: 100, due: '2026-01-01', created: '2026-01-01'),
-        ]));
-        expect(line, contains('Acme'));
-        expect(line, contains('past the due date'));
+      test('names the one client who owes, and how much', () {
+        final line = Guide.forBusiness(facts(
+          clients: const [Client(id: 1, name: 'Acme', status: 'delivered', amount: 2400)],
+        ));
+        expect(line, contains('Acme owes you 2400 AED'));
       });
 
-      test('prefers unpaid over everything else', () {
-        final line = Guide.forBusiness(facts(clients: const [
-          Client(name: 'A', status: 'delivered', amount: 2400, created: '2026-01-01'),
-        ]));
-        expect(line, contains('2400 AED'));
+      test('counts a part payment, so a part payer still reads as owing', () {
+        final line = Guide.forBusiness(facts(
+          clients: const [Client(id: 1, name: 'Acme', status: 'delivered', amount: 2400)],
+          received: const {1: 500},
+        ));
+        expect(line, contains('Acme owes you 1900 AED'));
+      });
+
+      test('adds up several debtors and leads with the largest', () {
+        final line = Guide.forBusiness(facts(
+          clients: const [
+            Client(id: 1, name: 'Small', status: 'delivered', amount: 100),
+            Client(id: 2, name: 'Big', status: 'delivered', amount: 3000),
+          ],
+        ));
+        expect(line, contains('2 clients owe you 3100 AED'));
+        expect(line, contains('Big most of all'));
+      });
+
+      test('says nothing is owed once the ledger is settled', () {
+        final line = Guide.forBusiness(facts(
+          clients: const [Client(id: 1, name: 'Acme', status: 'paid', amount: 2400)],
+          received: const {1: 2400},
+        ));
+        expect(line, isNot(contains('owes')));
       });
 
       test('mentions the pipeline when nothing is unpaid', () {
         final line = Guide.forBusiness(facts(clients: const [
-          Client(name: 'A', status: 'active', created: '2026-01-01'),
-          Client(name: 'B', status: 'paid', amount: 100, created: '2026-01-02'),
+          Client(id: 1, name: 'A', status: 'active', created: '2026-01-01'),
+          Client(id: 2, name: 'B', status: 'paid', amount: 100, created: '2026-01-02'),
         ]));
         expect(line, contains('pipeline'));
       });
@@ -334,22 +352,6 @@ void main() {
       });
     });
 
-    group('learn', () {
-      test('says nothing when the list is empty', () {
-        expect(Guide.forLearn(facts()), contains('Nothing on the list'));
-      });
-
-      test('pushes for finishing rather than starting', () {
-        final line = Guide.forLearn(facts(topics: const [
-          KnowledgeTopic(topic: 'Rust', progress: 0.8),
-          KnowledgeTopic(topic: 'Design', progress: 0.2),
-          KnowledgeTopic(topic: 'Done', progress: 1.0),
-        ]));
-        expect(line, contains('Rust'));
-        expect(line, contains('Finish that one'));
-      });
-    });
-
     group('settings and chat', () {
       test('settings is silent when there is nothing worth saying', () {
         // Context plus a client means there is nothing left to prompt about.
@@ -362,14 +364,14 @@ void main() {
 
       test('settings prompts when context exists but records do not', () {
         final line = Guide.forSettings(
-          ScreenFacts(hasProfile: true, today: DateTime(2026, 3, 1)),
+          ScreenFacts(hasProfile: true),
         );
         expect(line, contains('measurement'));
       });
 
       test('chat prompts only when goals exist with nothing to check against', () {
         expect(
-          Guide.forChat(ScreenFacts(hasProfile: true, today: DateTime(2026, 3, 1))),
+          Guide.forChat(ScreenFacts(hasProfile: true)),
           contains('goals'),
         );
         expect(Guide.forChat(facts()), isNull);

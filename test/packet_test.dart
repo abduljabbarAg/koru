@@ -282,41 +282,6 @@ void main() {
     });
   });
 
-  group('knowledge progress', () {
-    test('is a clamped whole percentage', () {
-      expect(const KnowledgeTopic(topic: 'x', progress: 0.42).percent, 42);
-      expect(const KnowledgeTopic(topic: 'x', progress: 1.4).percent, 100);
-      expect(const KnowledgeTopic(topic: 'x', progress: -1).percent, 0);
-    });
-
-    test('round trips through a map', () {
-      const t = KnowledgeTopic(topic: 'Rust', progress: 0.3, note: 'chapter 4');
-      expect(KnowledgeTopic.fromMap(t.toMap()).topic, 'Rust');
-      expect(KnowledgeTopic.fromMap(t.toMap()).note, 'chapter 4');
-    });
-  });
-
-  group('drafts', () {
-    test('preview flattens whitespace and truncates', () {
-      const d = Draft(title: 't', body: 'line one\n\n  line   two');
-      expect(d.preview, 'line one line two');
-    });
-
-    test('long bodies are cut with an ellipsis', () {
-      final d = Draft(title: 't', body: 'x' * 300);
-      expect(d.preview.length, 92);
-      expect(d.preview.endsWith('...'), isTrue);
-    });
-
-    test('an unknown status falls back to pending', () {
-      final d = Draft.fromMap(const {
-        'title': 't',
-        'body': 'b',
-        'status': 'nonsense',
-      });
-      expect(d.status, DraftStatus.pending);
-    });
-  });
 
   group('cloud reply extraction', () {
     test('reads a normal completion', () {

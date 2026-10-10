@@ -263,6 +263,7 @@ class ChatNotifier extends Notifier<ChatState> {
           buffer.write(delta);
           _updatePending(buffer.toString());
         },
+        onProgress: _updatePendingProgress,
       );
       switch (result) {
         case LocalReply(:final tokensPerSecond):
@@ -315,6 +316,24 @@ class ChatNotifier extends Notifier<ChatState> {
       messages[messages.length - 1] = last.copyWith(text: text, pending: text.isEmpty);
       state = state.copyWith(messages: messages);
     }
+  }
+
+  /// Shows how far the model has got reading the prompt.
+  ///
+  /// Prefill is the longest silent stretch in the whole exchange: the prompt
+  /// carries the caller's records, so the model spends seconds working through
+  /// them before a single word comes out. A bare ellipsis through that window
+  /// is indistinguishable from a crash, so the bubble names what is happening.
+  /// Stops at the first token, when there is real text to show instead.
+  void _updatePendingProgress(int done, int total) {
+    final messages = [...state.messages];
+    if (messages.isEmpty) return;
+    final last = messages.last;
+    if (!last.pending || last.text.isNotEmpty) return;
+    final pct = total <= 0 ? 0 : (done * 100 / total).round().clamp(0, 100);
+    messages[messages.length - 1] =
+        last.copyWith(text: 'Reading your records, $pct%', pending: true);
+    state = state.copyWith(messages: messages);
   }
 
   Future<Msg> _askCloud(String q, RoutingDecision routing, ProfileStore store) async {
@@ -382,14 +401,26 @@ final fitnessProvider = FutureProvider<List<FitnessEntry>>((ref) async {
   return store.fitness();
 });
 
-final topicsProvider = FutureProvider<List<KnowledgeTopic>>((ref) async {
+/// Money received per client, as a single grouped total.
+///
+/// One query for the whole screen rather than one per row. [Client.balanceWith]
+/// turns each total into a balance, and the same totals give the screen-wide
+/// figures, so the header and the rows cannot disagree.
+final receivedTotalsProvider = FutureProvider<Map<int, double>>((ref) async {
   final store = await ref.watch(storeProvider.future);
-  return store.topics();
+  return store.receivedTotals();
 });
 
-final draftsProvider = FutureProvider<List<Draft>>((ref) async {
+/// The payments ledger, newest first, for the money section.
+final paymentsProvider = FutureProvider<List<Payment>>((ref) async {
   final store = await ref.watch(storeProvider.future);
-  return store.drafts(status: DraftStatus.pending);
+  return store.payments(limit: 25);
+});
+
+/// Open deadlines, soonest first. [ProfileStore.deadlines] already sorts.
+final openDeadlinesProvider = FutureProvider<List<Deadline>>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  return store.deadlines();
 });
 
 /// Which engine answers. Persisted so the choice survives a restart.
@@ -418,7 +449,7 @@ final guideFactsProvider = FutureProvider<ScreenFacts>((ref) async {
   return ScreenFacts(
     clients: await store.clients(),
     fitness: await store.fitness(),
-    topics: await store.topics(),
+    received: await store.receivedTotals(),
     bmi: await store.number('bmi'),
     hasProfile: (all['nickname']?.isNotEmpty ?? false),
   );

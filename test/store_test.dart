@@ -169,61 +169,6 @@ void main() {
     });
   });
 
-  group('knowledge', () {
-    test('stores and reads back', () async {
-      await store.addTopic(const KnowledgeTopic(
-        topic: 'Rust',
-        progress: 0.25,
-        note: 'chapter 4',
-        updated: '2026-01-01',
-      ));
-      final t = (await store.topics()).single;
-      expect(t.topic, 'Rust');
-      expect(t.progress, 0.25);
-      expect(t.percent, 25);
-    });
-
-    test('updates progress', () async {
-      final id = await store.addTopic(
-          const KnowledgeTopic(topic: 'Rust', updated: '2026-01-01'));
-      final t = (await store.topics()).single;
-      await store.updateTopic(t.copyWith(id: id, progress: 0.9));
-      expect((await store.topics()).single.percent, 90);
-    });
-
-    test('deletes', () async {
-      final id = await store.addTopic(
-          const KnowledgeTopic(topic: 'x', updated: '2026-01-01'));
-      await store.deleteTopic(id);
-      expect(await store.topics(), isEmpty);
-    });
-  });
-
-  group('drafts', () {
-    test('a new draft is pending', () async {
-      final id = await store.addDraft(const Draft(title: 'Follow up', body: 'Hi there', created: '2026-01-01'));
-      final d = (await store.drafts()).single;
-      expect(d.id, id);
-      expect(d.status, DraftStatus.pending);
-    });
-
-    test('filters by status', () async {
-      final id = await store.addDraft(
-          const Draft(title: 'a', body: 'b', created: '2026-01-01'));
-      await store.setDraftStatus(id, DraftStatus.approved);
-      expect(await store.drafts(status: DraftStatus.pending), isEmpty);
-      expect(await store.drafts(status: DraftStatus.approved), hasLength(1));
-      expect(await store.drafts(), hasLength(1));
-    });
-
-    test('deletes', () async {
-      final id = await store.addDraft(
-          const Draft(title: 'a', body: 'b', created: '2026-01-01'));
-      await store.deleteDraft(id);
-      expect(await store.drafts(), isEmpty);
-    });
-  });
-
   group('chat', () {
     test('round trips in insertion order', () async {
       await store.addChat(const ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
@@ -258,11 +203,13 @@ void main() {
 
   group('wipe', () {
     test('clears every table', () async {
+      final clientId = await store.addClient(
+          const Client(name: 'x', created: '2026-01-01'));
       await store.put('nickname', 'kami');
       await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 80));
       await store.addClient(const Client(name: 'x', created: '2026-01-01'));
-      await store.addTopic(const KnowledgeTopic(topic: 'x', updated: '2026-01-01'));
-      await store.addDraft(const Draft(title: 'x', body: 'y', created: '2026-01-01'));
+      await store.addPayment(Payment(clientId: clientId, amount: 10, date: '2026-01-01'));
+      await store.addDeadline(const Deadline(title: 'x', due: '2026-01-01'));
       await store.addChat(const ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));
 
       await store.wipe();
@@ -270,8 +217,8 @@ void main() {
       expect(await store.all(), isEmpty);
       expect(await store.fitness(), isEmpty);
       expect(await store.clients(), isEmpty);
-      expect(await store.topics(), isEmpty);
-      expect(await store.drafts(), isEmpty);
+      expect(await store.payments(), isEmpty);
+      expect(await store.deadlines(openOnly: false), isEmpty);
       expect(await store.chat(), isEmpty);
     });
   });
@@ -337,6 +284,51 @@ void main() {
       expect(mine.map((p) => p.amount).toList(), [2, 1]);
       expect(await store.receivedFor(bilal.id!), 3);
     });
+
+    test('the grouped totals agree with the per-client figure', () async {
+      final other = Client(
+        id: await store.addClient(const Client(name: 'Sara', amount: 100)),
+        name: 'Sara',
+      );
+      await store.addPayment(Payment(clientId: bilal.id!, amount: 500, date: '2026-01-01'));
+      await store.addPayment(Payment(clientId: bilal.id!, amount: 250, date: '2026-02-01'));
+      await store.addPayment(Payment(clientId: other.id!, amount: 40, date: '2026-02-02'));
+
+      final totals = await store.receivedTotals();
+      expect(totals[bilal.id!], 750);
+      expect(totals[other.id!], 40);
+      // The screen derives every figure from this map, so it has to match the
+      // per-client query or the header and the rows will disagree.
+      expect(totals[bilal.id!], await store.receivedFor(bilal.id!));
+    });
+
+    test('a client with no payments is absent from the totals, not zero', () async {
+      await store.addClient(const Client(name: 'Never paid', amount: 100));
+      expect(await store.receivedTotals(), isEmpty);
+    });
+
+    test('undoing a payment gives the money back', () async {
+      await store.addPayment(Payment(clientId: bilal.id!, amount: 500, date: '2026-01-01'));
+      final payment = (await store.payments()).single;
+      expect(await store.balanceFor(bilal), 1500);
+
+      await store.deletePayment(payment.id!);
+
+      expect(await store.balanceFor(bilal), 2000);
+      expect(await store.payments(), isEmpty);
+      expect(await store.receivedTotals(), isEmpty);
+    });
+
+    test('the list is capped but the totals are not', () async {
+      for (var i = 0; i < 5; i++) {
+        await store.addPayment(
+            Payment(clientId: bilal.id!, amount: 10, date: '2026-01-0${i + 1}'));
+      }
+      expect(await store.payments(limit: 3), hasLength(3));
+      // The cap is for display only. A total that silently stopped counting
+      // past the page size would under-report money owed.
+      expect(await store.receivedTotals()[bilal.id!], 50);
+    });
   });
 
   group('deadlines', () {
@@ -358,6 +350,47 @@ void main() {
       expect(const Deadline(title: 'Late', due: '2026-01-01').isOverdueOn(today), isTrue);
       expect(const Deadline(title: 'Done', due: '2026-01-01', done: true).isOverdueOn(today), isFalse);
       expect(const Deadline(title: 'Today', due: '2026-01-10').isOverdueOn(today), isFalse);
+    });
+
+    test('completing one takes it out of the open list, and can be undone', () async {
+      final id = await store.addDeadline(const Deadline(title: 'Send invoice', due: '2026-01-05'));
+      expect(await store.deadlines(), hasLength(1));
+
+      await store.setDeadlineDone(id, true);
+      expect(await store.deadlines(), isEmpty);
+      expect(await store.deadlines(openOnly: false), hasLength(1));
+
+      await store.setDeadlineDone(id, false);
+      expect(await store.deadlines(), hasLength(1));
+    });
+
+    test('deletes', () async {
+      final id = await store.addDeadline(const Deadline(title: 'Dropped', due: '2026-01-05'));
+      await store.deleteDeadline(id);
+      expect(await store.deadlines(openOnly: false), isEmpty);
+    });
+  });
+
+  group('the balance rule', () {
+    // The single place the arithmetic is written, shared by the store and the
+    // screen. Both a query and a precomputed total feed it, so the two cannot
+    // disagree about what is owed.
+    test('is the invoice minus what has come in', () {
+      const c = Client(name: 'Bilal', amount: 2000);
+      expect(c.balanceWith(0), 2000);
+      expect(c.balanceWith(500), 1500);
+      expect(c.balanceWith(2000), 0);
+    });
+
+    test('never goes negative, because negative reads as money owed to you', () {
+      const c = Client(name: 'Bilal', amount: 2000);
+      expect(c.balanceWith(2500), 0);
+      expect(c.balanceWith(999999), 0);
+    });
+
+    test('is zero when there is nothing invoiced', () {
+      expect(const Client(name: 'Prospect').balanceWith(0), 0);
+      expect(const Client(name: 'Prospect').balanceWith(100), 0);
     });
   });
 }

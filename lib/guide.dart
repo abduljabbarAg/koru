@@ -25,20 +25,17 @@ class Guide {
     if (f.clients.isEmpty) {
       return 'No clients yet. Add one and I can start tracking what is paid and what is not.';
     }
-    final today = f.today;
-    final overdue = f.clients.where((c) => c.isOverdueOn(today)).toList();
-    if (overdue.isNotEmpty) {
-      final names = overdue.take(2).map((c) => c.name).join(' and ');
-      return overdue.length == 1
-          ? '$names is past the due date. That is the easiest money in this list.'
-          : '${overdue.length} are past the due date, starting with $names.';
-    }
+    final owing = f.clients.where((c) => f.balanceOf(c) > 0).toList()
+      ..sort((a, b) => f.balanceOf(b).compareTo(f.balanceOf(a)));
 
-    final unpaid = f.clients.where((c) => c.status == 'delivered').toList();
-    if (unpaid.isNotEmpty) {
-      final sum = unpaid.fold<double>(0, (a, c) => a + (c.amount ?? 0));
-      return 'Work is delivered and ${sum.toStringAsFixed(0)} AED is still unpaid. '
-          'Chasing it is worth more than landing anything new right now.';
+    if (owing.isNotEmpty) {
+      final top = owing.first;
+      if (owing.length == 1) {
+        return '${top.name} owes you ${f.balanceOf(top).toStringAsFixed(0)} AED. '
+            'That is the easiest money in this list.';
+      }
+      return '${owing.length} clients owe you ${f.outstanding.toStringAsFixed(0)} AED in '
+          'total, ${top.name} most of all. Chasing that beats landing anything new.';
     }
 
     final pipeline = f.clients.where((c) => c.status == 'lead' || c.status == 'active').length;
@@ -78,23 +75,6 @@ class Guide {
         'Trend is ${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg a week.';
   }
 
-  static String? forLearn(ScreenFacts f) {
-    if (f.topics.isEmpty) {
-      return 'Nothing on the list. Add whatever you are working through and I will keep it in front of you.';
-    }
-    final done = f.topics.where((t) => t.progress >= 1).length;
-    final active = f.topics.where((t) => t.progress > 0 && t.progress < 1).toList();
-    if (active.isEmpty) {
-      return '$done finished. Nothing in progress, which is a good moment to start one.';
-    }
-    // Descending, so "furthest along" means what it says. Sorting ascending
-    // here made Koru tell you to start with the topic you had barely touched.
-    active.sort((a, b) => b.progress.compareTo(a.progress));
-    final leader = active.first;
-    return '${active.length} in progress. "${leader.topic}" is furthest along at '
-        '${leader.percent}%. Finish that one before starting another.';
-  }
-
   static String? forSettings(ScreenFacts f) {
     if (!f.hasProfile) return null;
     if (f.fitness.isEmpty && f.clients.isEmpty) {
@@ -128,18 +108,25 @@ class ScreenFacts {
   ScreenFacts({
     this.clients = const [],
     this.fitness = const [],
-    this.topics = const [],
+    this.received = const {},
     this.bmi,
     this.hasProfile = false,
-    DateTime? today,
-  }) : today = today ?? DateTime.now();
+  });
 
   final List<Client> clients;
   final List<FitnessEntry> fitness;
-  final List<KnowledgeTopic> topics;
+
+  /// Money received per client id. Empty is treated as nothing received, so a
+  /// caller that has no ledger yet still gets sensible balances.
+  final Map<int, double> received;
   final double? bmi;
   final bool hasProfile;
-  final DateTime today;
+
+  /// What a client still owes. Zero for a client with no id or no amount.
+  double balanceOf(Client c) => c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
+
+  /// Everything anyone still owes, across all clients.
+  double get outstanding => clients.fold(0.0, (a, c) => a + balanceOf(c));
 
   bool get hasRecords => fitness.isNotEmpty || clients.isNotEmpty;
 

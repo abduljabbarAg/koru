@@ -13,7 +13,6 @@ import '../secrets.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'drafts.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -136,23 +135,6 @@ class SettingsScreen extends ConsumerWidget {
                   _Route('Crisis, diagnosis, legal ruling', 'Hand to a person'),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: 22),
-          const SectionLabel('Shortcuts'),
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.drafts_outlined, color: KoruColors.leaf),
-                  title: const Text('Drafts'),
-                  subtitle: const Text('What Koru wrote and is holding for you'),
-                  trailing: const Icon(Icons.chevron_right_rounded, color: KoruColors.inkFaint),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const DraftsScreen()),
-                  ),
-                ),
-              ],
             ),
           ),
           const SizedBox(height: 22),
@@ -312,8 +294,9 @@ class SettingsScreen extends ConsumerWidget {
     await ref.read(chatProvider.notifier).clear();
     ref.invalidate(clientsProvider);
     ref.invalidate(fitnessProvider);
-    ref.invalidate(topicsProvider);
-    ref.invalidate(draftsProvider);
+    ref.invalidate(paymentsProvider);
+    ref.invalidate(receivedTotalsProvider);
+    ref.invalidate(openDeadlinesProvider);
     ref.invalidate(packetProvider);
     ref.invalidate(cloudKeyProvider);
     ref.invalidate(heightProvider);

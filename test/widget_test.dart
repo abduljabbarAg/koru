@@ -4,9 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/handoff.dart';
 import 'package:koru/main.dart';
 import 'package:koru/mascot/mascot.dart';
+import 'package:koru/models.dart';
 import 'package:koru/onboarding.dart';
+import 'package:koru/screens/business.dart';
 import 'package:koru/screens/chat.dart';
-import 'package:koru/screens/knowledge.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
 import 'package:koru/store.dart';
@@ -525,27 +526,151 @@ void main() {
     });
   });
 
-  group('KnowledgeScreen', () {
-    testWidgets('shows an empty state that can start a topic', (tester) async {
-      await pumpApp(tester, const KnowledgeScreen());
+  group('BusinessScreen', () {
+    /// Adds a client and returns it, from inside the fake clock.
+    Future<Client> seedClient(
+      WidgetTester tester, {
+      required String name,
+      double? amount,
+      String status = 'delivered',
+      String? due,
+    }) async {
+      late Client created;
+      await seed(tester, () async {
+        final id = await store.addClient(Client(
+          name: name,
+          status: status,
+          amount: amount,
+          due: due,
+          created: '2026-01-01',
+        ));
+        created = Client(id: id, name: name, status: status, amount: amount, due: due);
+      });
+      return created;
+    }
 
-      expect(find.text('Nothing on the list'), findsOneWidget);
-      expect(find.text('Add a topic'), findsOneWidget);
+    Future<void> open(WidgetTester tester) async {
+      await pumpApp(tester, const BusinessScreen());
+      await pumpFrames(tester);
+    }
+
+    testWidgets('shows what is owed rather than counting statuses', (tester) async {
+      await seedClient(tester, name: 'Bilal', amount: 2000);
+      await open(tester);
+
+      expect(find.text('2000'), findsWidgets);
+      expect(find.text('AED, 1 to chase'), findsOneWidget);
     });
 
-    testWidgets('adding a topic shows progress', (tester) async {
-      await pumpApp(tester, const KnowledgeScreen());
+    testWidgets('a part payment leaves the client outstanding, not settled',
+        (tester) async {
+      final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
+      await open(tester);
 
-      await tester.tap(find.text('Add a topic'));
+      await tester.tap(find.text('Mark paid'));
       await pumpFrames(tester);
 
-      await tester.enterText(find.widgetWithText(TextField, 'Topic'), 'Rust');
-      await tester.tap(find.text('Add topic'));
+      // Defaults to the balance, so the common case is one tap.
+      expect(find.text('Payment from Bilal'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '2000'), findsOneWidget);
+
+      await tester.enterText(find.widgetWithText(TextField, '2000'), '500');
+      await tester.tap(find.text('Record payment'));
       await pumpFrames(tester);
 
-      expect(find.text('Rust'), findsOneWidget);
-      // Once on the topic's pill, once on the average tile.
-      expect(find.text('0%'), findsNWidgets(2));
+      final payments = await tester.runAsync(() => store.payments(clientId: bilal.id));
+      expect(payments!.single.amount, 500);
+
+      // Still owed, so the client must not have been marked settled.
+      expect(find.text('1500 AED OUTSTANDING'), findsOneWidget);
+      expect(find.textContaining('still outstanding'), findsOneWidget);
+    });
+
+    testWidgets('settling the balance marks the client paid', (tester) async {
+      final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
+      await open(tester);
+
+      await tester.tap(find.text('Mark paid'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Record payment'));
+      await pumpFrames(tester);
+
+      final client =
+          await tester.runAsync(() async => (await store.clients()).single);
+      expect(client!.status, 'paid');
+      expect(await tester.runAsync(() => store.balanceFor(bilal)), 0);
+      expect(find.text('AED, all clear'), findsOneWidget);
+    });
+
+    testWidgets('the invoice survives a payment being recorded', (tester) async {
+      // The old flow overwrote the invoiced amount with whatever was typed in,
+      // so recording a part payment destroyed the original figure.
+      final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
+      await open(tester);
+
+      await tester.tap(find.text('Mark paid'));
+      await pumpFrames(tester);
+      await tester.enterText(find.widgetWithText(TextField, '2000'), '500');
+      await tester.tap(find.text('Record payment'));
+      await pumpFrames(tester);
+
+      final client =
+          await tester.runAsync(() async => (await store.clients()).single);
+      expect(client!.amount, 2000);
+      expect(await tester.runAsync(() => store.balanceFor(bilal)), 1500);
+    });
+
+    testWidgets('an empty amount records nothing rather than inventing one',
+        (tester) async {
+      final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
+      await open(tester);
+
+      await tester.tap(find.text('Mark paid'));
+      await pumpFrames(tester);
+      await tester.enterText(find.widgetWithText(TextField, '2000'), '');
+      await tester.tap(find.text('Record payment'));
+      await pumpFrames(tester);
+
+      expect(await tester.runAsync(() => store.payments(clientId: bilal.id)), isEmpty);
+    });
+
+    testWidgets('a recorded payment can be undone', (tester) async {
+      final bilal = await seedClient(tester, name: 'Bilal', amount: 2000);
+      await open(tester);
+
+      await tester.tap(find.text('Mark paid'));
+      await pumpFrames(tester);
+      await tester.enterText(find.widgetWithText(TextField, '2000'), '750');
+      await tester.tap(find.text('Record payment'));
+      await pumpFrames(tester);
+
+      expect(find.text('750 AED  ·  Bilal'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Undo this payment'));
+      await pumpFrames(tester);
+
+      expect(await tester.runAsync(() => store.payments()), isEmpty);
+      expect(find.text('2000'), findsWidgets);
+    });
+
+    testWidgets('deadlines can be added and ticked off', (tester) async {
+      await seedClient(tester, name: 'Bilal', amount: 100);
+      await open(tester);
+
+      expect(find.text('Nothing scheduled'), findsOneWidget);
+
+      await tester.tap(find.text('Add'));
+      await pumpFrames(tester);
+      await tester.enterText(find.widgetWithText(TextField, 'What'), 'Send invoice');
+      await tester.tap(find.text('Add deadline'));
+      await pumpFrames(tester);
+
+      expect(find.textContaining('Send invoice'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Mark Send invoice done'));
+      await pumpFrames(tester);
+
+      expect(await tester.runAsync(() => store.deadlines()), isEmpty);
     });
   });
 

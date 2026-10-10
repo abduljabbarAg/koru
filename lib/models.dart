@@ -178,6 +178,23 @@ class Client {
 
   DateTime? get parsedDue => due == null ? null : DateTime.tryParse(due!);
 
+  /// Outstanding balance once [received] has come off the invoiced amount.
+  ///
+  /// Floored at zero, because being paid more than invoiced means nothing is
+  /// owed and a negative figure reads as money owed to the freelancer. Also zero
+  /// when there is no amount on file, since there is nothing to be behind on.
+  ///
+  /// This is the only place the rule is written. The store has a version that
+  /// queries the ledger and passes the total here, and the screen has one that
+  /// passes a total it already has, because a balance computed two ways is a
+  /// balance that will eventually disagree with itself.
+  double balanceWith(double received) {
+    final invoiced = amount ?? 0;
+    if (invoiced <= 0) return 0;
+    final balance = invoiced - received;
+    return balance < 0 ? 0 : balance;
+  }
+
   /// Unpaid work that is past its date. Takes [today] rather than reading the
   /// clock so the answer is testable and the UI stays the only place that knows
   /// what time it is.
@@ -188,127 +205,6 @@ class Client {
     final midnight = DateTime(today.year, today.month, today.day);
     return d.isBefore(midnight);
   }
-}
-
-/// A message Koru prepared and is waiting for the user to approve.
-///
-/// Onboarding has always promised "drafts, never sends". Nothing ever
-/// implemented it: there was no table, no screen, and no code path that produced
-/// one. This is that feature.
-enum DraftStatus { pending, approved, discarded }
-
-class Draft {
-  final int? id;
-  final String title;
-  final String body;
-  final String channel;
-  final DraftStatus status;
-  final String created;
-
-  const Draft({
-    this.id,
-    required this.title,
-    required this.body,
-    this.channel = 'note',
-    this.status = DraftStatus.pending,
-    this.created = '',
-  });
-
-  Map<String, Object?> toMap() => {
-        if (id != null) 'id': id,
-        'title': title,
-        'body': body,
-        'channel': channel,
-        'status': status.name,
-        'created': created,
-      };
-
-  factory Draft.fromMap(Map<String, Object?> m) => Draft(
-        id: m['id'] as int?,
-        title: m['title'] as String? ?? '',
-        body: m['body'] as String? ?? '',
-        channel: m['channel'] as String? ?? 'note',
-        status: DraftStatus.values.firstWhere(
-          (s) => s.name == m['status'],
-          orElse: () => DraftStatus.pending,
-        ),
-        created: m['created'] as String? ?? '',
-      );
-
-  Draft copyWith({int? id, DraftStatus? status}) => Draft(
-        id: id ?? this.id,
-        title: title,
-        body: body,
-        channel: channel,
-        status: status ?? this.status,
-        created: created,
-      );
-
-  /// First line, for list rows.
-  String get preview {
-    final trimmed = body.trim().replaceAll(RegExp(r'\s+'), ' ');
-    return trimmed.length <= 90 ? trimmed : '${trimmed.substring(0, 89)}...';
-  }
-}
-
-/// Something the user is learning or building, with progress on it.
-class KnowledgeTopic {
-  final int? id;
-  final String topic;
-  final double progress;
-  final String? note;
-  final String updated;
-
-  const KnowledgeTopic({
-    this.id,
-    required this.topic,
-    this.progress = 0,
-    this.note,
-    this.updated = '',
-  });
-
-  Map<String, Object?> toMap() => {
-        if (id != null) 'id': id,
-        'topic': topic,
-        'progress': progress,
-        if (note != null) 'note': note,
-        'updated': updated,
-      };
-
-  /// Row for an UPDATE. Writes nulls so a cleared note is actually cleared.
-  Map<String, Object?> toUpdateMap() => {
-        'topic': topic,
-        'progress': progress,
-        'note': note,
-        'updated': updated,
-      };
-
-  factory KnowledgeTopic.fromMap(Map<String, Object?> m) => KnowledgeTopic(
-        id: m['id'] as int?,
-        topic: m['topic'] as String? ?? '',
-        progress: (m['progress'] as num?)?.toDouble() ?? 0,
-        note: m['note'] as String?,
-        updated: m['updated'] as String? ?? '',
-      );
-
-  KnowledgeTopic copyWith({
-    int? id,
-    String? topic,
-    double? progress,
-    String? note,
-    String? updated,
-    bool clearNote = false,
-  }) =>
-      KnowledgeTopic(
-        id: id ?? this.id,
-        topic: topic ?? this.topic,
-        progress: progress ?? this.progress,
-        note: clearNote ? null : (note ?? this.note),
-        updated: updated ?? this.updated,
-      );
-
-  /// Progress as a whole percentage, clamped. The column is a 0..1 fraction.
-  int get percent => (progress.clamp(0.0, 1.0) * 100).round();
 }
 
 /// Money actually received against a client.
