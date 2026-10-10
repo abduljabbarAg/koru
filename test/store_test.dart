@@ -341,4 +341,89 @@ void main() {
       expect(const Client(name: 'Prospect').balanceWith(100), 0);
     });
   });
+
+  group('retainers', () {
+    test('a retainer survives the round trip', () async {
+      final id = await store.addClient(const Client(
+        name: 'Retainer Co',
+        status: 'active',
+        amount: 2500,
+        monthly: 2500,
+        created: '2026-01-01',
+      ));
+      final c = (await store.clients()).single;
+      expect(c.id, id);
+      expect(c.monthly, 2500);
+      expect(c.isRetainer, isTrue);
+    });
+
+    test('a client with no retainer is not one', () async {
+      await store.addClient(const Client(name: 'One off', amount: 100));
+      final c = (await store.clients()).single;
+      expect(c.monthly, isNull);
+      expect(c.isRetainer, isFalse);
+    });
+
+    test('a zero monthly rate is not a retainer', () {
+      expect(const Client(name: 'x', monthly: 0).isRetainer, isFalse);
+    });
+
+    test('a retainer does not change the invoice balance', () async {
+      // A retainer has no invoice behind it, so folding it into the balance
+      // would invent money owed that nobody billed.
+      final id = await store.addClient(const Client(
+        name: 'Retainer Co',
+        status: 'active',
+        amount: 2500,
+        monthly: 2500,
+      ));
+      await store.addPayment(Payment(clientId: id, amount: 2500, date: '2026-01-15'));
+      final c = (await store.clients()).single;
+      expect(await store.balanceFor(c), 0);
+    });
+
+    test('next due is a month after the last payment', () async {
+      final id = await store.addClient(const Client(
+        name: 'Retainer Co',
+        status: 'active',
+        amount: 2500,
+        monthly: 2500,
+      ));
+      await store.addPayment(Payment(clientId: id, amount: 2500, date: '2026-01-15'));
+      final c = (await store.clients()).single;
+
+      expect(await store.lastPaymentOn(id), DateTime(2026, 1, 15));
+      expect(await store.nextRetainerDue(c), DateTime(2026, 2, 15));
+    });
+
+    test('next due rolls into the following year', () async {
+      final id = await store.addClient(const Client(
+        name: 'Retainer Co',
+        status: 'active',
+        amount: 2500,
+        monthly: 2500,
+      ));
+      await store.addPayment(Payment(clientId: id, amount: 2500, date: '2026-12-15'));
+      final c = (await store.clients()).single;
+      expect(await store.nextRetainerDue(c), DateTime(2027, 1, 15));
+    });
+
+    test('a retainer never paid has no next due date', () async {
+      final id = await store.addClient(const Client(
+        name: 'Retainer Co',
+        status: 'active',
+        monthly: 2500,
+      ));
+      final c = (await store.clients()).singleWhere((x) => x.id == id);
+      expect(await store.lastPaymentOn(id), isNull);
+      expect(await store.nextRetainerDue(c), isNull);
+    });
+
+    test('a non retainer never reports a due date', () async {
+      final id = await store.addClient(const Client(name: 'One off', amount: 100));
+      await store.addPayment(Payment(clientId: id, amount: 100, date: '2026-01-15'));
+      final c = (await store.clients()).single;
+      expect(await store.nextRetainerDue(c), isNull);
+    });
+  });
 }

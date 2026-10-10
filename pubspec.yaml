@@ -13,6 +13,9 @@ dependencies:
   sqflite: ^2.3.3
   path_provider: ^2.1.4
   http: ^1.2.1
+  # Only used to hand a written backup file to the share sheet, so the user can
+  # keep a copy somewhere the app cannot reach.
+  share_plus: ^7.2.2
 
 dev_dependencies:
   flutter_test:

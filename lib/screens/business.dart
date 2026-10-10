@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'client_detail.dart';
 import '../guide.dart';
 import '../models.dart';
 import '../state.dart';
@@ -38,6 +39,7 @@ class BusinessScreen extends ConsumerWidget {
     final amount = TextEditingController(text: existing?.amount?.toStringAsFixed(0) ?? '');
     final source = TextEditingController(text: existing?.leadSource ?? '');
     final note = TextEditingController(text: existing?.note ?? '');
+    final monthly = TextEditingController(text: existing?.monthly?.toStringAsFixed(0) ?? '');
     var status = existing?.status ?? 'lead';
     DateTime? due = existing?.parsedDue;
 
@@ -75,6 +77,16 @@ class BusinessScreen extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: monthly,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Monthly retainer',
+              suffixText: 'AED',
+              helperText: 'Only if they pay you the same amount every month.',
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -134,6 +146,7 @@ class BusinessScreen extends ConsumerWidget {
         leadSource: source.text.trim().isEmpty ? null : source.text.trim(),
         note: note.text.trim().isEmpty ? null : note.text.trim(),
         created: existing?.created ?? DateTime.now().toIso8601String(),
+        monthly: double.tryParse(monthly.text.trim()),
       );
       if (existing == null) {
         await store.addClient(record);
@@ -384,6 +397,13 @@ class BusinessScreen extends ConsumerWidget {
           final underway = list
               .where((c) => c.status == 'active' || c.status == 'delivered')
               .length;
+          // Leads and active work, oldest first. Sorted by age because the
+          // useful question about a prospect is how long it has been sitting
+          // there, and a list in creation order buries that.
+          final pipeline = list
+              .where((c) => c.status == 'lead' || c.status == 'active')
+              .toList()
+            ..sort((a, b) => a.created.compareTo(b.created));
           final overdue = owing.where((c) => c.isOverdueOn(today)).toList();
           final byId = {for (final c in list) if (c.id != null) c.id!: c};
 
@@ -478,6 +498,12 @@ Row(
                 const SectionLabel('Recent payments'),
                 const SizedBox(height: 8),
                 ...payments.map((p) => _paymentRow(ref, p, byId[p.clientId])),
+              ],
+              if (pipeline.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                SectionLabel('Pipeline (${pipeline.length})'),
+                const SizedBox(height: 8),
+                ...pipeline.map((c) => _pipelineRow(context, ref, c, today)),
               ],
               const SizedBox(height: 18),
               const SectionLabel('Clients'),
@@ -574,6 +600,61 @@ Row(
             message,
             style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// A prospect, with how long it has been sitting.
+  Widget _pipelineRow(BuildContext context, WidgetRef ref, Client c, DateTime today) {
+    final born = DateTime.tryParse(c.created);
+    final days = born == null ? null : today.difference(born).inDays;
+    final stale = days != null && days >= 21;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+      decoration: BoxDecoration(
+        color: KoruColors.surface,
+        borderRadius: BorderRadius.circular(KoruRadius.card),
+        border: Border.all(color: stale ? KoruColors.gold : KoruColors.line),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: c.id == null
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ClientDetailScreen(clientId: c.id!),
+                        ),
+                      ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(c.name,
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (c.amount != null) '${money(c.amount!)} AED',
+                      if (days != null) days == 0 ? 'added today' : 'added $days days ago',
+                    ].join('  ·  '),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: stale ? KoruColors.gold : KoruColors.inkFaint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (stale)
+            const KoruPill(
+              label: 'GOING COLD',
+              color: KoruColors.gold,
+              background: KoruColors.goldSoft,
+            ),
         ],
       ),
     );
@@ -702,17 +783,29 @@ Row(
           Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(c.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                    const SizedBox(height: 3),
-                    Text(
-                      meta.join('  ·  '),
-                      style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12.5),
-                    ),
-                  ],
+                child: InkWell(
+                  onTap: c.id == null
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ClientDetailScreen(clientId: c.id!),
+                            ),
+                          ),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c.name,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        meta.join('  ·  '),
+                        style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               PopupMenuButton<String>(
@@ -792,14 +885,4 @@ Row(
       ),
     );
   }
-}
-
-/// Whole units, no decimals.
-///
-/// Balances are compared and summed constantly and a stray cent should never be
-/// the reason two figures that are the same money look different.
-String money(double v) {
-  if (v.abs() >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
-  if (v.abs() >= 10000) return '${(v / 1000).toStringAsFixed(0)}k';
-  return v.toStringAsFixed(0);
 }

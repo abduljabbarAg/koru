@@ -17,7 +17,7 @@ class ProfileStore {
 
   final Database _db;
 
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -28,10 +28,12 @@ class ProfileStore {
         await _createV1(d);
         if (v >= 2) await _migrateToV2(d);
         if (v >= 3) await _migrateToV3(d);
+        if (v >= 4) await _migrateToV4(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
         if (from < 3) await _migrateToV3(d);
+        if (from < 4) await _migrateToV4(d);
       },
     );
     return ProfileStore(db);
@@ -100,6 +102,15 @@ class ProfileStore {
         done INTEGER NOT NULL DEFAULT 0
       )
     ''');
+  }
+
+  /// A retainer, meaning money that arrives every month without a new invoice.
+  ///
+  /// Additive on purpose, and nullable so every existing client is unaffected:
+  /// almost nobody has a retainer, and a default of 0 would make a zero-rate
+  /// client look like a free one.
+  static Future<void> _migrateToV4(Database d) async {
+    await d.execute('ALTER TABLE business ADD COLUMN monthly REAL');
   }
 
   /// Chat history, added when onboarding already promised a companion that
@@ -253,6 +264,33 @@ class ProfileStore {
   }
 
   Future<int> addPayment(Payment p) => _db.insert('payments', p.toMap());
+
+  /// When this client last paid, or null if they never have.
+  ///
+  /// A retainer is judged on whether the money is turning up, not on an invoice
+  /// balance, so this is the only number that says whether a retainer is being
+  /// honoured.
+  Future<DateTime?> lastPaymentOn(int clientId) async {
+    final r = await _db.rawQuery(
+      'SELECT MAX(date) AS last FROM payments WHERE client_id = ?',
+      [clientId],
+    );
+    final value = r.first['last'] as String?;
+    return value == null ? null : DateTime.tryParse(value);
+  }
+
+  /// When a retainer is next due, or null when it is not a retainer or has never
+  /// been paid.
+  ///
+  /// A month after the last payment, not a fixed day of the month, because most
+  /// retainers are billed on whatever day the relationship started and a fixed
+  /// date would drift.
+  Future<DateTime?> nextRetainerDue(Client c) async {
+    if (!c.isRetainer || c.id == null) return null;
+    final last = await lastPaymentOn(c.id!);
+    if (last == null) return null;
+    return DateTime(last.year, last.month + 1, last.day);
+  }
 
   /// Withdraws a payment that was recorded by mistake.
   ///

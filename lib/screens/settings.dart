@@ -2,7 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../backup.dart';
 import '../cloud.dart';
 import '../cloud_providers.dart';
 import '../engine.dart';
@@ -145,6 +148,14 @@ class SettingsScreen extends ConsumerWidget {
             child: Column(
               children: [
                 ListTile(
+                  leading: const Icon(Icons.ios_share_outlined, color: KoruColors.leaf),
+                  title: const Text('Back up my data'),
+                  subtitle: const Text(
+                      'Saves a readable copy of your clients, payments and deadlines'),
+                  onTap: () => _backup(context, ref),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.delete_sweep_outlined, color: KoruColors.clay),
                   title: const Text('Clear conversation'),
                   subtitle: const Text('Keeps your profile, clients and logs'),
@@ -254,6 +265,24 @@ class SettingsScreen extends ConsumerWidget {
     ref.invalidate(packetProvider);
     ref.invalidate(guideFactsProvider);
     if (context.mounted) toast(context, 'Context updated');
+  }
+
+  /// Writes a backup and hands it to the share sheet.
+  ///
+  /// Sharing is what makes this useful rather than decorative. A file sitting in
+  /// private app storage is one uninstall away from gone, and the whole
+  /// promise of a local-only app is that this data matters.
+  Future<void> _backup(BuildContext context, WidgetRef ref) async {
+    try {
+      final store = await ref.read(storeProvider.future);
+      final dir = await getTemporaryDirectory();
+      final file = await Backup.writeTo(store, dir);
+      final path = file.path;
+      if (context.mounted) toast(context, 'Backup saved');
+      await Share.shareXFiles([XFile(path, mimeType: 'application/json')]);
+    } catch (e) {
+      if (context.mounted) toast(context, 'Could not back up: $e');
+    }
   }
 
   /// Clears the key too. The old version left it in memory, so "delete all local

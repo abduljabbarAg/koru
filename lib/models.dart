@@ -19,6 +19,15 @@ class Client {
   final String? note;
   final String created;
 
+  /// Money that arrives every month by standing agreement, rather than against
+  /// a fresh invoice. Null means this is not a retainer.
+  ///
+  /// Deliberately separate from [amount]. A retainer has no invoice to be
+  /// behind on, so folding it into the balance would invent money owed that
+  /// nobody has invoiced, and a retainer paid early would look like a negative
+  /// balance owed back.
+  final double? monthly;
+
   const Client({
     this.id,
     required this.name,
@@ -28,7 +37,10 @@ class Client {
     this.leadSource,
     this.note,
     this.created = '',
+    this.monthly,
   });
+
+  bool get isRetainer => monthly != null && monthly! > 0;
 
   Map<String, Object?> toMap() => {
         if (id != null) 'id': id,
@@ -39,6 +51,7 @@ class Client {
         if (leadSource != null) 'lead_source': leadSource,
         if (note != null) 'note': note,
         'created': created,
+        if (monthly != null) 'monthly': monthly,
       };
 
   /// Row for an UPDATE.
@@ -54,6 +67,7 @@ class Client {
         'lead_source': leadSource,
         'note': note,
         'created': created,
+        'monthly': monthly,
       };
 
   factory Client.fromMap(Map<String, Object?> m) => Client(
@@ -65,6 +79,7 @@ class Client {
         leadSource: m['lead_source'] as String?,
         note: m['note'] as String?,
         created: m['created'] as String? ?? '',
+        monthly: (m['monthly'] as num?)?.toDouble(),
       );
 
   Client copyWith({
@@ -76,10 +91,12 @@ class Client {
     String? leadSource,
     String? note,
     String? created,
+    double? monthly,
     bool clearDue = false,
     bool clearNote = false,
     bool clearAmount = false,
     bool clearSource = false,
+    bool clearMonthly = false,
   }) =>
       Client(
         id: id ?? this.id,
@@ -90,6 +107,7 @@ class Client {
         leadSource: clearSource ? null : (leadSource ?? this.leadSource),
         note: clearNote ? null : (note ?? this.note),
         created: created ?? this.created,
+        monthly: clearMonthly ? null : (monthly ?? this.monthly),
       );
 
   DateTime? get parsedDue => due == null ? null : DateTime.tryParse(due!);

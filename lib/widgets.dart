@@ -578,3 +578,13 @@ class KoruGuideBanner extends StatelessWidget {
     );
   }
 }
+
+/// Whole units, no decimals.
+///
+/// Balances are compared and summed constantly and a stray cent should never be
+/// the reason two figures that are the same money look different.
+String money(double v) {
+  if (v.abs() >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+  if (v.abs() >= 10000) return '${(v / 1000).toStringAsFixed(0)}k';
+  return v.toStringAsFixed(0);
+}
