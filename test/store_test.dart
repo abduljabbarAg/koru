@@ -344,7 +344,7 @@ void main() {
       final id = await store.addClient(const Client(name: 'Sara'));
       await store.addDeadline(Deadline(clientId: id, title: 'Late', due: '2026-03-01'));
       await store.addDeadline(Deadline(clientId: id, title: 'Soon', due: '2026-01-05'));
-      await store.addDeadline(Deadline(clientId: null, title: 'Tax', due: '2026-02-01'));
+      await store.addDeadline(const Deadline(title: 'Tax', due: '2026-02-01'));
 
       final open = await store.deadlines();
       expect(open.map((d) => d.title).toList(), ['Soon', 'Tax', 'Late']);
