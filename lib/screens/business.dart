@@ -36,7 +36,9 @@ class BusinessScreen extends ConsumerWidget {
       };
 
   Future<void> _edit(BuildContext context, WidgetRef ref, {Client? existing}) async {
-    final currency = await ref.read(currencyProvider.future);
+    // Read before the sheet opens, because the sheet is shown with this context
+    // and using it after an await is exactly the thing the linter warns about.
+    final currency = ref.read(currencyProvider).valueOrNull ?? defaultCurrency;
     final name = TextEditingController(text: existing?.name ?? '');
     final amount = TextEditingController(text: existing?.amount?.toStringAsFixed(0) ?? '');
     final source = TextEditingController(text: existing?.leadSource ?? '');
@@ -84,7 +86,7 @@ class BusinessScreen extends ConsumerWidget {
           TextField(
             controller: monthly,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Monthly retainer',
               suffixText: currency.symbol,
               helperText: 'Only if they pay you the same amount every month.',
@@ -191,6 +193,8 @@ class BusinessScreen extends ConsumerWidget {
     Client c,
     double alreadyReceived,
   ) async {
+    final store = await ref.read(storeProvider.future);
+    final currency = ref.read(currencyProvider).valueOrNull ?? defaultCurrency;
     final balance = c.balanceWith(alreadyReceived);
 
     // Defaults to what is outstanding, not to the invoice. Offering the full
@@ -259,7 +263,6 @@ class BusinessScreen extends ConsumerWidget {
       return;
     }
 
-    final store = await ref.read(storeProvider.future);
     await store.addPayment(Payment(
       clientId: c.id!,
       amount: amount,

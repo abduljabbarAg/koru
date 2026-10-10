@@ -1,4 +1,4 @@
-import 'flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'state.dart';
 
@@ -47,7 +47,7 @@ const kCurrencies = <Currency>[
   Currency('AUD', r'A$', 'Australian dollar'),
 ];
 
-const defaultCurrency = kCurrencies.first;
+const defaultCurrency = Currency('AED', 'AED', 'UAE dirham');
 
 Currency currencyFromCode(String? code) {
   if (code == null) return defaultCurrency;
