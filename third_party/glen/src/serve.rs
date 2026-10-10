@@ -1,6 +1,6 @@
 // serve.rs - OpenAI compatible HTTP server with KV reuse across turns. Zero deps.
 use crate::json::{self, Json};
-use crate::{forward, forward_batch, tok, tools, Cache, Model, Tmp, TmpB};
+use crate::{cache_new, forward, forward_batch, tok, tools, Cache, Model, Tmp, TmpB};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -11,18 +11,44 @@ struct State {
     tpb: TmpB,
 }
 
+/// Pulls the checkpoint into the page cache before anyone can send a request.
+///
+/// The first forward pass streams the whole model off storage. Measured on the
+/// target phone that dominated: a 44 token prefill took 5.30s cold against a
+/// decode rate of 1.59 tok/s, which is prefill running far slower than it
+/// should. It is I/O, not arithmetic, and it is charged to whichever unlucky
+/// question arrives first. Paying it here moves the wait to start-up, where it
+/// is expected and can show progress, instead of onto the user's first question.
+fn warm(m: &Model, bpe: &tok::Bpe, tpb: &mut TmpB) {
+    let t0 = Instant::now();
+    let ids = tok::encode(bpe, "warm");
+    if ids.is_empty() {
+        return;
+    }
+    let kv_dim = m.n_kv * m.head_dim;
+    // Scratch caches, so the live KV state a conversation is building up is
+    // never written to by a throwaway pass.
+    let mut scratch: Vec<Cache> = (0..m.n_layer)
+        .map(|_| cache_new(ids.len(), kv_dim, false))
+        .collect();
+    let _ = forward_batch(m, &ids, 0, &mut scratch, tpb, m.n_layer);
+    println!("Glen warm complete in {:.2}s", t0.elapsed().as_secs_f64());
+}
+
 pub fn run(m: &Model, bpe: &tok::Bpe, caches: &mut [Cache], tmp: &mut Tmp, max_pos: usize, port: u16) {
+    let mut st = State {
+        pos: 0,
+        prev: Vec::new(),
+        tpb: TmpB::new(256, m.hidden, m.n_head * m.head_dim, m.n_kv * m.head_dim, m.ff, max_pos),
+    };
+    warm(m, bpe, &mut st.tpb);
+
     let listener = TcpListener::bind(("127.0.0.1", port))
         .unwrap_or_else(|e| panic!("bind 127.0.0.1:{} failed: {}", port, e));
     println!("Glen serve ready on http://127.0.0.1:{}", port);
     println!("  GET  /v1/models");
     println!("  GET  /health");
     println!("  POST /v1/chat/completions  (stream true or false)");
-    let mut st = State {
-        pos: 0,
-        prev: Vec::new(),
-        tpb: TmpB::new(256, m.hidden, m.n_head * m.head_dim, m.n_kv * m.head_dim, m.ff, max_pos),
-    };
     for conn in listener.incoming() {
         match conn {
             Ok(s) => {

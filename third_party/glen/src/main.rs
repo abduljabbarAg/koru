@@ -338,7 +338,7 @@ struct Cache {
     vd: Vec<f32>,
 }
 
-fn cache_new(max_pos: usize, kv_dim: usize, q8: bool) -> Cache {
+pub fn cache_new(max_pos: usize, kv_dim: usize, q8: bool) -> Cache {
     let nblk = kv_dim / 32;
     if q8 {
         Cache {
@@ -1477,9 +1477,16 @@ fn main() {
         return;
     }
     if user == "--bench" {
-        let cols = 896usize;
+        // Shapes come from the loaded checkpoint, not from Qwen2.5-0.5B.
+        // Hardcoding them made --bench panic on every other model, which is
+        // worse than a wrong number: it made a different checkpoint impossible
+        // to benchmark at all.
+        let (cols, rows) = match m.g.tensors.get("blk.0.ffn_gate.weight") {
+            Some(t) => (t.dims[0] as usize, t.dims[1] as usize),
+            None => (m.hidden, m.ff),
+        };
         let x: Vec<f32> = (0..cols).map(|i| i as f32 * 0.001 - 0.45).collect();
-        let mut y = vec![0f32; 4864];
+        let mut y = vec![0f32; rows];
         for _ in 0..3 {
             m.mat("blk.0.ffn_gate.weight", &x, &mut y);
         }
@@ -1488,7 +1495,7 @@ fn main() {
         for _ in 0..it {
             m.mat("blk.0.ffn_gate.weight", &x, &mut y);
         }
-        println!("bench gate4864x896 Q5_0: {:.2}ms/call over {} iters", t0.elapsed().as_secs_f64() * 1e3 / it as f64, it);
+        println!("bench gate{}x{} Q5_0: {:.2}ms/call over {} iters", rows, cols, t0.elapsed().as_secs_f64() * 1e3 / it as f64, it);
         let kvd1 = m.n_kv * m.head_dim;
         let mut bcaches: Vec<Cache> = (0..m.n_layer).map(|_| cache_new(8, kvd1, false)).collect();
         let mut btmp = Tmp { x: vec![0.0; m.hidden], log: vec![0.0; m.g.tensors.get("token_embd.weight").map(|t| t.dims[1] as usize).unwrap_or(151936)], rc: vec![(0.0, 0.0); m.head_dim / 2], h1: vec![0.0; m.hidden], h2: vec![0.0; m.hidden.max(m.ff)], q: vec![0.0; m.n_head * m.head_dim], k: vec![0.0; kvd1], v: vec![0.0; kvd1], o: vec![0.0; m.n_head * m.head_dim], g: vec![0.0; m.ff], u: vec![0.0; m.ff], sc: vec![0.0; 8] };
