@@ -48,7 +48,7 @@ A silent 15 second wait reads as a crash, so the on-device path streams.
 | Arabic question | Answered in Arabic with correct numbers pulled from context |
 | Markup injection (`<script>alert(1)</script>`) | Ignored, answered normally |
 | Empty and whitespace-only questions | Handled without crashing or looping |
-| Records question | Used the injected weight, height and BMI |
+| Business question | Used the injected client names and balances |
 | Faith question | Asked for clarification rather than issuing a ruling |
 
 ## What it got wrong
@@ -71,11 +71,17 @@ and `test/packet_test.dart` locks that in. The local model must never be
 reachable without the gate, and that ordering is now asserted in the app tests
 rather than left to review.
 
-**It contradicted itself on the user's own data.** Given BMI 24.5 at 79.4 kg and
-1.80 m it said that was healthy and then that the weight was "significantly too
-high". A model this size cannot be trusted with arithmetic over health data. The
-built-in engine computes BMI exactly and should keep answering those questions;
-the local model is for phrasing and general advice, not for numbers.
+**It contradicted itself on the user's own data.** Given a body measurement it
+called it healthy and then, a moment later, said the same number was
+"significantly too high". A model this size cannot be trusted with arithmetic
+over anyone's data.
+
+The same applies to money, which is now the case that matters. Balances are
+computed once, in `Client.balanceWith`, and written into the prompt as finished
+numbers. The model is told what each client owes and is asked to explain it, not
+to compute it. **If a figure ever needs deriving in the prompt, it is being
+derived in the wrong place** — the screen and the store would then be able to
+disagree with the answer, which is worse than no answer.
 
 **It ignored its own length instruction.** Told to answer in at most three
 sentences, it routinely ran past 64 tokens.
@@ -90,3 +96,20 @@ not good enough to be trusted with the routing gate switched off.
 Which is why the built-in engine stays the default, the local model is opt-in,
 the gate sits above every engine, and a post-generation guard re-checks what a
 model returned before it reaches the chat.
+
+
+## Since this was written
+
+- **Fitness is gone**, so the health cases above no longer have a screen behind
+  them. The finding stands: do not let the model do arithmetic.
+- The model is now told each client by name and how much they owe, plus
+  upcoming deadlines. That is the number it is for.
+- **Prefill was the real latency problem**, not streaming. The engine wrote its
+  SSE headers only after prefill finished, so the client had received no bytes
+  at all for the longest silent stretch of the exchange. Headers now go first and
+  prefill reports progress. See HANDOFF.md.
+- **Writes do not go through the model.** Tool calling is off, and the reason is
+  reliability rather than privacy: a local SQLite write needs no network, so
+  nothing left the phone either way, but a 0.5B model mis-picks arguments often
+  enough to corrupt a ledger. A Dart parser recognises the write and the user
+  approves it on a card.
