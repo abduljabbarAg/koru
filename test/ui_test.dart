@@ -22,17 +22,20 @@ void main() {
     store = await openTestStore();
   });
 
-  Future<void> pump(WidgetTester tester, Widget child, {int frames = 8}) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          storeProvider.overrideWith((ref) async => store),
-          cloudKeyProvider.overrideWith((ref, providerId) async => ''),
-          secretsProvider.overrideWithValue(MemoryKeyStore()),
-        ],
-        child: MaterialApp(home: child),
-      ),
-    );
+  /// Mounts [child] when given, otherwise just steps frames.
+  Future<void> pump(WidgetTester tester, [Widget? child], {int frames = 8}) async {
+    if (child != null) {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            storeProvider.overrideWith((ref) async => store),
+            cloudKeyProvider.overrideWith((ref, providerId) async => ''),
+            secretsProvider.overrideWithValue(MemoryKeyStore()),
+          ],
+          child: MaterialApp(home: child),
+        ),
+      );
+    }
     for (var i = 0; i < frames; i++) {
       await tester.pump(const Duration(milliseconds: 40));
     }
@@ -55,7 +58,7 @@ void main() {
       created: created,
       due: due,
     ));
-    await pump(tester, const SizedBox.shrink(), frames: 1);
+    await pump(tester, frames: 1);
     return id;
   }
 

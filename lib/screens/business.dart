@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'client_detail.dart';
 import '../guide.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'client_detail.dart';
 
 /// Clients, money, and deadlines.
 ///

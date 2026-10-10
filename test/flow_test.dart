@@ -59,6 +59,13 @@ void main() {
     store = await openTestStore();
   });
 
+  /// Steps frames so provider futures resolve and animations settle.
+  Future<void> pump(WidgetTester tester, {int frames = 8}) async {
+    for (var i = 0; i < frames; i++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+  }
+
   Future<void> boot(
     WidgetTester tester, {
     required String engine,
@@ -77,12 +84,6 @@ void main() {
       ),
     );
     await pump(tester);
-  }
-
-  Future<void> pump(WidgetTester tester, {int frames = 8}) async {
-    for (var i = 0; i < frames; i++) {
-      await tester.pump(const Duration(milliseconds: 40));
-    }
   }
 
   /// Types into the composer and waits for the reply to settle.
@@ -170,7 +171,7 @@ void main() {
       await say(tester, 'Sara paid 1000');
       await tapVisible(tester, find.text('Save it'));
 
-      final state = await tester.runAsync(() async {
+      final result = await tester.runAsync(() async {
         final clients = await store.clients();
         return (
           clients: clients.map((c) => '${c.name}:${c.status}').toList()..sort(),
@@ -180,7 +181,8 @@ void main() {
         );
       });
 
-      expect(state.clients, ['Bilal:delivered', 'Sara:paid'].sorted);
+      final state = result!;
+      expect(state.clients, ['Bilal:delivered', 'Sara:paid']);
       expect(state.bilal, 1500, reason: 'a part payment leaves the rest owed');
       expect(state.sara, 0);
       expect(state.total, 1500);
@@ -294,7 +296,7 @@ void main() {
       await say(tester, 'Bilal paid 500');
       await tapVisible(tester, find.text('Save it'));
 
-      final json = await tester.runAsync(() => Backup.json(store));
+      final json = await tester.runAsync(() => Backup.toJson(store));
       final decoded = jsonDecode(json!) as Map<String, dynamic>;
 
       expect(decoded['format'], 'koru-backup');
