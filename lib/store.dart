@@ -297,8 +297,11 @@ class ProfileStore {
   /// because a negative number here would read as money owed to the freelancer.
   Future<double> balanceFor(Client c) async {
     final invoiced = c.amount ?? 0;
-    if (invoiced <= 0) return 0;
-    return invoiced - await receivedFor(c.id!);
+    if (invoiced <= 0 || c.id == null) return 0;
+    final balance = invoiced - await receivedFor(c.id!);
+    // Floored, because being paid more than invoiced means nothing is owed and
+    // a negative figure here reads as money owed to the freelancer.
+    return balance < 0 ? 0 : balance;
   }
 
   Future<List<Deadline>> deadlines({int? clientId, bool openOnly = true}) async {
