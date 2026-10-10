@@ -141,7 +141,13 @@ jobs:
           set -eu
           url="https://github.com/${{ github.repository }}/releases/download/$TAG/libglen.so"
           echo "trying $url"
-          if curl -fsSL --retry 3 -o android/app/src/main/jniLibs/arm64-v8a/libglen.so "$url"; then
+          # The authorisation header is not optional. This repository is
+          # private, and an unauthenticated request for a release asset answers
+          # 404 rather than 401, which reads exactly like the asset not being
+          # there yet.
+          if curl -fsSL --retry 3 \
+               -H "Authorization: Bearer $GH_TOKEN" \
+               -o android/app/src/main/jniLibs/arm64-v8a/libglen.so "$url"; then
             echo "fetched libglen.so from the release"
             ls -la android/app/src/main/jniLibs/arm64-v8a/
           else
