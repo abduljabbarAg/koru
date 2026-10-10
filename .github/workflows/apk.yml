@@ -58,6 +58,13 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
 
+      # Unit tests for the pure parts: the JSON parser and escaper that build
+      # every SSE chunk, and the sampler that picks every token. Eight source
+      # files and no test module meant a malformed stream could only be found
+      # by watching a phone.
+      - name: test glen
+        run: cargo test --manifest-path third_party/glen/Cargo.toml
+
       # Prove the binary is what we think it is.
       #
       # There is no interpreter check here, because glen links statically and a

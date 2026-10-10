@@ -354,3 +354,63 @@ pub fn calc(s: &str) -> Result<f64, String> {
     }
     Ok(v)
 }
+
+// Tool calling is disabled in the app (Glen_TOOLS=0), but the extractor and the
+// sampler are still reachable from the bench path, and the sampler decides every
+// token. Both are pure enough to pin down.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_call() {
+        let (name, args) = extract_call("sure <call>calc 2+2</call>").unwrap();
+        assert_eq!(name, "calc");
+        assert_eq!(args, "2+2");
+    }
+
+    #[test]
+    fn handles_extra_text_around_the_call() {
+        let (name, args) = extract_call("let me think. <call>calc 1+1</call> done").unwrap();
+        assert_eq!(name, "calc");
+        assert_eq!(args, "1+1");
+    }
+
+    #[test]
+    fn a_call_with_no_arguments_is_still_a_call() {
+        let (name, args) = extract_call("<call>date</call>").unwrap();
+        assert_eq!(name, "date");
+        assert_eq!(args, "");
+    }
+
+    #[test]
+    fn text_without_a_call_is_not_one() {
+        // The failure this guards is a model mentioning a tool in passing and the
+        // app executing it.
+        assert!(extract_call("I could call calc for that").is_none());
+        assert!(extract_call("").is_none());
+        assert!(extract_call("<call>").is_none());
+        assert!(extract_call("</call>").is_none());
+        assert!(extract_call("<call>   </call>").is_none(), "an empty name is not a tool");
+    }
+
+    #[test]
+    fn greedy_sampling_picks_the_argmax() {
+        let mut rng = Rng::new();
+        let s = Samp { temp: 0.0, top_k: 0, top_p: 1.0, repeat: 1.0 };
+        assert_eq!(sample(&mut rng, &[0.1, 0.9, 0.2], &[], &s), 1);
+        assert_eq!(sample(&mut rng, &[5.0, 1.0, 2.0], &[], &s), 0);
+    }
+
+    #[test]
+    fn greedy_sampling_never_runs_off_the_end() {
+        // An all-equal or all-negative row has no obvious winner, and returning
+        // an id outside the logits would index past the vocabulary.
+        let mut rng = Rng::new();
+        let s = Samp { temp: 0.0, top_k: 0, top_p: 1.0, repeat: 1.0 };
+        for row in [&[0.0f32, 0.0][..], &[-1.0, -2.0][..], &[0.0][..]] {
+            let id = sample(&mut rng, row, &[], &s);
+            assert!(id < row.len() as u32, "sampled {} out of {} logits", id, row.len());
+        }
+    }
+}

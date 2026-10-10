@@ -228,3 +228,93 @@ pub fn esc(s: &str) -> String {
     }
     o
 }
+
+// Tests for the parser and the escaper.
+//
+// `esc` builds every single SSE chunk the server emits, so a mistake here does
+// not show up as a crash, it shows up as a stream the client silently stops
+// reading. That is the failure mode this file had, and nothing exercised it.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_flat_object() {
+        let v = parse(r#"{"model":"local","stream":true,"n":3}"#).unwrap();
+        assert_eq!(v.get("model").unwrap().as_str(), Some("local"));
+        assert_eq!(v.get("stream").unwrap().as_bool(), Some(true));
+        assert_eq!(v.get("n").unwrap().as_f64(), Some(3.0));
+        assert!(v.get("missing").is_none());
+    }
+
+    #[test]
+    fn reads_nested_structures() {
+        let v = parse(r#"{"choices":[{"delta":{"content":"hi"}}]}"#).unwrap();
+        let choices = v.get("choices").unwrap().as_arr().unwrap();
+        assert_eq!(choices.len(), 1);
+        let delta = choices[0].get("delta").unwrap();
+        assert_eq!(delta.get("content").unwrap().as_str(), Some("hi"));
+    }
+
+    #[test]
+    fn handles_escapes_in_strings() {
+        let v = parse(r#"{"a":"line\nbreak \"quoted\""}"#).unwrap();
+        assert_eq!(v.get("a").unwrap().as_str(), Some("line\nbreak \"quoted\""));
+    }
+
+    #[test]
+    fn accessors_return_none_on_the_wrong_type() {
+        // A get() that returned a value for any shape would let a malformed
+        // request look like a valid one and start a generation with nothing in it.
+        let v = parse(r#"{"a":1,"b":"x","c":true,"d":[1],"e":{"f":1},"g":null}"#).unwrap();
+        assert_eq!(v.get("a").unwrap().as_str(), None);
+        assert_eq!(v.get("b").unwrap().as_f64(), None);
+        assert!(v.get("b").unwrap().as_arr().is_none());
+        assert_eq!(v.get("c").unwrap().as_bool(), Some(true));
+        assert_eq!(v.get("d").unwrap().as_arr().map(|a| a.len()), Some(1));
+        assert_eq!(v.get("e").unwrap().as_str(), None);
+        assert_eq!(v.get("g").unwrap().as_str(), None);
+    }
+
+    #[test]
+    fn rejects_malformed_input_rather_than_guessing() {
+        for bad in [
+            "{",
+            "{\"a\"}",
+            "{\"a\":}",
+            "{\"a\":1,}",
+            "[1,2",
+            "nope",
+            "",
+        ] {
+            assert!(parse(bad).is_err(), "should have rejected {:?}", bad);
+        }
+    }
+
+    #[test]
+    fn escapes_what_would_break_a_chunk() {
+        assert_eq!(esc("plain"), "plain");
+        assert_eq!(esc("say \"hi\""), "say \\\"hi\\\"");
+        assert_eq!(esc("back\\slash"), "back\\\\slash");
+        assert_eq!(esc("two\nlines"), "two\\nlines");
+        assert_eq!(esc("tab\there"), "tab\\there");
+        assert_eq!(esc("bell\u{7}"), "bell\\u0007");
+    }
+
+    #[test]
+    fn escaped_output_parses_back() {
+        // The property that actually matters: whatever esc produces has to be
+        // readable by parse, or the stream is malformed the moment a model
+        // emits a quote.
+        for original in [
+            "he said \"no\"",
+            "a\\b",
+            "line\nbreak",
+            "{\"nested\":\"json\"}",
+            "",
+        ] {
+            let round = parse(&format!("{{\"x\":\"{}\"}}", esc(original))).unwrap();
+            assert_eq!(round.get("x").unwrap().as_str(), Some(original));
+        }
+    }
+}
