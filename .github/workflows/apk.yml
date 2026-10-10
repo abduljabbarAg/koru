@@ -138,8 +138,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          set -eu
           dest="android/app/src/main/jniLibs/arm64-v8a/libglen.so"
+          # jniLibs is not in the checkout, because the binary is a build
+          # product. Without this the write below fails with curl error 23.
+          mkdir -p "$(dirname "$dest")"
 
           # Asked for by asset id through the API rather than by the
           # browser_download_url. The CDN path answers 404 for a short while
@@ -154,25 +156,36 @@ jobs:
           for attempt in 1 2 3 4 5 6; do
             asset_id=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
-              | jq -r '.assets[]? | select(.name == "libglen.so") | .id')
-            if [ -n "$asset_id" ] && [ "$asset_id" != "null" ]; then
+              | jq -r '.assets[]? | select(.name == "libglen.so") | .id' || true)
+            case "$asset_id" in
+              ''|null) asset_id="" ;;
+            esac
+            if [ -n "$asset_id" ]; then
               break
             fi
-            asset_id=""
             echo "release asset not listed yet, attempt $attempt"
             sleep 10
           done
 
+          # Never fatal. A build with no engine still works and says so, and the
+          # step below decides that from the file on disk. Failing here instead
+          # would take out the whole APK for a missing optional binary.
           if [ -n "$asset_id" ]; then
             echo "fetching libglen.so as asset $asset_id"
-            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/octet-stream" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id" \
-              -o "$dest"
-            ls -la "$(dirname "$dest")"
+            if curl -fsSL --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
+                 -H "Accept: application/octet-stream" \
+                 "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id" \
+                 -o "$dest" && [ -s "$dest" ]; then
+              echo "got $(wc -c < "$dest") bytes"
+              ls -la "$(dirname "$dest")"
+            else
+              rm -f "$dest"
+              echo "download failed; continuing without an engine"
+            fi
           else
-            echo "no engine available from either route; building without one"
+            echo "no release asset; continuing without an engine"
           fi
+          exit 0
 
       # Checked on disk rather than trusted from the job output.
       #
