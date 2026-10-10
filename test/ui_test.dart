@@ -64,21 +64,30 @@ void main() {
     return id;
   }
 
-  /// Brings a target into the built part of the list.
+  /// Drags the screen until a target exists in the tree.
   ///
   /// Read-only assertions on a long screen need this. A ListView only builds
-  /// what is near the viewport, so a section further down simply is not in the
-  /// tree and the finder reports nothing, which is indistinguishable from the
-  /// section not existing at all.
+  /// what is near the viewport, so a section further down is not in the tree at
+  /// all and the finder reports nothing, which reads exactly like the section
+  /// not existing.
+  ///
+  /// Written as a bounded drag rather than scrollUntilVisible, which needs a
+  /// single matching element and throws when a screen has more than one
+  /// scrollable.
   Future<void> reveal(WidgetTester tester, Finder finder) async {
-    if (finder.evaluate().isEmpty) {
-      await tester.scrollUntilVisible(
-        finder,
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await pump(tester);
+    final list = find.byType(Scrollable);
+    if (list.evaluate().isEmpty) return;
+    for (var i = 0; i < 15 && finder.evaluate().isEmpty; i++) {
+      await tester.drag(list.first, const Offset(0, -240));
+      await pump(tester, frames: 2);
     }
+  }
+
+  /// An ISO date [days] ago, so age arithmetic in a test is not done by hand.
+  String daysAgo(int days) {
+    final d = DateTime.now().subtract(Duration(days: days));
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
   }
 
   Future<void> tapVisible(WidgetTester tester, Finder finder) async {
@@ -147,13 +156,7 @@ void main() {
     });
 
     testWidgets('marks a prospect that has gone cold', (tester) async {
-      final old = DateTime.now().subtract(const Duration(days: 40));
-      await seed(
-        tester,
-        name: 'Gone Cold',
-        status: 'lead',
-        created: '${old.year}-01-01',
-      );
+      await seed(tester, name: 'Gone Cold', status: 'lead', created: daysAgo(40));
 
       await mount(tester, const BusinessScreen());
       await reveal(tester, find.text('GOING COLD'));
@@ -187,11 +190,8 @@ void main() {
         monthly: 2500,
         amount: 2500,
       );
-      // Paid this month, so the next one is genuinely ahead rather than late.
-      final now = DateTime.now();
-      final stamp =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-      await store.addPayment(Payment(clientId: id, amount: 2500, date: stamp));
+      // Paid today, so the next one is a month out rather than already late.
+      await store.addPayment(Payment(clientId: id, amount: 2500, date: daysAgo(0)));
 
       await mount(tester, const ClientDetailScreen(clientId: 1));
 
@@ -209,13 +209,8 @@ void main() {
         amount: 1500,
       );
       // Three months ago, so it is a month overdue.
-      final old = DateTime.now().subtract(const Duration(days: 90));
       await store.addPayment(
-        Payment(
-          clientId: id,
-          amount: 1500,
-          date: '${old.year}-${old.month.toString().padLeft(2, '0')}-01',
-        ),
+        Payment(clientId: id, amount: 1500, date: daysAgo(90)),
       );
 
       await mount(tester, const ClientDetailScreen(clientId: 1));
