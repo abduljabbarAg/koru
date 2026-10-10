@@ -56,13 +56,19 @@ class LocalModelPrompt {
       ..writeln('If the answer is not in the context, say what you do not know.')
       ..writeln('Never give a diagnosis, a dose, or a legal ruling.');
 
+    // Rendered before the fallback check on purpose. isEmpty only looks at
+    // fitness and clients, so a user with goals set and no logs yet counts as
+    // empty, and asking that question is exactly the case where duplicating the
+    // goals into the prompt costs prefill for nothing.
+    final context = facts.renderForModel();
+
     // The cloud packet is deliberately not sent to a model running on this
     // phone. renderForCloud is documented as what goes upstream, it duplicates
-    // the goals and the body logs that LocalEngineFacts already carries, and
-    // every duplicated token is prefill the user sits through before the first
-    // word appears. It is used only as a fallback for when there are no local
-    // facts at all, so a fresh install still says something useful.
-    if (facts.isEmpty) {
+    // the goals and the body logs that the facts above already carry, and every
+    // duplicated token is prefill the user sits through before the first word
+    // appears. It is used only when the facts render to nothing at all, so a
+    // fresh install still says something useful.
+    if (context.isEmpty) {
       final cloud = packet.renderForCloud();
       if (cloud.isNotEmpty) buffer.writeln(cloud);
     }
@@ -70,7 +76,6 @@ class LocalModelPrompt {
     // The model cannot see the database, so anything it should reason over has
     // to be spelled out here. This is the whole value of a local model: it can
     // answer questions the built-in engine cannot phrase-match.
-    final context = facts.renderForModel();
     if (context.isNotEmpty) {
       buffer
         ..writeln()
