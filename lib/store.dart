@@ -17,7 +17,7 @@ class ProfileStore {
 
   final Database _db;
 
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -27,9 +27,11 @@ class ProfileStore {
       onCreate: (d, v) async {
         await _createV1(d);
         if (v >= 2) await _migrateToV2(d);
+        if (v >= 3) await _migrateToV3(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
+        if (from < 3) await _migrateToV3(d);
       },
     );
     return ProfileStore(db);
@@ -81,6 +83,29 @@ class ProfileStore {
   /// read or wrote it; drafts and chat were missing entirely even though the
   /// onboarding screen promised drafts and the app called itself a companion that
   /// remembers.
+  /// Money received, and dated work. Both are per client so "what is owed and
+  /// by when" is a query rather than something retyped by hand.
+  static Future<void> _migrateToV3(Database d) async {
+    await d.execute('''
+      CREATE TABLE IF NOT EXISTS payments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        date TEXT NOT NULL,
+        note TEXT
+      )
+    ''');
+    await d.execute('''
+      CREATE TABLE IF NOT EXISTS deadlines(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER,
+        title TEXT NOT NULL,
+        due TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+  }
+
   static Future<void> _migrateToV2(Database d) async {
     await d.execute('''
       CREATE TABLE drafts(
@@ -245,6 +270,55 @@ class ProfileStore {
   // -- drafts ----------------------------------------------------------
 
   Future<int> addDraft(Draft d) => _db.insert('drafts', d.toMap());
+
+  /// Money received, newest first.
+  Future<List<Payment>> payments({int? clientId}) async {
+    final rows = clientId == null
+        ? await _db.query('payments', orderBy: 'date DESC, id DESC')
+        : await _db.query('payments',
+            where: 'client_id = ?', whereArgs: [clientId], orderBy: 'date DESC, id DESC');
+    return rows.map(Payment.fromMap).toList();
+  }
+
+  Future<int> addPayment(Payment p) => _db.insert('payments', p.toMap());
+
+  /// What has been received against one client, in total.
+  Future<double> receivedFor(int clientId) async {
+    final r = await _db.rawQuery(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE client_id = ?',
+      [clientId],
+    );
+    return (r.first['total'] as num).toDouble();
+  }
+
+  /// Outstanding balance for a client: invoiced minus everything received.
+  ///
+  /// Zero when a client has no amount on file, rather than a negative balance,
+  /// because a negative number here would read as money owed to the freelancer.
+  Future<double> balanceFor(Client c) async {
+    final invoiced = c.amount ?? 0;
+    if (invoiced <= 0) return 0;
+    return invoiced - await receivedFor(c.id!);
+  }
+
+  Future<List<Deadline>> deadlines({int? clientId, bool openOnly = true}) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (clientId != null) {
+      where.add('client_id = ?');
+      args.add(clientId);
+    }
+    if (openOnly) where.add('done = 0');
+    final rows = await _db.query(
+      'deadlines',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'due ASC',
+    );
+    return rows.map(Deadline.fromMap).toList();
+  }
+
+  Future<int> addDeadline(Deadline d) => _db.insert('deadlines', d.toMap());
 
   Future<List<Draft>> drafts({DraftStatus? status}) async {
     final rows = await _db.query(

@@ -275,4 +275,89 @@ void main() {
       expect(await store.chat(), isEmpty);
     });
   });
+
+  group('the payments ledger', () {
+    late Client bilal;
+
+    setUp(() async {
+      bilal = Client(
+        id: await store.addClient(
+          const Client(name: 'Bilal', status: 'delivered', amount: 2000),
+        ),
+        name: 'Bilal',
+        status: 'delivered',
+        amount: 2000,
+      );
+    });
+
+    test('balance is invoiced minus what has been received', () async {
+      expect(await store.balanceFor(bilal), 2000);
+      await store.addPayment(Payment(
+        clientId: bilal.id!,
+        amount: 500,
+        date: '2026-01-05',
+      ));
+      expect(await store.balanceFor(bilal), 1500);
+      await store.addPayment(Payment(
+        clientId: bilal.id!,
+        amount: 1500,
+        date: '2026-01-06',
+      ));
+      expect(await store.balanceFor(bilal), 0);
+    });
+
+    test('overpaying never shows as money owed to the freelancer', () async {
+      await store.addPayment(Payment(
+        clientId: bilal.id!,
+        amount: 2500,
+        date: '2026-01-05',
+      ));
+      expect(await store.balanceFor(bilal), greaterThanOrEqualTo(0));
+      expect(await store.balanceFor(bilal), 0);
+    });
+
+    test('a client with no amount on file has no balance', () async {
+      final free = Client(
+        id: await store.addClient(const Client(name: 'Prospect', status: 'lead')),
+        name: 'Prospect',
+      );
+      expect(await store.balanceFor(free), 0);
+    });
+
+    test('payments are kept per client, newest first', () async {
+      final other = Client(
+        id: await store.addClient(const Client(name: 'Sara', amount: 100)),
+        name: 'Sara',
+      );
+      await store.addPayment(Payment(clientId: bilal.id!, amount: 1, date: '2026-01-01'));
+      await store.addPayment(Payment(clientId: bilal.id!, amount: 2, date: '2026-02-01'));
+      await store.addPayment(Payment(clientId: other.id!, amount: 9, date: '2026-03-01'));
+
+      final mine = await store.payments(clientId: bilal.id!);
+      expect(mine.map((p) => p.amount).toList(), [2, 1]);
+      expect(await store.receivedFor(bilal.id!), 3);
+    });
+  });
+
+  group('deadlines', () {
+    test('open ones come back soonest first and can be filtered by client', () async {
+      final id = await store.addClient(const Client(name: 'Sara'));
+      await store.addDeadline(Deadline(clientId: id, title: 'Late', due: '2026-03-01'));
+      await store.addDeadline(Deadline(clientId: id, title: 'Soon', due: '2026-01-05'));
+      await store.addDeadline(Deadline(clientId: null, title: 'Tax', due: '2026-02-01'));
+
+      final open = await store.deadlines();
+      expect(open.map((d) => d.title).toList(), ['Soon', 'Tax', 'Late']);
+
+      final sara = await store.deadlines(clientId: id);
+      expect(sara.map((d) => d.title).toList(), ['Soon', 'Late']);
+    });
+
+    test('overdue ignores anything already done', () {
+      final today = DateTime(2026, 1, 10);
+      expect(const Deadline(title: 'Late', due: '2026-01-01').isOverdueOn(today), isTrue);
+      expect(const Deadline(title: 'Done', due: '2026-01-01', done: true).isOverdueOn(today), isFalse);
+      expect(const Deadline(title: 'Today', due: '2026-01-10').isOverdueOn(today), isFalse);
+    });
+  });
 }

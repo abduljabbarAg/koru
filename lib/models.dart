@@ -310,3 +310,81 @@ class KnowledgeTopic {
   /// Progress as a whole percentage, clamped. The column is a 0..1 fraction.
   int get percent => (progress.clamp(0.0, 1.0) * 100).round();
 }
+
+/// Money actually received against a client.
+///
+/// The business table has one `amount` and a binary status, which cannot
+/// express "they paid 500 of 2000 today". Freelancers get paid in parts and
+/// asking for the balance is the question the whole app is meant to answer, so
+/// what has been received is a ledger rather than a flag.
+class Payment {
+  final int? id;
+  final int clientId;
+  final double amount;
+  final String date;
+  final String? note;
+
+  const Payment({
+    this.id,
+    required this.clientId,
+    required this.amount,
+    required this.date,
+    this.note,
+  });
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'client_id': clientId,
+        'amount': amount,
+        'date': date,
+        if (note != null) 'note': note,
+      };
+
+  factory Payment.fromMap(Map<String, Object?> m) => Payment(
+        id: m['id'] as int?,
+        clientId: m['client_id'] as int,
+        amount: (m['amount'] as num).toDouble(),
+        date: m['date'] as String? ?? '',
+        note: m['note'] as String?,
+      );
+}
+
+/// A dated thing that has to happen, optionally attached to a client.
+class Deadline {
+  final int? id;
+  final int? clientId;
+  final String title;
+  final String due;
+  final bool done;
+
+  const Deadline({
+    this.id,
+    this.clientId,
+    required this.title,
+    required this.due,
+    this.done = false,
+  });
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        if (clientId != null) 'client_id': clientId,
+        'title': title,
+        'due': due,
+        'done': done ? 1 : 0,
+      };
+
+  factory Deadline.fromMap(Map<String, Object?> m) => Deadline(
+        id: m['id'] as int?,
+        clientId: m['client_id'] as int?,
+        title: m['title'] as String? ?? '',
+        due: m['due'] as String? ?? '',
+        done: (m['done'] as int? ?? 0) == 1,
+      );
+
+  bool isOverdueOn(DateTime today) {
+    if (done) return false;
+    final d = DateTime.tryParse(due);
+    if (d == null) return false;
+    return d.isBefore(DateTime(today.year, today.month, today.day));
+  }
+}
