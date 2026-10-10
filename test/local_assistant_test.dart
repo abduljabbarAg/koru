@@ -7,22 +7,19 @@ import 'package:koru/models.dart';
 LocalFacts facts({
   String nickname = 'kami',
   String goals = 'two more clients',
-  double? bmi = 24.5,
-  List<FitnessEntry> fitness = const [],
   List<Client> clients = const [],
+  Map<int, double> received = const {},
+  List<Deadline> deadlines = const [],
 }) =>
     LocalFacts(
       nickname: nickname,
       lifeStage: 'running a business',
       goals: goals,
-      height: 1.8,
-      bmi: bmi,
-      fitness: fitness,
       clients: clients,
+      received: received,
+      deadlines: deadlines,
       today: DateTime(2026, 3, 1),
     );
-
-FitnessEntry log(String day, double kg) => FitnessEntry(day: day, weight: kg);
 
 void main() {
   const a = LocalAssistant();
@@ -36,26 +33,28 @@ void main() {
     test('an empty profile produces an invitation rather than a shrug', () {
       final out = a.answer(
         question: 'hi there',
-        facts: facts(nickname: '', goals: '', bmi: null),
+        facts: facts(nickname: '', goals: ''),
       );
       expect(out.text, contains('profile'));
     });
   });
 
   group('status', () {
-    test('summarises business and fitness together', () {
+    test('summarises money, not statuses', () {
       final out = a.answer(
         question: 'how am i doing?',
         facts: facts(
           clients: const [
-            Client(name: 'Acme', status: 'paid', amount: 5000, created: '2026-01-01'),
-            Client(name: 'Globex', status: 'delivered', amount: 2000, created: '2026-01-02'),
-            Client(name: 'Initech', status: 'lead', amount: 900, created: '2026-01-03'),
+            Client(id: 1, name: 'Acme', status: 'paid', amount: 5000),
+            Client(id: 2, name: 'Globex', status: 'delivered', amount: 2000),
+            Client(id: 3, name: 'Initech', status: 'lead', amount: 900),
           ],
-          fitness: [log('2026-02-25', 80), log('2026-02-18', 81)],
+          received: const {1: 5000},
         ),
       );
-      expect(out.text, contains('1 paid'));
+      // Globex and Initech both still owe, because neither has been paid.
+      expect(out.text, contains('2 owing a balance'));
+      expect(out.text, contains('still owed 2900 AED'));
       expect(out.text, contains('two more clients'));
       expect(out.usedData, isTrue);
     });
@@ -63,9 +62,9 @@ void main() {
     test('with no records at all it says so', () {
       final out = a.answer(
         question: 'give me a status update',
-        facts: facts(fitness: const [], clients: const [], goals: ''),
+        facts: facts(clients: const [], goals: ''),
       );
-      expect(out.text, contains('Nothing logged yet'));
+      expect(out.text, contains('Nothing on file yet'));
     });
   });
 
@@ -114,55 +113,37 @@ void main() {
       final out = a.answer(
         question: 'where is my money?',
         facts: facts(clients: const [
-          Client(name: 'A', status: 'delivered', amount: 4000, created: '2026-01-01'),
+          Client(id: 1, name: 'A', status: 'delivered', amount: 4000),
         ]),
       );
       expect(out.text, contains('4000'));
     });
 
+    test('does not count money already received as still owed', () {
+      final out = a.answer(
+        question: 'who owes me money?',
+        facts: facts(
+          clients: const [Client(id: 1, name: 'A', status: 'paid', amount: 4000)],
+          received: const {1: 4000},
+        ),
+      );
+      expect(out.text, contains('still owed 0 AED'));
+    });
+
+    test('names upcoming deadlines', () {
+      final out = a.answer(
+        question: 'what is coming up?',
+        facts: facts(
+          clients: const [Client(id: 1, name: 'A', status: 'active')],
+          deadlines: const [Deadline(title: 'Send invoice', due: '2026-04-01')],
+        ),
+      );
+      expect(out.text, contains('Send invoice'));
+    });
+
     test('with no clients it explains what to do', () {
       final out = a.answer(question: 'how is business', facts: facts());
       expect(out.text, contains('No clients yet'));
-    });
-  });
-
-  group('fitness', () {
-    test('reports the latest weight', () {
-      final out = a.answer(
-        question: 'what is my bmi?',
-        facts: facts(fitness: [log('2026-02-28', 79.4)]),
-      );
-      expect(out.text, contains('79.4'));
-    });
-
-    test('refuses to invent a trend from one reading', () {
-      final out = a.answer(
-        question: 'how is my weight trending?',
-        facts: facts(fitness: [log('2026-02-28', 79.4)]),
-      );
-      expect(out.text, contains('79.4'));
-      expect(out.text.toLowerCase(), isNot(contains('trend up')));
-    });
-
-    test('reports a downward trend over a fortnight', () {
-      final out = a.answer(
-        question: 'am I losing weight?',
-        facts: facts(fitness: [log('2026-02-28', 78), log('2026-02-14', 80)]),
-      );
-      expect(out.text, contains('down 1.00kg a week'));
-    });
-
-    test('two readings a day apart are not a trend', () {
-      final out = a.answer(
-        question: 'my weight?',
-        facts: facts(fitness: [log('2026-02-28', 78), log('2026-02-27', 81)]),
-      );
-      expect(out.text, isNot(contains('per week')));
-    });
-
-    test('asks for a first log when there is none', () {
-      final out = a.answer(question: 'show me my measurements', facts: facts());
-      expect(out.text, contains('No measurements logged yet'));
     });
   });
 
@@ -203,34 +184,27 @@ void main() {
   });
 
   group('LocalFacts', () {
-    test('weight trend is null with under two readings', () {
-      expect(facts(fitness: const []).weightTrendPerWeek, isNull);
-      expect(facts(fitness: [log('2026-02-28', 80)]).weightTrendPerWeek, isNull);
-    });
-
-    test('weight trend needs a real gap in time', () {
-      final f = facts(fitness: [log('2026-02-28', 80), log('2026-02-27', 82)]);
-      expect(f.weightTrendPerWeek, isNull);
-    });
-
-    test('weight trend is kg per week', () {
-      final f = facts(fitness: [log('2026-02-28', 79), log('2026-02-14', 80)]);
-      // One kilo lost across two weeks.
-      expect(f.weightTrendPerWeek, closeTo(-0.5, 0.001));
-    });
-
-    test('readings without a weight are ignored for the trend', () {
-      final f = facts(fitness: [
-        const FitnessEntry(day: '2026-02-28'),
-        log('2026-02-21', 80),
-        log('2026-02-14', 81),
-      ]);
-      expect(f.weightTrendPerWeek, closeTo(-1.0, 0.01));
-    });
-
     test('hasRecords reflects actual data', () {
       expect(facts().hasRecords, isFalse);
-      expect(facts(clients: const [Client(name: 'x', created: '2026-01-01')]).hasRecords, isTrue);
+      expect(
+        facts(clients: const [Client(name: 'x', created: '2026-01-01')]).hasRecords,
+        isTrue,
+      );
+    });
+
+    test('a deadline alone counts as having records', () {
+      expect(
+        facts(deadlines: const [Deadline(title: 'x', due: '2026-01-01')]).hasRecords,
+        isTrue,
+      );
+    });
+
+    test('a balance comes from the ledger, not the invoice amount', () {
+      final f = facts(
+        clients: const [Client(id: 7, name: 'A', amount: 2000)],
+        received: const {7: 500},
+      );
+      expect(f.balanceOf(f.clients.single), 1500);
     });
   });
 }

@@ -163,9 +163,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _intro() {
     const suggestions = [
       'How am I doing?',
-      'What is my BMI?',
-      'Who should I chase for payment?',
-      'What are my goals?',
+      'Who owes me money?',
+      'What should I chase this week?',
+      'What is coming up?',
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
@@ -180,7 +180,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         const SizedBox(height: 18),
         const Text(
-          'Ask me about your work or your training.',
+          'Ask me about your clients, your money and what is due.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: KoruColors.ink),
         ),

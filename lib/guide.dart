@@ -47,39 +47,11 @@ class Guide {
     return '$paid settled. Nothing is waiting on you here, which is rarer than it sounds.';
   }
 
-  static String? forFitness(ScreenFacts f) {
-    if (f.fitness.isEmpty) {
-      return 'Nothing logged yet. One weight reading gives me a baseline, two give me a trend.';
-    }
-    final trend = f.weightTrendPerWeek;
-    final latest = f.fitness.first;
-    if (trend == null) {
-      return 'One reading is a number, not a trend. Log again next week and I can say something useful.';
-    }
-    final weight = latest.weight;
-    final weightText = weight == null ? '' : ' You are ${weight.toStringAsFixed(1)} kg.';
-
-    if (f.bmi != null) {
-      final bmi = f.bmi!;
-      final band = bmi < 18.5
-          ? 'under the healthy range'
-          : bmi < 25
-              ? 'in the healthy range'
-              : bmi < 30
-                  ? 'in the overweight range, which is a rough label not a verdict'
-                  : 'above the healthy range';
-      return 'Your BMI is ${bmi.toStringAsFixed(1)}, $band.$weightText '
-          'Trend is ${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg a week.';
-    }
-    return 'Tracking ${f.fitness.length} logs.$weightText '
-        'Trend is ${trend >= 0 ? '+' : ''}${trend.toStringAsFixed(2)} kg a week.';
-  }
-
   static String? forSettings(ScreenFacts f) {
     if (!f.hasProfile) return null;
-    if (f.fitness.isEmpty && f.clients.isEmpty) {
-      return 'Your context is set but there is nothing to learn from yet. '
-          'A measurement or a client is what makes this useful.';
+    if (f.clients.isEmpty) {
+      return 'Your profile is set but there are no clients yet, so there is '
+          'nothing for me to keep track of.';
     }
     return null;
   }
@@ -89,7 +61,7 @@ class Guide {
   static String? forChat(ScreenFacts f) {
     if (f.hasProfile && !f.hasRecords) {
       return 'I know your goals but I have nothing to check them against yet. '
-          'Log a measurement or add a client.';
+          'Add a client and I can start tracking who owes you what.';
     }
     return null;
   }
@@ -107,19 +79,24 @@ class Guide {
 class ScreenFacts {
   ScreenFacts({
     this.clients = const [],
-    this.fitness = const [],
     this.received = const {},
-    this.bmi,
+    this.deadlines = const [],
+    this.payments = const [],
     this.hasProfile = false,
   });
 
   final List<Client> clients;
-  final List<FitnessEntry> fitness;
 
   /// Money received per client id. Empty is treated as nothing received, so a
   /// caller that has no ledger yet still gets sensible balances.
   final Map<int, double> received;
-  final double? bmi;
+
+  /// Open deadlines, soonest first.
+  final List<Deadline> deadlines;
+
+  /// Payments recorded, newest first.
+  final List<Payment> payments;
+
   final bool hasProfile;
 
   /// What a client still owes. Zero for a client with no id or no amount.
@@ -128,24 +105,8 @@ class ScreenFacts {
   /// Everything anyone still owes, across all clients.
   double get outstanding => clients.fold(0.0, (a, c) => a + balanceOf(c));
 
-  bool get hasRecords => fitness.isNotEmpty || clients.isNotEmpty;
-
-  /// Weight change per week, or null when there is not enough history. Needs two
-  /// readings at least three days apart, otherwise every visit reports a wild
-  /// number from overnight water retention.
-  double? get weightTrendPerWeek {
-    final dated = <({DateTime day, double kg})>[];
-    for (final e in fitness) {
-      final kg = e.weight;
-      final day = e.parsedDay;
-      if (kg == null || day == null) continue;
-      dated.add((day: day, kg: kg));
-    }
-    if (dated.length < 2) return null;
-    final newest = dated.first;
-    final oldest = dated.last;
-    final days = newest.day.difference(oldest.day).inDays;
-    if (days < 3) return null;
-    return (newest.kg - oldest.kg) / (days / 7.0);
-  }
+  /// Deadlines are records too. Without this, a user who added their first
+  /// deadline and no clients yet counted as having nothing.
+  bool get hasRecords =>
+      clients.isNotEmpty || deadlines.isNotEmpty || payments.isNotEmpty;
 }

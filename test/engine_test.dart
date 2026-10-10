@@ -48,7 +48,7 @@ void main() {
 
     test('lets ordinary answers through', () {
       const good = [
-        'Your BMI is 24.5.',
+        'Your hourly rate is 250 AED.',
         '391',
         'The Fibonacci sequence adds the two numbers before it.',
         'I do not know.',
@@ -80,8 +80,7 @@ void main() {
       lifeStage: 'running a business',
       business: 'solo dev',
       goals: 'two more clients',
-      fitness: 'weight 79.4kg, BMI 24.5',
-      focus: 'Career, Fitness',
+      focus: 'Getting paid',
     );
 
     test('never carries the nickname', () {
@@ -107,10 +106,10 @@ void main() {
     test('includes the question', () {
       final prompt = LocalModelPrompt.build(
         packet: packet,
-        question: 'what is my BMI?',
+        question: 'what should I charge?',
         facts: const LocalEngineFacts(),
       );
-      expect(prompt, contains('User question: what is my BMI?'));
+      expect(prompt, contains('User question: what should I charge?'));
     });
 
     test('omits the context block when there is nothing to say', () {
@@ -126,22 +125,6 @@ void main() {
   group('LocalEngineFacts', () {
     test('is empty with no records', () {
       expect(const LocalEngineFacts().isEmpty, isTrue);
-    });
-
-    test('reports the latest body log', () {
-      const facts = LocalEngineFacts(
-        height: 1.8,
-        bmi: 24.5,
-        fitness: [
-          FitnessEntry(day: '2026-02-28', weight: 79.4),
-          FitnessEntry(day: '2026-02-21', weight: 80.0),
-        ],
-      );
-      final rendered = facts.renderForModel();
-      expect(rendered, contains('weight 79.4kg'));
-      expect(rendered, contains('BMI 24.5'));
-      expect(rendered, contains('-0.6kg'));
-      expect(rendered, contains('Body logs recorded: 2'));
     });
 
     test('names who owes what, from the ledger', () {
@@ -236,15 +219,6 @@ void main() {
       const facts = LocalEngineFacts(
         goals: 'g',
         focus: 'f',
-        height: 1.8,
-        bmi: 24.5,
-        fitness: [
-          FitnessEntry(day: '2026-02-28', weight: 79.4),
-          FitnessEntry(day: '2026-02-21', weight: 80),
-          FitnessEntry(day: '2026-02-14', weight: 80.5),
-          FitnessEntry(day: '2026-02-07', weight: 81),
-          FitnessEntry(day: '2026-01-31', weight: 81.5),
-        ],
         clients: [
           Client(id: 1, name: 'A', status: 'paid', amount: 100),
           Client(id: 2, name: 'B', status: 'delivered', amount: 200),
@@ -477,14 +451,13 @@ void main() {
           lifeStage: 'freelance',
           business: 'design',
           goals: 'ship more',
-          fitness: 'weight 79kg',
           focus: 'money',
         ),
         question: 'how am i doing',
         facts: const LocalEngineFacts(goals: 'ship more'),
       );
       // Duplicated prefill the user waits through before the first token.
-      expect(prompt, isNot(contains('fitness: weight 79kg')));
+      expect(prompt, isNot(contains('ship more. ship more')));
     });
 
     test('keeps it as a fallback when there are no facts at all', () {
@@ -494,7 +467,6 @@ void main() {
           lifeStage: 'freelance',
           business: 'design',
           goals: '',
-          fitness: '',
           focus: '',
         ),
         question: 'hello',

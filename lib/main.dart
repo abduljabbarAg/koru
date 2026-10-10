@@ -5,7 +5,6 @@ import 'mascot/mascot.dart';
 import 'onboarding.dart';
 import 'screens/business.dart';
 import 'screens/chat.dart';
-import 'screens/fitness.dart';
 import 'screens/settings.dart';
 import 'state.dart';
 import 'theme.dart';
@@ -174,7 +173,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   static const _pages = [
     ChatScreen(),
     BusinessScreen(),
-    FitnessScreen(),
     SettingsScreen(),
   ];
 
@@ -195,8 +193,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               children: [
                 _tabButton(0, Icons.forum_outlined, Icons.forum_rounded, 'Talk'),
                 _tabButton(1, Icons.work_outline_rounded, Icons.work_rounded, 'Business'),
-                _tabButton(2, Icons.fitness_center_outlined, Icons.fitness_center_rounded, 'Fitness'),
-                _tabButton(3, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
+                _tabButton(2, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
               ],
             ),
           ),

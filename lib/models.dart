@@ -1,94 +1,10 @@
 /// Domain models, kept out of the storage layer so the assistant and the UI can
 /// reason about them without importing sqflite.
+///
+/// Fitness is gone: the table survives for older installs, but nothing reads or
+/// writes it, and a freelancer tool that also tracks body measurements was two
+/// products in one.
 library;
-
-/// One weight-and-measurements log.
-class FitnessEntry {
-  final int? id;
-  final String day;
-  final double? weight;
-  final double? waist;
-  final double? chest;
-  final double? arm;
-  final double? leg;
-  final String? note;
-
-  const FitnessEntry({
-    this.id,
-    required this.day,
-    this.weight,
-    this.waist,
-    this.chest,
-    this.arm,
-    this.leg,
-    this.note,
-  });
-
-  Map<String, Object?> toMap() => {
-        if (id != null) 'id': id,
-        'day': day,
-        if (weight != null) 'weight': weight,
-        if (waist != null) 'waist': waist,
-        if (chest != null) 'chest': chest,
-        if (arm != null) 'arm': arm,
-        if (leg != null) 'leg': leg,
-        if (note != null) 'note': note,
-      };
-
-  /// Row for an UPDATE. Writes nulls so a cleared field is actually cleared.
-  Map<String, Object?> toUpdateMap() => {
-        'day': day,
-        'weight': weight,
-        'waist': waist,
-        'chest': chest,
-        'arm': arm,
-        'leg': leg,
-        'note': note,
-      };
-
-  factory FitnessEntry.fromMap(Map<String, Object?> m) => FitnessEntry(
-        id: m['id'] as int?,
-        day: m['day'] as String? ?? '',
-        weight: (m['weight'] as num?)?.toDouble(),
-        waist: (m['waist'] as num?)?.toDouble(),
-        chest: (m['chest'] as num?)?.toDouble(),
-        arm: (m['arm'] as num?)?.toDouble(),
-        leg: (m['leg'] as num?)?.toDouble(),
-        note: m['note'] as String?,
-      );
-
-  FitnessEntry copyWith({
-    int? id,
-    String? day,
-    double? weight,
-    double? waist,
-    double? chest,
-    double? arm,
-    double? leg,
-    String? note,
-    bool clearNote = false,
-  }) =>
-      FitnessEntry(
-        id: id ?? this.id,
-        day: day ?? this.day,
-        weight: weight ?? this.weight,
-        waist: waist ?? this.waist,
-        chest: chest ?? this.chest,
-        arm: arm ?? this.arm,
-        leg: leg ?? this.leg,
-        note: clearNote ? null : (note ?? this.note),
-      );
-
-  /// BMI needs only weight and height; height lives in the profile.
-  double? bmi(double heightM) {
-    final w = weight;
-    if (w == null || heightM <= 0) return null;
-    return w / (heightM * heightM);
-  }
-
-  /// Parsed [day], or null when the stored value is not a date.
-  DateTime? get parsedDay => DateTime.tryParse(day);
-}
 
 const kClientStatuses = ['lead', 'active', 'delivered', 'paid', 'lost'];
 

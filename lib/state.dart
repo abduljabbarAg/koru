@@ -158,10 +158,9 @@ class ChatNotifier extends Notifier<ChatState> {
         nickname: (await store.get('nickname')) ?? '',
         lifeStage: (await store.get('stage')) ?? '',
         goals: (await store.get('goals')) ?? '',
-        height: await store.number('height'),
-        bmi: await store.number('bmi'),
-        fitness: await store.fitness(),
         clients: await store.clients(),
+        received: await store.receivedTotals(),
+        deadlines: await store.deadlines(),
       );
 
   Future<void> ask(String question) async {
@@ -454,9 +453,6 @@ class ChatNotifier extends Notifier<ChatState> {
         nickname: (await store.get('nickname')) ?? '',
         goals: (await store.get('goals')) ?? '',
         focus: (await store.get('help_focus')) ?? '',
-        height: await store.number('height'),
-        bmi: await store.number('bmi'),
-        fitness: await store.fitness(limit: 5),
         clients: await store.clients(),
         received: await store.receivedTotals(),
         deadlines: await store.deadlines(),
@@ -468,11 +464,6 @@ final chatProvider = NotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new)
 final clientsProvider = FutureProvider<List<Client>>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return store.clients();
-});
-
-final fitnessProvider = FutureProvider<List<FitnessEntry>>((ref) async {
-  final store = await ref.watch(storeProvider.future);
-  return store.fitness();
 });
 
 /// Money received per client, as a single grouped total.
@@ -496,6 +487,20 @@ final openDeadlinesProvider = FutureProvider<List<Deadline>>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return store.deadlines();
 });
+
+/// How many clients this person is willing to carry at once.
+///
+/// Defaults to 5 when unset, which is also what onboarding starts on. A default
+/// is a real decision: without one the meter has nothing to measure against and
+/// the whole capacity idea silently does nothing on a fresh install.
+final capacityProvider = FutureProvider<int>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  return await store.number('capacity') ?? defaultCapacity;
+});
+
+/// The default, exported so the screen and the settings control cannot
+/// disagree about what a fresh install looks like.
+const int defaultCapacity = 5;
 
 /// Which engine answers. Persisted so the choice survives a restart.
 final engineProvider = FutureProvider<KoruEngine>((ref) async {
@@ -522,9 +527,9 @@ final guideFactsProvider = FutureProvider<ScreenFacts>((ref) async {
   final all = await store.all();
   return ScreenFacts(
     clients: await store.clients(),
-    fitness: await store.fitness(),
     received: await store.receivedTotals(),
-    bmi: await store.number('bmi'),
+    deadlines: await store.deadlines(),
+    payments: await store.payments(limit: 25),
     hasProfile: (all['nickname']?.isNotEmpty ?? false),
   );
 });
@@ -561,12 +566,6 @@ final bundledEngineStatusProvider = FutureProvider<BundledEngineStatus>((ref) as
 
 final bundledEngineAvailableProvider = FutureProvider<bool>((ref) async {
   return (await ref.watch(bundledEngineStatusProvider.future)).available;
-});
-
-/// Height, pulled out because three different screens need it to compute BMI.
-final heightProvider = FutureProvider<double?>((ref) async {
-  final store = await ref.watch(storeProvider.future);
-  return store.number('height');
 });
 
 /// Saves a cloud key and invalidates everything that depends on it.

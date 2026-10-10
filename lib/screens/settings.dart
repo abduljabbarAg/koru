@@ -54,7 +54,6 @@ class SettingsScreen extends ConsumerWidget {
                     const SizedBox(height: 14),
                     if (p.lifeStage.isNotEmpty) _line('Stage', p.lifeStage),
                     if (p.business.isNotEmpty) _line('Work', p.business),
-                    if (p.fitness.isNotEmpty) _line('Fitness', p.fitness),
                     if (p.goals.isNotEmpty) _line('Goals', p.goals),
                     if (p.focus.isNotEmpty) _line('Focus', p.focus),
                     const SizedBox(height: 6),
@@ -138,6 +137,9 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 22),
+          const SectionLabel('Capacity'),
+          const _CapacityCard(),
+          const SizedBox(height: 22),
           const SectionLabel('Data'),
           Card(
             child: Column(
@@ -205,7 +207,6 @@ class SettingsScreen extends ConsumerWidget {
     final business = TextEditingController(text: m['business'] ?? '');
     final goals = TextEditingController(text: m['goals'] ?? '');
     final focus = TextEditingController(text: m['help_focus'] ?? '');
-    final height = TextEditingController(text: (m['height'] ?? ''));
 
     final saved = await showKoruSheet<bool>(
       context,
@@ -235,12 +236,6 @@ class SettingsScreen extends ConsumerWidget {
             controller: focus,
             decoration: const InputDecoration(labelText: 'Help me most with'),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: height,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Height', suffixText: 'm'),
-          ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -256,10 +251,8 @@ class SettingsScreen extends ConsumerWidget {
     await store.put('business', business.text.trim());
     await store.put('goals', goals.text.trim());
     await store.put('help_focus', focus.text.trim());
-    final h = double.tryParse(height.text.trim());
-    if (h != null && h > 0) await store.putNumber('height', h);
-    await store.refreshFitnessSummary();
     ref.invalidate(packetProvider);
+    ref.invalidate(guideFactsProvider);
     if (context.mounted) toast(context, 'Context updated');
   }
 
@@ -293,13 +286,11 @@ class SettingsScreen extends ConsumerWidget {
 
     await ref.read(chatProvider.notifier).clear();
     ref.invalidate(clientsProvider);
-    ref.invalidate(fitnessProvider);
     ref.invalidate(paymentsProvider);
     ref.invalidate(receivedTotalsProvider);
     ref.invalidate(openDeadlinesProvider);
     ref.invalidate(packetProvider);
     ref.invalidate(cloudKeyProvider);
-    ref.invalidate(heightProvider);
     ref.read(onboardedProvider.notifier).state = false;
 
     if (context.mounted) toast(context, 'All data deleted');
@@ -915,6 +906,88 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
             ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// How many clients this person is willing to carry at once.
+///
+/// Set during onboarding and changeable here, because the number that was right
+/// when you started is not the number that is right after a bad quarter. It is
+/// stored as a plain profile value, so changing it touches no schema.
+class _CapacityCard extends ConsumerWidget {
+  const _CapacityCard();
+
+  static const _options = [3, 5, 8, 12];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final capacity = ref.watch(capacityProvider).valueOrNull ?? defaultCapacity;
+    final underway = ref.watch(clientsProvider).valueOrNull
+            ?.where((c) => c.status == 'active' || c.status == 'delivered')
+            .length ??
+        0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You are carrying $underway.',
+              style: const TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Pick the most you can serve properly. Koru tells you when you are '
+              'at it, so taking on a sixth client is a decision rather than an '
+              'accident.',
+              style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                for (final n in _options) ...[
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: () async {
+                          final store = await ref.read(storeProvider.future);
+                          await store.putNumber('capacity', n);
+                          ref.invalidate(capacityProvider);
+                        },
+                        borderRadius: BorderRadius.circular(KoruRadius.field),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: capacity == n ? KoruColors.leafSoft : KoruColors.surface,
+                            borderRadius: BorderRadius.circular(KoruRadius.field),
+                            border: Border.all(
+                              color: capacity == n ? KoruColors.leaf : KoruColors.line,
+                              width: capacity == n ? 1.6 : 1,
+                            ),
+                          ),
+                          child: Text(
+                            '$n',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: capacity == n ? FontWeight.w700 : FontWeight.w500,
+                              color: KoruColors.ink,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

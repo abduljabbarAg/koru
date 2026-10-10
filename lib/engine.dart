@@ -57,9 +57,9 @@ class LocalModelPrompt {
       ..writeln('Never give a diagnosis, a dose, or a legal ruling.');
 
     // Rendered before the fallback check on purpose. isEmpty only looks at
-    // fitness and clients, so a user with goals set and no logs yet counts as
-    // empty, and asking that question is exactly the case where duplicating the
-    // goals into the prompt costs prefill for nothing.
+    // clients and deadlines, so a user with goals set and no records yet counts
+    // as empty, and asking that question is exactly the case where duplicating
+    // the goals into the prompt costs prefill for nothing.
     final context = facts.renderForModel();
 
     // The cloud packet is deliberately not sent to a model running on this
@@ -99,9 +99,6 @@ class LocalEngineFacts {
   final String nickname;
   final String goals;
   final String focus;
-  final double? height;
-  final double? bmi;
-  final List<FitnessEntry> fitness;
   final List<Client> clients;
 
   /// Money received per client id, so a balance can be stated without the model
@@ -115,15 +112,12 @@ class LocalEngineFacts {
     this.nickname = '',
     this.goals = '',
     this.focus = '',
-    this.height,
-    this.bmi,
-    this.fitness = const [],
     this.clients = const [],
     this.received = const {},
     this.deadlines = const [],
   });
 
-  bool get isEmpty => fitness.isEmpty && clients.isEmpty && deadlines.isEmpty;
+  bool get isEmpty => clients.isEmpty && deadlines.isEmpty;
 
   double balanceOf(Client c) =>
       c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
@@ -138,25 +132,6 @@ class LocalEngineFacts {
     final lines = <String>[];
     if (goals.isNotEmpty) lines.add('Their goal: $goals');
     if (focus.isNotEmpty) lines.add('They want help with: $focus');
-
-    if (fitness.isNotEmpty) {
-      final latest = fitness.first;
-      final parts = <String>[];
-      if (latest.weight != null) parts.add('weight ${latest.weight!.toStringAsFixed(1)}kg');
-      if (height != null) parts.add('height ${height!.toStringAsFixed(2)}m');
-      if (bmi != null) parts.add('BMI ${bmi!.toStringAsFixed(1)}');
-      if (parts.isNotEmpty) lines.add('Latest body log: ${parts.join(', ')}');
-      if (fitness.length > 1) {
-        final previous = fitness[1];
-        if (latest.weight != null && previous.weight != null) {
-          final change = latest.weight! - previous.weight!;
-          lines.add(
-            'Change since the previous log: ${change >= 0 ? '+' : ''}${change.toStringAsFixed(1)}kg',
-          );
-        }
-      }
-      lines.add('Body logs recorded: ${fitness.length}');
-    }
 
     if (clients.isNotEmpty) {
       // Balances come from the ledger, not from the status. Summing every

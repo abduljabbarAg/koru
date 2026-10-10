@@ -166,7 +166,6 @@ class ProfileStore {
       lifeStage: m['stage'] ?? '',
       business: m['business'] ?? '',
       goals: m['goals'] ?? '',
-      fitness: m['fitness_summary'] ?? '',
       // help_focus was written during onboarding and then never read by anything,
       // which left ContextPacket.focus permanently empty.
       focus: m['help_focus'] ?? '',
@@ -176,28 +175,6 @@ class ProfileStore {
   Future<bool> get onboarded async => (await get('onboarded')) == '1';
 
   Future<void> completeOnboarding() => put('onboarded', '1');
-
-  /// Recomputes the fitness line that goes into the packet. Called after every
-  /// measurement change so the context can never drift from the logs.
-  Future<void> refreshFitnessSummary() async {
-    final height = await number('height');
-    final entries = await fitness(limit: 1);
-    if (entries.isEmpty) {
-      await put('fitness_summary', 'no measurements yet');
-      return;
-    }
-    final latest = entries.first;
-    final parts = <String>[];
-    final w = latest.weight;
-    if (w != null) parts.add('weight ${w.toStringAsFixed(1)}kg');
-    final bmi = height == null ? null : latest.bmi(height);
-    if (bmi != null) {
-      parts.add('BMI ${bmi.toStringAsFixed(1)}');
-      await putNumber('bmi', double.parse(bmi.toStringAsFixed(1)));
-    }
-    if (height != null) parts.add('height ${height.toStringAsFixed(2)}m');
-    await put('fitness_summary', parts.isEmpty ? 'no measurements yet' : parts.join(', '));
-  }
 
   Future<void> wipe() async {
     // payments and deadlines are in this list because this is the only promise
@@ -220,25 +197,10 @@ class ProfileStore {
   }
 
   // -- fitness ---------------------------------------------------------
-
-  Future<int> addFitness(FitnessEntry e) => _db.insert('fitness', e.toMap());
-
-  Future<List<FitnessEntry>> fitness({int limit = 30}) async {
-    final rows = await _db.query('fitness', orderBy: 'day DESC, id DESC', limit: limit);
-    return rows.map(FitnessEntry.fromMap).toList();
-  }
-
-  Future<void> updateFitness(FitnessEntry e) async {
-    final id = e.id;
-    if (id == null) return;
-    await _db.update('fitness', e.toUpdateMap(), where: 'id = ?', whereArgs: [id]);
-    await refreshFitnessSummary();
-  }
-
-  Future<void> deleteFitness(int id) async {
-    await _db.delete('fitness', where: 'id = ?', whereArgs: [id]);
-    await refreshFitnessSummary();
-  }
+  //
+  // Removed with the screen. The table is still created and still cleared by
+  // wipe, because dropping it needs a migration that destroys whatever was
+  // logged there, and an empty table costs nothing.
 
   // -- business --------------------------------------------------------
 

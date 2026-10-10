@@ -16,7 +16,6 @@ class ContextPacket {
   final String lifeStage;
   final String business;
   final String goals;
-  final String fitness;
   final String focus;
 
   const ContextPacket({
@@ -24,7 +23,6 @@ class ContextPacket {
     required this.lifeStage,
     required this.business,
     required this.goals,
-    required this.fitness,
     required this.focus,
   });
 
@@ -38,7 +36,6 @@ class ContextPacket {
       if (lifeStage.isNotEmpty) 'stage: $lifeStage',
       if (business.isNotEmpty) 'work: $business',
       if (goals.isNotEmpty) 'goals: $goals',
-      if (fitness.isNotEmpty) 'fitness: $fitness',
       if (focus.isNotEmpty) 'focusing on: $focus',
     ];
     return _sentence('About this person.', parts);
@@ -50,7 +47,6 @@ class ContextPacket {
       if (lifeStage.isNotEmpty) 'stage: $lifeStage',
       if (business.isNotEmpty) 'work: $business',
       if (goals.isNotEmpty) 'goals: $goals',
-      if (fitness.isNotEmpty) 'fitness: $fitness',
       if (focus.isNotEmpty) 'asking about: $focus',
     ];
     return _sentence('About this user.', parts);
@@ -66,7 +62,6 @@ class ContextPacket {
         'life_stage': lifeStage,
         'business': business,
         'goals': goals,
-        'fitness': fitness,
         'focus': focus,
       };
 
@@ -75,7 +70,6 @@ class ContextPacket {
         lifeStage: j['life_stage'] as String? ?? '',
         business: j['business'] as String? ?? '',
         goals: j['goals'] as String? ?? '',
-        fitness: j['fitness'] as String? ?? '',
         focus: j['focus'] as String? ?? '',
       );
 

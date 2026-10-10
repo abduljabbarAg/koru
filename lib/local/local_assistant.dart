@@ -8,7 +8,7 @@ import '../models.dart';
 /// to a paid API and the "answered on device" promise was decoration.
 ///
 /// It is a deterministic assistant, not a language model, and the UI says so. It
-/// answers from the user's own records: their profile, their weight, their
+/// answers from the user's own records: their profile, their clients, their
 /// clients, their goals. That is exactly the class of question a memory-based
 /// companion should be good at, and doing it locally is what makes the privacy
 /// claim true rather than aspirational.
@@ -34,8 +34,6 @@ class LocalAssistant {
         );
       case _Intent.status:
         return LocalAnswer(_status(facts), usedData: facts.hasRecords);
-      case _Intent.fitness:
-        return LocalAnswer(_fitness(facts), usedData: facts.fitness.isNotEmpty);
       case _Intent.business:
         return LocalAnswer(_business(facts), usedData: facts.clients.isNotEmpty);
       case _Intent.goals:
@@ -75,12 +73,6 @@ class LocalAssistant {
       return _Intent.status;
     }
     if (has(const [
-      'bmi', 'weight', 'weigh', 'waist', 'measure', 'body fat',
-      'fitness', 'training', 'workout', 'gym',
-    ])) {
-      return _Intent.fitness;
-    }
-    if (has(const [
       'client', 'invoice', 'payment', 'paid', 'pipeline', 'revenue', 'lead',
       'money', 'business', 'sale', 'quote', 'price', 'pricing',
     ])) {
@@ -96,8 +88,8 @@ class LocalAssistant {
     final who = f.nickname.isEmpty ? '' : ', ${f.nickname}';
     if (!f.hasRecords) {
       return 'Hello$who. I am running entirely on this phone, so I can already '
-          'see your profile. Add a client or log a measurement and I can start '
-          'answering properly.';
+          'see your profile. Add a client and I can start telling you who owes '
+          'you what.';
     }
     return 'Hello$who. Everything I know is on this device.';
   }
@@ -110,10 +102,14 @@ class LocalAssistant {
 
   String _capabilities() => 'On this device I can tell you:\n'
       '\n'
-      '  - how you are doing, across work and training\n'
-      '  - your latest weight, your BMI, and whether the trend is up or down\n'
-      '  - your client pipeline, what is unpaid, and what is overdue\n'
+      '  - who owes you money, and how much each of them\n'
+      '  - what is overdue and worth chasing first\n'
+      '  - what is coming up, and what is stale in the pipeline\n'
       '  - the goals you set in onboarding\n'
+      '\n'
+      'I can also record things for you. Say "add client Bilal for 2000" or '
+      '"Bilal paid 500" and I will show you exactly what I understood before '
+      'anything is saved.\n'
       '\n'
       'Anything about faith, health, medicine or law goes to a stronger model '
       'instead, and anything urgent goes to a person.';
@@ -130,89 +126,59 @@ class LocalAssistant {
     final biz = _businessLines(f);
     if (biz.isNotEmpty) lines.addAll(biz);
 
-    final fit = _fitnessLines(f);
-    if (fit.isNotEmpty) lines.addAll(fit);
-
     // A profile on its own is not a status report. Say what is missing rather
     // than returning just a greeting echoed back.
-    if (biz.isEmpty && fit.isEmpty && f.goals.isEmpty) {
-      lines.add('Nothing logged yet. Add a client or log a measurement and I '
-          'will have something real to say.');
+    if (biz.isEmpty && f.goals.isEmpty) {
+      lines.add('Nothing on file yet. Add a client and I will have something '
+          'real to say.');
     }
     return lines.join('\n');
   }
 
   List<String> _businessLines(LocalFacts f) {
     if (f.clients.isEmpty) return const [];
-    final total = f.clients.fold<double>(0, (a, c) => a + (c.amount ?? 0));
-    final paid = f.clients.where((c) => c.status == 'paid').length;
-    final waiting = f.clients.where((c) => c.status == 'delivered').length;
+    // Balances, not invoice amounts. Summing `amount` counted money already in
+    // the bank as still owed, so this assistant used to tell someone to chase
+    // money they had already been paid.
+    final owing = f.clients.where((c) => f.balanceOf(c) > 0).toList()
+      ..sort((a, b) => f.balanceOf(b).compareTo(f.balanceOf(a)));
+    final outstanding = owing.fold<double>(0, (a, c) => a + f.balanceOf(c));
+    final received = f.received.values.fold<double>(0, (a, v) => a + v);
     final pipeline = f.clients.where((c) => c.status == 'lead' || c.status == 'active').length;
-    final out = ['Business: $paid paid, $waiting delivered and waiting, '
-        '$pipeline still in the pipeline, ${total.toStringAsFixed(0)} AED booked.'];
+
+    final out = [
+      '${f.clients.length} client${f.clients.length == 1 ? '' : 's'}, '
+      '${owing.length} owing a balance, $pipeline still in the pipeline.',
+      'Received ${received.toStringAsFixed(0)} AED, still owed '
+      '${outstanding.toStringAsFixed(0)} AED.',
+    ];
+    if (owing.isNotEmpty) {
+      out.add('Biggest: ${owing.first.name} at '
+          '${f.balanceOf(owing.first).toStringAsFixed(0)} AED.');
+    }
     final overdue = f.clients.where((c) => c.isOverdueOn(f.today)).toList();
     if (overdue.isNotEmpty) {
-      out.add('Overdue: ${overdue.map((c) => c.name).join(', ')}.');
+      out.add('Past the due date: ${overdue.map((c) => c.name).join(', ')}.');
+    }
+    final due = f.deadlines.take(3).map((d) => d.title).toList();
+    if (due.isNotEmpty) {
+      out.add('Coming up: ${due.join(', ')}.');
     }
     return out;
   }
 
-  List<String> _fitnessLines(LocalFacts f) {
-    if (f.fitness.isEmpty) return const [];
-    final latest = f.fitness.first;
-    final parts = <String>[];
-    if (latest.weight != null) parts.add('${latest.weight!.toStringAsFixed(1)}kg');
-    if (f.bmi != null) parts.add('BMI ${f.bmi!.toStringAsFixed(1)}');
-    final trend = f.weightTrendPerWeek;
-    if (trend != null) {
-      final word = trend > 0.05
-          ? 'up ${trend.toStringAsFixed(2)}kg a week'
-          : trend < -0.05
-              ? 'down ${trend.abs().toStringAsFixed(2)}kg a week'
-              : 'holding steady';
-      parts.add('trend $word');
-    }
-    return ['Fitness: ${parts.join(', ')} across ${f.fitness.length} log${f.fitness.length == 1 ? '' : 's'}.'];
-  }
-
-  String _fitness(LocalFacts f) {
-    if (f.fitness.isEmpty) {
-      return 'No measurements logged yet. Log weight and waist from the Fitness '
-          'tab and I will track the trend, not just the number.';
-    }
-    final lines = _fitnessLines(f);
-    final latest = f.fitness.first;
-    final extras = <String>[];
-    if (latest.waist != null) extras.add('waist ${latest.waist!.toStringAsFixed(0)}cm');
-    if (latest.chest != null) extras.add('chest ${latest.chest!.toStringAsFixed(0)}cm');
-    if (latest.arm != null) extras.add('arm ${latest.arm!.toStringAsFixed(0)}cm');
-    if (latest.leg != null) extras.add('leg ${latest.leg!.toStringAsFixed(0)}cm');
-    if (extras.isNotEmpty) lines.add('Latest log (${latest.day}): ${extras.join(', ')}.');
-
-    if (f.weightTrendPerWeek != null && f.fitness.length > 1) {
-      lines.add('That is a trend, not a single reading. Judge it over weeks, '
-          'not days.');
-    }
-    return lines.join('\n');
-  }
-
   String _business(LocalFacts f) {
-    if (f.clients.isEmpty) {
-      return 'No clients yet. Add one from the Business tab and I can track '
-          'delivered versus paid, and flag anything overdue.';
+    if (f.clients.isEmpty && f.deadlines.isEmpty) {
+      return 'No clients yet. Say "add client Bilal for 2000" and I will set '
+          'them up, then track what they owe you.';
     }
     final lines = _businessLines(f);
-    final needsFollowUp = f.clients
+    final stale = f.clients
         .where((c) => c.status == 'lead' || c.status == 'active')
         .toList();
-    if (needsFollowUp.isNotEmpty) {
-      lines.add('Worth a nudge: ${needsFollowUp.map((c) => c.name).join(', ')}.');
-    }
-    final unpaid = f.clients.where((c) => c.status == 'delivered').toList();
-    if (unpaid.isNotEmpty) {
-      final sum = unpaid.fold<double>(0, (a, c) => a + (c.amount ?? 0));
-      lines.add('Chasing ${sum.toStringAsFixed(0)} AED is the single highest '
-          'value thing on this list.');
+    if (stale.isNotEmpty) {
+      lines.add('Still open with no movement: '
+          '${stale.map((c) => c.name).join(', ')}. Those are the ones going cold.');
     }
     return lines.join('\n');
   }
@@ -223,24 +189,24 @@ class LocalAssistant {
           'you to it.';
     }
     return 'You told me: ${f.goals}\n\n'
-        'On the next status check I will compare that against your logs and '
-        'your pipeline.';
+        'On the next status check I will compare that against your pipeline and '
+        'what you are owed.';
   }
 
   String _fallback(LocalFacts f) {
     if (!f.hasRecords) {
       return 'I could not answer that from what is on this phone. On device I '
-          'can only work with your profile, your logs and your clients. Add a '
+          'can only work with your clients, your money and your deadlines. Add a '
           'cloud key in Settings if you want me to send this one upstream.';
     }
     return 'I could not match that to anything I keep locally. I can answer '
-        'from your profile, your logs and your clients. For anything else, add '
-        'a cloud key in Settings and I will send a pseudonymous summary with '
-        'the question.';
+        'from your clients, your money and your deadlines. For anything else, '
+        'add a cloud key in Settings and I will send a pseudonymous summary '
+        'with the question.';
   }
 }
 
-enum _Intent { greeting, identity, capabilities, status, fitness, business, goals, unknown }
+enum _Intent { greeting, identity, capabilities, status, business, goals, unknown }
 
 /// Case folds a question without importing the routing layer, so this file can
 /// be unit tested on its own.
@@ -271,44 +237,29 @@ class LocalFacts {
     this.nickname = '',
     this.lifeStage = '',
     this.goals = '',
-    this.height,
-    this.bmi,
-    this.fitness = const [],
     this.clients = const [],
+    this.received = const {},
+    this.deadlines = const [],
     DateTime? today,
   }) : today = today ?? DateTime.now();
 
   final String nickname;
   final String lifeStage;
   final String goals;
-  final double? height;
-  final double? bmi;
 
   /// Newest first, which is the order the store already returns.
-  final List<FitnessEntry> fitness;
   final List<Client> clients;
+
+  /// Money received per client id, so the built-in assistant quotes the same
+  /// balances the screen shows rather than summing invoice amounts.
+  final Map<int, double> received;
+  final List<Deadline> deadlines;
   final DateTime today;
 
   bool get hasProfile => nickname.isNotEmpty || lifeStage.isNotEmpty || goals.isNotEmpty;
-  bool get hasRecords => fitness.isNotEmpty || clients.isNotEmpty;
+  bool get hasRecords =>
+      clients.isNotEmpty || deadlines.isNotEmpty || received.isNotEmpty;
 
-  /// Weight change per week, or null when there is not enough history to say.
-  /// Needs at least two readings at least three days apart, otherwise every
-  /// session reports a wild number from overnight water retention.
-  double? get weightTrendPerWeek {
-    final dated = <({DateTime day, double kg})>[];
-    for (final e in fitness) {
-      final kg = e.weight;
-      if (kg == null) continue;
-      final day = DateTime.tryParse(e.day);
-      if (day == null) continue;
-      dated.add((day: day, kg: kg));
-    }
-    if (dated.length < 2) return null;
-    final newest = dated.first;
-    final older = dated.last;
-    final days = newest.day.difference(older.day).inDays;
-    if (days < 3) return null;
-    return (newest.kg - older.kg) / (days / 7.0);
-  }
+  double balanceOf(Client c) =>
+      c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
 }

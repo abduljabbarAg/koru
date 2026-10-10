@@ -72,7 +72,7 @@ void main() {
         'my revenue was up but margins are down',
         'is this islam or not',
         'write me a python function',
-        'what is my bmi',
+        'what is my hourly rate',
         'help me draft an invoice',
         'where should i find leads',
         'summarise this',
@@ -136,7 +136,6 @@ void main() {
       lifeStage: 'mid career',
       business: 'solo dev, 2 yrs',
       goals: 'two more clients',
-      fitness: 'weight 80kg, BMI 24.5',
       focus: 'business growth',
     );
 
@@ -198,7 +197,6 @@ void main() {
         lifeStage: '',
         business: '',
         goals: '',
-        fitness: '',
         focus: '',
       );
       expect(empty.renderForCloud(), 'About this user.');

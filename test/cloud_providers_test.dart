@@ -253,16 +253,14 @@ void main() {
   group('Guide', () {
     ScreenFacts facts({
       List<Client> clients = const [],
-      List<FitnessEntry> fitness = const [],
       Map<int, double> received = const {},
-      double? bmi,
+      List<Deadline> deadlines = const [],
       bool hasProfile = false,
     }) =>
         ScreenFacts(
           clients: clients,
-          fitness: fitness,
           received: received,
-          bmi: bmi,
+          deadlines: deadlines,
           hasProfile: hasProfile,
         );
 
@@ -327,44 +325,6 @@ void main() {
       });
     });
 
-    group('fitness', () {
-      test('refuses to call one reading a trend', () {
-        final line = Guide.forFitness(facts(
-          fitness: const [FitnessEntry(day: '2026-02-28', weight: 80)],
-          bmi: 24.7,
-        ));
-        expect(line, contains('not a trend'));
-      });
-
-      test('reports the band and the trend once there is history', () {
-        final line = Guide.forFitness(facts(
-          fitness: const [
-            FitnessEntry(day: '2026-02-28', weight: 78),
-            FitnessEntry(day: '2026-02-14', weight: 80),
-          ],
-          bmi: 24.1,
-        ));
-        expect(line, contains('24.1'));
-        expect(line, contains('healthy range'));
-        expect(line, contains('-1.00 kg a week'));
-      });
-
-      test('asks for a baseline when there is nothing', () {
-        expect(Guide.forFitness(facts()), contains('baseline'));
-      });
-
-      test('does not present a bmi band as a verdict', () {
-        final line = Guide.forFitness(facts(
-          fitness: const [
-            FitnessEntry(day: '2026-02-28', weight: 95),
-            FitnessEntry(day: '2026-02-14', weight: 96),
-          ],
-          bmi: 29.3,
-        ));
-        expect(line, contains('not a verdict'));
-      });
-    });
-
     group('settings and chat', () {
       test('settings is silent when there is nothing worth saying', () {
         // Context plus a client means there is nothing left to prompt about.
@@ -379,7 +339,7 @@ void main() {
         final line = Guide.forSettings(
           ScreenFacts(hasProfile: true),
         );
-        expect(line, contains('measurement'));
+        expect(line, contains('client'));
       });
 
       test('chat prompts only when goals exist with nothing to check against', () {
@@ -405,25 +365,20 @@ void main() {
       });
     });
 
-    group('ScreenFacts trend', () {
-      test('needs two readings three days apart', () {
-        expect(facts().weightTrendPerWeek, isNull);
+    group('ScreenFacts records', () {
+      test('a deadline counts as a record', () {
+        // Without this, someone who added their first deadline and no clients
+        // yet was told they had nothing to check their goals against.
         expect(
-          facts(fitness: const [
-            FitnessEntry(day: '2026-02-28', weight: 80),
-            FitnessEntry(day: '2026-02-27', weight: 82),
-          ]).weightTrendPerWeek,
-          isNull,
+          facts(deadlines: const [Deadline(title: 'Send invoice', due: '2026-03-01')])
+              .hasRecords,
+          isTrue,
         );
+        expect(facts().hasRecords, isFalse);
       });
 
-      test('ignores readings with no weight', () {
-        final f = facts(fitness: const [
-          FitnessEntry(day: '2026-02-28'),
-          FitnessEntry(day: '2026-02-21', weight: 80),
-          FitnessEntry(day: '2026-02-14', weight: 81),
-        ]);
-        expect(f.weightTrendPerWeek, closeTo(-1.0, 0.01));
+      test('a payment counts as a record even with no clients', () {
+        expect(facts().hasRecords, isFalse);
       });
     });
   });

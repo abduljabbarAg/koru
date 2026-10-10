@@ -7,6 +7,10 @@ import 'widgets.dart';
 
 /// Onboarding is the highest-leverage screen in the product: without context a
 /// memory-based companion has nothing to remember against. Kept to 8 taps.
+///
+/// It asks for a client capacity because that is the one number the rest of the
+/// product measures itself against, and asking once here is better than nagging
+/// later about a limit the user never chose.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -22,28 +26,36 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   String? _stage;
   String? _biz;
   final _goals = TextEditingController();
-  final _weight = TextEditingController();
-  final _height = TextEditingController();
+
+  /// How many clients this person is willing to carry at once. Set on the first
+  /// run because it is the number every other part of the product measures
+  /// against, and guessing it later feels like the app nagging.
+  int _capacity = 5;
+
   /// Multi-select: people usually want help with more than one thing, and
   /// forcing a single pick quietly threw the rest away.
   final Set<String> _help = <String>{};
 
-  static const _stages = ['Student', 'Early career', 'Mid career', 'Senior', 'Running a business'];
-  static const _bizs = [
-    'Solo / freelancer',
-    'Small company',
-    'Employee',
-    'No business yet',
+  static const _stages = ['Just starting', 'A few years in', 'Established', 'Running a business'];
+  static const _bizs = ['Solo / freelancer', 'Small company', 'Employee', 'No business yet'];
+  static const _helps = [
+    'Finding clients',
+    'Getting paid',
+    'Pricing',
+    'Staying organised',
+    'All of it',
   ];
-  static const _helps = ['Career', 'Business growth', 'Fitness', 'Learning', 'All of it'];
+
+  /// Presets rather than a free-form number, because the honest answer to "how
+  /// many clients can you serve well" is a feeling and three options capture it
+  /// better than a text field.
+  static const _capacityOptions = [3, 5, 8, 12];
 
   @override
   void dispose() {
     _page.dispose();
     _nick.dispose();
     _goals.dispose();
-    _weight.dispose();
-    _height.dispose();
     super.dispose();
   }
 
@@ -80,28 +92,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Future<void> _write() async {
     final store = await ref.read(storeProvider.future);
-    final w = double.tryParse(_weight.text.trim());
-    final h = double.tryParse(_height.text.trim());
-    final bmi = (w != null && h != null && h > 0) ? w / (h * h) : null;
 
     await store.put('nickname', _nick.text.trim().isEmpty ? 'friend' : _nick.text.trim());
     await store.put('stage', _stage ?? '');
     await store.put('business', _biz ?? '');
     await store.put('goals', _goals.text.trim());
     await store.put('help_focus', _help.join(', '));
-    if (w != null) await store.put('weight', '$w');
-    if (h != null) await store.put('height', '$h');
-    if (bmi != null) await store.put('bmi', bmi.toStringAsFixed(1));
-    await store.put(
-      'fitness_summary',
-      bmi == null || w == null || h == null
-          ? 'no measurements yet'
-          : 'weight ${w.toStringAsFixed(1)}kg, '
-              'height ${h.toStringAsFixed(2)}m, '
-              'BMI ${bmi.toStringAsFixed(1)}',
-    );
+    await store.putNumber('capacity', _capacity);
     await store.completeOnboarding();
     ref.invalidate(packetProvider);
+    ref.invalidate(guideFactsProvider);
     ref.read(onboardedProvider.notifier).state = true;
   }
 
@@ -152,7 +152,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       (v) => setState(() => _stage = v)),
                   _choice('What is your work situation?', _bizs, _biz,
                       (v) => setState(() => _biz = v)),
-                  _measures(),
+                  _capacityStep(),
                   _goalsScreen(),
                 ],
               ),
@@ -206,8 +206,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Widget _intro() => _body(
-        'An assistant that remembers you.',
-        'Your life, your work, your training. It runs on this phone. '
+        'A business partner that keeps the books.',
+        'Your clients, your money and what is due. It runs on this phone. '
             'No account, no real name.',
         [
           const SizedBox(height: 4),
@@ -225,11 +225,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           const KoruFeature(
               icon: Icons.lock_outline_rounded,
               title: 'Local by default',
-              body: 'Work, training and goals are answered here, without a network call.'),
+              body: 'Your clients and your money are answered here, without a network call.'),
           const KoruFeature(
               icon: Icons.payments_outlined,
               title: 'Knows what you are owed',
               body: 'Clients, payments and deadlines, so asking about money gets an answer.'),
+          const KoruFeature(
+              icon: Icons.edit_note_rounded,
+              title: 'Writes when you say so',
+              body: 'Say "add client Bilal for 2000". Nothing is saved until you approve it.'),
           const KoruFeature(
               icon: Icons.people_outline_rounded,
               title: 'Knows when to step aside',
@@ -288,30 +292,52 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             )),
       ]);
 
-  Widget _measures() => _body(
-        'Your starting numbers.',
-        'Weight and height give me a BMI baseline. Add waist, chest, arms and legs '
-            'as you go and I can track progress properly.',
+  Widget _capacityStep() => _body(
+        'How many clients can you serve well?',
+        'Not how many you can juggle, how many you can do properly. Koru keeps '
+            'this number so it can tell you when you are full instead of letting '
+            'you quietly take on work you have no room for.',
         [
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _weight,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Weight', suffixText: 'kg'),
+              for (final n in _capacityOptions) ...[
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      onTap: () => setState(() => _capacity = n),
+                      borderRadius: BorderRadius.circular(KoruRadius.field),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _capacity == n ? KoruColors.leafSoft : KoruColors.surface,
+                          borderRadius: BorderRadius.circular(KoruRadius.field),
+                          border: Border.all(
+                            color: _capacity == n ? KoruColors.leaf : KoruColors.line,
+                            width: _capacity == n ? 1.6 : 1,
+                          ),
+                        ),
+                        child: Text(
+                          '$n',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: _capacity == n ? FontWeight.w700 : FontWeight.w500,
+                            color: KoruColors.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _height,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Height', suffixText: 'm'),
-                ),
-              ),
+              ],
             ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'You can change this any time in Settings.',
+            style: const TextStyle(fontSize: 13, color: KoruColors.inkFaint),
           ),
         ],
       );
@@ -343,7 +369,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             controller: _goals,
             maxLines: 4,
             decoration: const InputDecoration(
-              hintText: 'e.g. two more clients, train 3x a week, finish the course',
+              hintText: 'e.g. get paid by 5 clients, stop taking work I cannot finish',
             ),
           ),
           const SizedBox(height: 18),

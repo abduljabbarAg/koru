@@ -205,32 +205,69 @@ void main() {
       expect(saved['goals'], 'ship two more clients');
     });
 
+    testWidgets('capacity defaults to five and can be changed', (tester) async {
+      useTallSurface(tester);
+      await pumpApp(tester, const OnboardingScreen());
+
+      // Advance to the capacity step, which is the one before goals.
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(find.text('Continue'));
+        await pumpFrames(tester);
+      }
+      expect(find.text('How many clients can you serve well?'), findsOneWidget);
+
+      await tester.tap(find.text('8'));
+      await pumpFrames(tester);
+
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Start'));
+      await pumpFrames(tester, frames: 12);
+
+      final capacity = await tester.runAsync(() => store.number('capacity'));
+      expect(capacity, 8);
+    });
+
+    testWidgets('an untouched capacity is still written as the default',
+        (tester) async {
+      useTallSurface(tester);
+      await pumpApp(tester, const OnboardingScreen());
+      await advanceToGoals(tester);
+      await tester.tap(find.text('Start'));
+      await pumpFrames(tester, frames: 12);
+
+      // A fresh install that skipped the choice still has something to measure
+      // against, otherwise the meter silently does nothing.
+      final capacity = await tester.runAsync(() => store.number('capacity'));
+      expect(capacity, 5);
+    });
+
     testWidgets('help topics are multi-select and all of them persist',
         (tester) async {
       useTallSurface(tester);
       await pumpApp(tester, const OnboardingScreen());
       await advanceToGoals(tester);
 
-      await tapChip(tester, 'Career');
-      await tapChip(tester, 'Fitness');
-      await tapChip(tester, 'Learning');
+      await tapChip(tester, 'Finding clients');
+      await tapChip(tester, 'Getting paid');
+      await tapChip(tester, 'Pricing');
 
       // All three stay selected at once.
       expect(find.byType(ChoiceChip), findsNWidgets(5));
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Finding clients')).selected,
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Fitness')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Getting paid')).selected,
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Learning')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Business growth')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Staying organised')).selected,
         isFalse,
       );
 
@@ -238,7 +275,7 @@ void main() {
       await pumpFrames(tester, frames: 12);
 
       final focus = await tester.runAsync(() => store.get('help_focus'));
-      expect(focus, 'Career, Fitness, Learning');
+      expect(focus, 'Finding clients, Getting paid, Pricing');
     });
 
     testWidgets('tapping a help topic again deselects it', (tester) async {
@@ -246,15 +283,15 @@ void main() {
       await pumpApp(tester, const OnboardingScreen());
       await advanceToGoals(tester);
 
-      await tapChip(tester, 'Career');
+      await tapChip(tester, 'Pricing');
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
         isTrue,
       );
 
-      await tapChip(tester, 'Career');
+      await tapChip(tester, 'Pricing');
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
         isFalse,
       );
     });
@@ -265,7 +302,7 @@ void main() {
       await pumpApp(tester, const OnboardingScreen());
       await advanceToGoals(tester);
 
-      await tapChip(tester, 'Career');
+      await tapChip(tester, 'Pricing');
       await tapChip(tester, 'All of it');
 
       expect(
@@ -273,25 +310,25 @@ void main() {
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Career')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
         isFalse,
       );
 
       // Picking something specific drops the shortcut.
-      await tapChip(tester, 'Fitness');
+      await tapChip(tester, 'Getting paid');
       expect(
         tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All of it')).selected,
         isFalse,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Fitness')).selected,
+        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Getting paid')).selected,
         isTrue,
       );
 
       await tester.tap(find.text('Start'));
       await pumpFrames(tester, frames: 12);
       final focus = await tester.runAsync(() => store.get('help_focus'));
-      expect(focus, 'Fitness');
+      expect(focus, 'Getting paid');
     });
   });
 
@@ -705,16 +742,16 @@ void main() {
         tester,
         const Scaffold(
           body: StatTile(
-            label: 'BMI',
-            value: '22.4',
-            sub: 'from weight + height',
+            label: 'OWED',
+            value: '2,400',
+            sub: 'across 3 clients',
             tint: KoruColors.leaf,
             tintBg: KoruColors.leafSoft,
           ),
         ),
       );
-      expect(find.text('22.4'), findsOneWidget);
-      expect(find.text('from weight + height'), findsOneWidget);
+      expect(find.text('2,400'), findsOneWidget);
+      expect(find.text('across 3 clients'), findsOneWidget);
     });
 
     testWidgets('EmptyHint can carry an action', (tester) async {

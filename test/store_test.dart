@@ -42,13 +42,13 @@ void main() {
     });
 
     test('numbers parse and round trip', () async {
-      await store.putNumber('height', 1.82);
-      expect(await store.number('height'), 1.82);
+      await store.putNumber('capacity', 8);
+      expect(await store.number('capacity'), 8);
     });
 
     test('a non numeric value is not a number', () async {
-      await store.put('height', 'tall');
-      expect(await store.number('height'), isNull);
+      await store.put('capacity', 'lots');
+      expect(await store.number('capacity'), isNull);
     });
 
     test('onboarding is one way until wiped', () async {
@@ -64,56 +64,6 @@ void main() {
       final packet = await store.packet();
       expect(packet.focus, 'business growth');
       expect(packet.renderForCloud(), contains('asking about: business growth'));
-    });
-  });
-
-  group('fitness', () {
-    test('stores and reads newest first', () async {
-      await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 82));
-      await store.addFitness(const FitnessEntry(day: '2026-02-01', weight: 80));
-      final list = await store.fitness();
-      expect(list.first.day, '2026-02-01');
-      expect(list.first.weight, 80);
-    });
-
-    test('updates an entry in place', () async {
-      final id = await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 82));
-      final entry = (await store.fitness()).first;
-      await store.updateFitness(entry.copyWith(id: id, weight: 81));
-      expect((await store.fitness()).first.weight, 81);
-      expect(await store.fitness(), hasLength(1));
-    });
-
-    test('deletes an entry', () async {
-      final id = await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 82));
-      await store.deleteFitness(id);
-      expect(await store.fitness(), isEmpty);
-    });
-
-    test('refreshing the summary includes height and bmi', () async {
-      await store.putNumber('height', 2.0);
-      await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 80));
-      await store.refreshFitnessSummary();
-      expect(await store.get('fitness_summary'), 'weight 80.0kg, BMI 20.0, height 2.00m');
-      expect(await store.number('bmi'), 20.0);
-    });
-
-    test('a summary with no logs says so', () async {
-      await store.refreshFitnessSummary();
-      expect(await store.get('fitness_summary'), 'no measurements yet');
-    });
-
-    test('a summary without height still reports the weight', () async {
-      await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 80));
-      await store.refreshFitnessSummary();
-      expect(await store.get('fitness_summary'), 'weight 80.0kg');
-    });
-
-    test('deleting the last log resets the summary', () async {
-      final id = await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 80));
-      await store.refreshFitnessSummary();
-      await store.deleteFitness(id);
-      expect(await store.get('fitness_summary'), 'no measurements yet');
     });
   });
 
@@ -206,7 +156,6 @@ void main() {
       final clientId = await store.addClient(
           const Client(name: 'x', created: '2026-01-01'));
       await store.put('nickname', 'kami');
-      await store.addFitness(const FitnessEntry(day: '2026-01-01', weight: 80));
       await store.addClient(const Client(name: 'x', created: '2026-01-01'));
       await store.addPayment(Payment(clientId: clientId, amount: 10, date: '2026-01-01'));
       await store.addDeadline(const Deadline(title: 'x', due: '2026-01-01'));
@@ -215,7 +164,6 @@ void main() {
       await store.wipe();
 
       expect(await store.all(), isEmpty);
-      expect(await store.fitness(), isEmpty);
       expect(await store.clients(), isEmpty);
       expect(await store.payments(), isEmpty);
       expect(await store.deadlines(openOnly: false), isEmpty);

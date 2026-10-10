@@ -351,11 +351,12 @@ class BusinessScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final clients = ref.watch(clientsProvider);
     final received = ref.watch(receivedTotalsProvider).valueOrNull ?? const <int, double>{};
     final payments = ref.watch(paymentsProvider).valueOrNull ?? const <Payment>[];
     final deadlines = ref.watch(openDeadlinesProvider).valueOrNull ?? const <Deadline>[];
+    final capacity = ref.watch(capacityProvider).valueOrNull ?? defaultCapacity;
     final today = DateTime.now();
     final guide = ref.watch(guideFactsProvider).valueOrNull;
 
@@ -378,6 +379,11 @@ class BusinessScreen extends ConsumerWidget {
               received.values.fold(0.0, (a, v) => a + v);
           final owing = list.where((c) => balanceOf(c) > 0).toList()
             ..sort((a, b) => balanceOf(b).compareTo(balanceOf(a)));
+          // Work actually under way. A lead is a hope, and a settled client is
+          // history, so neither counts against the limit.
+          final underway = list
+              .where((c) => c.status == 'active' || c.status == 'delivered')
+              .length;
           final overdue = owing.where((c) => c.isOverdueOn(today)).toList();
           final byId = {for (final c in list) if (c.id != null) c.id!: c};
 
@@ -445,6 +451,8 @@ class BusinessScreen extends ConsumerWidget {
                   ),
                 ),
               ],
+              const SizedBox(height: 14),
+              _capacityBar(owing.length + underway, capacity),
               const SizedBox(height: 18),
 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -490,6 +498,83 @@ Row(
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// How many clients this person is carrying, against the number they said they
+  /// could serve.
+  ///
+  /// Only counts work actually under way. Leads are a hope, not a commitment, and
+  /// counting them would make the meter read full for someone who is not.
+  ///
+  /// The wording below capacity is deliberately an opportunity rather than a
+  /// warning. Nagging someone for having too few clients punishes the person
+  /// doing fine; the dangerous direction is the other one, and that is the one
+  /// that gets the firm tone.
+  Widget _capacityBar(int activeCount, int capacity) {
+    final full = activeCount >= capacity;
+    final room = capacity - activeCount;
+    final tint = full ? KoruColors.clay : KoruColors.leaf;
+    final tintBg = full ? KoruColors.claySoft : KoruColors.leafSoft;
+    final message = full
+        ? 'You said $capacity was the most you could serve well, and you are at '
+            '$activeCount. Worth finishing or handing off before taking more.'
+        : 'Room for $room more client${room == 1 ? '' : 's'} before you are full.';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: tintBg,
+        borderRadius: BorderRadius.circular(KoruRadius.card),
+        border: Border.all(color: tint),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.groups_rounded, size: 18, color: tint),
+              const SizedBox(width: 8),
+              Text(
+                '$activeCount of $capacity',
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: tint,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                full ? 'at capacity' : '$room free',
+                style: const TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (var i = 0; i < capacity && i < 20; i++) ...[
+                Expanded(
+                  child: Container(
+                    height: 6,
+                    margin: EdgeInsets.only(right: i == capacity - 1 ? 0 : 4),
+                    decoration: BoxDecoration(
+                      color: i < activeCount ? tint : tintBg,
+                      borderRadius: BorderRadius.circular(3),
+                      border: i < activeCount ? null : Border.all(color: tint.withOpacity(0.35)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
+          ),
+        ],
       ),
     );
   }
