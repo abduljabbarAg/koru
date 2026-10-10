@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine.dart';
 import '../mascot/mascot.dart';
-import '../proposed_write.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';

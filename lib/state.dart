@@ -278,7 +278,7 @@ class ChatNotifier extends Notifier<ChatState> {
     final messages = [...state.messages];
     final at = messages.lastIndexWhere((m) => m.proposed != null);
     if (at < 0) return;
-    messages[at] = Msg(
+    messages[at] = const Msg(
       MsgRole.koru,
       'Noted, and not saved.',
       why: 'You discarded this.',
