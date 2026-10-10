@@ -60,6 +60,47 @@ one dependency (`memmap2`), no llama.cpp, no CUDA.
 | **The KU cache is a large win** | `Glen_NOKU=1` drops to 3.07 then 1.33 tok/s. The pre-unpacked Q4_K path is on by default and must stay on. |
 | **Prefill is I/O-bound cold, compute-bound warm** | Cold 44-token prefill took 5.30 s. Different problem from decode. Do not conflate them. |
 
+### Measured on the device, v0.5.0, 2026-11-10
+
+Run directly in Termux against the model extracted from the APK. These are not
+estimates, and they are the most expensive thing in this file to rediscover.
+
+| what | time |
+|---|---|
+| Model load + `warm()`, page cache already warm | **0.6 s** |
+| Model load + `warm()`, first load | 2.9 s |
+| Decode | **4.13 tok/s**, matching the documented baseline |
+| **First question, 160-token prompt, cold KV** | **15.8 s** |
+| The same question again, KV warm | **1.2 s** |
+| 754-token prompt, cold KV | **106 s** |
+| 754-token prompt, KV warm | 1.2 s |
+
+**KV prefix reuse is the single biggest factor in perceived speed.** The same
+754-token prompt took 106 s cold and 1.2 s warm, an 88x difference. Only the
+*first* question after the engine starts pays full prefill; every later question
+reuses the cached prefix and prefills only its own tail.
+
+That is the whole of "2 tok/s first, then 4 tok/s". It is not the model warming
+up and not the phone getting faster.
+
+**`warm()` prefills the single token "warm" and discards the caches**, so it pays
+the storage cost of pulling the model into page cache (0.6 s versus minutes when
+cold) but contributes nothing to the first question. Making it prefill the real
+system-prompt prefix into the *live* cache is the highest value optimisation
+available, and it needs the app and the engine to agree on that prefix. **Try
+that before any NEON work.**
+
+### The streaming fix, verified against the running server
+
+- First byte **immediately**, before prefill finishes.
+- `: prefill 256/754` comments during prefill, read by
+  `LocalModelClient.parseProgress`.
+- Then tokens ~300 ms apart, each flushed individually.
+
+Before the fix the client received nothing until prefill ended: a silent 15 s
+blank for a realistic first question, and a silent 106 s blank for a large one.
+The latency did not change. It is now visible.
+
 ### The next optimisation, and where NOT to put it
 
 **NEON/SIMD is unfinished.** The trap: `gemv_range` dispatches to NEON only for
