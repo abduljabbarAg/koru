@@ -130,16 +130,62 @@ void main() {
   }
 
   /// Walks the first five steps of onboarding and leaves the user on the goals
-  /// page, where Start and the help chips are.
+  /// page, where the help chips are.
+  ///
+  /// Start is not on this page any more: there is a review screen after it, so
+  /// what used to be the last step is now the second to last.
   Future<void> advanceToGoals(WidgetTester tester) async {
     for (var i = 0; i < 5; i++) {
       await tester.tap(find.text('Continue'));
       await pumpFrames(tester);
     }
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('How many clients can you serve well?').evaluate().isEmpty,
+        isTrue,
+        reason: 'should be on the goals page');
   }
 
   group('Onboarding', () {
+    /// The review exists so a person can see what the assistant was told before
+    /// it starts answering from it. Skipping a question used to be invisible:
+    /// nothing was stored, and nothing said so either, which is the same silence
+    /// that made the client screen read zero.
+    testWidgets('the review names what was left unanswered', (tester) async {
+      useTallSurface(tester);
+      await pumpApp(tester, const OnboardingScreen());
+
+      // Straight through, answering nothing.
+      for (var i = 0; i < 5; i++) {
+        await tester.tap(find.text('Continue'));
+        await pumpFrames(tester);
+      }
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+
+      expect(find.text('This is what Koru will know'), findsOneWidget);
+      // The nickname, the stage and the goals were all skipped.
+      expect(find.text('not set'), findsWidgets);
+      // And it says so rather than pretending to have everything.
+      expect(find.textContaining('are empty'), findsOneWidget);
+    });
+
+    testWidgets('an empty answer can be jumped back to', (tester) async {
+      useTallSurface(tester);
+      await pumpApp(tester, const OnboardingScreen());
+
+      for (var i = 0; i < 6; i++) {
+        await tester.tap(find.text('Continue'));
+        await pumpFrames(tester);
+      }
+      expect(find.text('This is what Koru will know'), findsOneWidget);
+
+      // The pencil beside a missing answer takes you back to that question.
+      await tester.tap(find.byIcon(Icons.edit_outlined).first);
+      await pumpFrames(tester);
+
+      expect(find.text('This is what Koru will know'), findsNothing,
+          reason: 'should have gone back to the question it came from');
+    });
+
     /// Walks the whole flow the way a person does. The regression this covers is
     /// real: the Start button used to do nothing, because RootGate held the
     /// onboarded flag in a field and never watched the provider onboarding set.
@@ -181,9 +227,15 @@ void main() {
       await pumpFrames(tester);
 
       // goals and help
-      expect(find.text('Start'), findsOneWidget);
       await tester.enterText(find.byType(TextField), 'ship two more clients');
       await pumpFrames(tester);
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+
+      // review, before anything is committed
+      expect(find.text('Start'), findsOneWidget);
+      // Everything was answered on the way through, so nothing is flagged.
+      expect(find.text('not set'), findsNothing);
       await tester.tap(find.text('Start'));
       await pumpFrames(tester, frames: 12);
 
@@ -219,8 +271,12 @@ void main() {
       await tester.tap(find.text('8'));
       await pumpFrames(tester);
 
+      // Capacity, then goals, then the review screen where Start now lives.
       await tester.tap(find.text('Continue'));
       await pumpFrames(tester);
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
+      expect(find.text('This is what Koru will know'), findsOneWidget);
       await tester.tap(find.text('Start'));
       await pumpFrames(tester, frames: 12);
 
@@ -233,6 +289,8 @@ void main() {
       useTallSurface(tester);
       await pumpApp(tester, const OnboardingScreen());
       await advanceToGoals(tester);
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
       await tester.tap(find.text('Start'));
       await pumpFrames(tester, frames: 12);
 
@@ -271,6 +329,8 @@ void main() {
         isFalse,
       );
 
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
       await tester.tap(find.text('Start'));
       await pumpFrames(tester, frames: 12);
 
@@ -325,6 +385,8 @@ void main() {
         isTrue,
       );
 
+      await tester.tap(find.text('Continue'));
+      await pumpFrames(tester);
       await tester.tap(find.text('Start'));
       await pumpFrames(tester, frames: 12);
       final focus = await tester.runAsync(() => store.get('help_focus'));

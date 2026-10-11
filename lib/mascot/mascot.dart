@@ -28,6 +28,15 @@ class KoruMascotController {
   /// A wave. Played on direct interaction.
   void wave() => _pending.add(KoruClip.wave);
 
+  /// Plays one named animation.
+  ///
+  /// The three above are the ones with an obvious meaning, and they stay as
+  /// their own names because "cheer" says more at the call site than
+  /// play(KoruClip.cheer) does. This is for the cases where the face has to
+  /// match the situation, like an onboarding screen that is waiting for an
+  /// answer, and the mood is information rather than a reaction.
+  void play(KoruClip clip) => _pending.add(clip);
+
   void _drain(void Function(KoruClip clip) apply) {
     if (_pending.isEmpty) return;
     final queued = List<KoruClip>.of(_pending);

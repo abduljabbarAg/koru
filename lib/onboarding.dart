@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'currency.dart';
+import 'mascot/mascot.dart';
+import 'mascot/mascot_clips.dart';
 import 'state.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -20,7 +22,18 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
+  /// Number of screens, including the review.
+  ///
+  /// One constant rather than a 6 written in four places. It was 6 in the page
+  /// bar, the counter, the Continue label and the bounds of _next, and those
+  /// drifting apart is how a flow ends up able to reach a step that does not
+  /// exist.
+  static const _steps = 7;
+
+  static const _last = _steps - 1;
+
   final _page = PageController();
+  final _mascot = KoruMascotController();
   int _step = 0;
 
   final _nick = TextEditingController();
@@ -61,9 +74,26 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
+  /// The face for a step.
+  ///
+  /// Waiting while something is unanswered, thinking on the two questions that
+  /// take a moment, cheerful once the money and the goals are in. Carries
+  /// information rather than just moving.
+  KoruClip _clipFor(int step) => switch (step) {
+        0 => KoruClip.greet,
+        1 => KoruClip.wave,
+        2 => KoruClip.idle,
+        3 => KoruClip.think,
+        4 => KoruClip.idle,
+        5 => KoruClip.cheer,
+        6 => KoruClip.cheer,
+        _ => KoruClip.idle,
+      };
+
   void _next() {
-    if (_step < 5) {
+    if (_step < _last) {
       setState(() => _step++);
+      _mascot.play(_clipFor(_step + 1));
       _page.animateToPage(_step,
           duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
     } else {
@@ -74,6 +104,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void _back() {
     if (_step == 0) return;
     setState(() => _step--);
+    _mascot.play(_clipFor(_step - 1));
     _page.animateToPage(_step,
         duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
   }
@@ -122,7 +153,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   const SizedBox(width: 12),
                   Text('Koru', style: Theme.of(context).textTheme.titleLarge),
                   const Spacer(),
-                  Text('${_step + 1} of 6',
+                  Text('${_step + 1} of $_steps',
                       style: const TextStyle(color: KoruColors.inkFaint, fontSize: 13)),
                 ],
               ),
@@ -130,11 +161,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
-                children: List.generate(6, (i) {
+                children: List.generate(_steps, (i) {
                   return Expanded(
                     child: Container(
                       height: 4,
-                      margin: EdgeInsets.only(right: i == 5 ? 0 : 6),
+                      margin: EdgeInsets.only(right: i == _last ? 0 : 6),
                       decoration: BoxDecoration(
                         color: i <= _step ? KoruColors.leaf : KoruColors.line,
                         borderRadius: BorderRadius.circular(2),
@@ -157,6 +188,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       (v) => setState(() => _biz = v)),
                   _capacityStep(),
                   _goalsScreen(),
+                  _review(),
                 ],
               ),
             ),
@@ -176,7 +208,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     flex: 2,
                     child: FilledButton(
                       onPressed: _next,
-                      child: Text(_step == 5 ? 'Start' : 'Continue'),
+                      child: Text(_step == _last ? 'Start' : 'Continue'),
                     ),
                   ),
                 ],
@@ -188,12 +220,47 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  Widget _body(String title, String sub, List<Widget> children) {
+  /// Koru alongside the question.
+  ///
+  /// He was only on the intro screen before, so the character introduced himself
+  /// and then vanished for the five screens where the user was actually filling
+  /// things in. A character that is present during setup is a guide; one that is
+  /// only present to say hello is decoration.
+  ///
+  /// The expression follows the step, so the face carries information rather
+  /// than just moving: waiting while a question is unanswered, thinking on the
+  /// harder ones, cheerful once the details are in.
+  Widget _guide(KoruClip clip) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          KoruMascot(size: 54, controller: _mascot, semanticLabel: 'Koru'),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              switch (clip) {
+                KoruClip.think => 'Koru is thinking this one over',
+                KoruClip.cheer => 'Koru is ready to get going',
+                KoruClip.wave => 'Koru is here',
+                _ => 'Koru is listening',
+              },
+              style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _body(String title, String sub, List<Widget> children, {KoruClip clip = KoruClip.idle}) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 28, 24, 12),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _guide(clip),
+          const SizedBox(height: 14),
           Text(title,
               style: const TextStyle(
                   fontSize: 27, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.6)),
@@ -244,7 +311,109 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ],
       );
 
+  /// What Koru will actually know, before it is asked to remember it.
+  ///
+  /// Added because the old flow went straight from the last question to the
+  /// home screen, and the first thing anybody learns about their own assistant
+  /// is by it being wrong later. Six answers, silently stored, with no chance to
+  /// see them.
+  ///
+  /// Missing answers are shown as missing rather than quietly defaulted. That
+  /// matters: the client screen had a bug where nothing defaulted to a real
+  /// value and every total read zero, and the same silence here would just look
+  /// like the app ignoring what was typed.
+  Widget _review() {
+    final rows = <(String, String)>[
+      ('Calls you', _nick.text.trim().isEmpty ? 'not set' : _nick.text.trim()),
+      ('Where you are', _stage ?? 'not set'),
+      ('Your work', _biz ?? 'not set'),
+      ('How much you can carry', '$_capacity ${_capacity == 1 ? 'client' : 'clients'} at a time'),
+      ('Paid in', _currency),
+      ('What you want help with', _goals.text.trim().isEmpty ? 'not set' : _goals.text.trim()),
+    ];
+    final missing = rows.where((r) => r.$2 == 'not set').length;
+
+    return _body(
+      clip: KoruClip.cheer,
+      'This is what Koru will know',
+      missing == 0
+          ? 'Check it over. Everything here stays on this phone, and you can '
+              'change any of it later in Settings.'
+          : 'Check it over. $missing ${missing == 1 ? 'answer is' : 'answers are'} '
+              'empty and Koru will say so rather than guess.',
+      [
+        const SizedBox(height: 10),
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: row.$2 == 'not set' ? KoruColors.goldSoft : KoruColors.surface,
+                borderRadius: BorderRadius.circular(KoruRadius.field),
+                border: Border.all(
+                  color: row.$2 == 'not set' ? KoruColors.gold : KoruColors.line,
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(row.$1,
+                            style: const TextStyle(
+                                fontSize: 11.5, color: KoruColors.inkFaint)),
+                        const SizedBox(height: 2),
+                        Text(row.$2,
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              color: row.$2 == 'not set'
+                                  ? KoruColors.inkFaint
+                                  : KoruColors.ink,
+                            )),
+                      ],
+                    ),
+                  ),
+                  if (row.$2 == 'not set')
+                    IconButton(
+                      tooltip: 'Answer this',
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.edit_outlined, color: KoruColors.gold),
+                      onPressed: () => _jumpTo(row.$1),
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Sends the user back to the answer they left empty.
+  int _stepFor(String label) => switch (label) {
+        'Calls you' => 1,
+        'Where you are' => 2,
+        'Your work' => 3,
+        'How much you can carry' => 4,
+        'What you want help with' => 5,
+        _ => 0,
+      };
+
+  void _jumpTo(String label) {
+    final target = _stepFor(label);
+    if (target >= _step) return;
+    setState(() => _step = target);
+    _mascot.play(_clipFor(target));
+    _page.animateToPage(target,
+        duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+  }
+
   Widget _nickName() => _body(
+        clip: KoruClip.wave,
         'What should I call you?',
         'A nickname, not a name. It stays on this device and is never attached '
             'to anything sent to a cloud model.',
