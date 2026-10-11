@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.9.0
+
+The app no longer gets stuck on its own start screen.
+
+### Fixed
+
+- **The splash could hang forever.** It held itself until the local engine
+  reported progress, which made the start screen hostage to work happening behind
+  it: a system dialog for battery optimisation, a slow model copy, or a health
+  check that never answered. Any of those left you on the splash with nothing to
+  tap and no way forward. It now leaves on a plain timer that none of that can
+  starve, and the engine reports progress in the chat instead, where being slow
+  costs nothing because there is other work to do.
+- **Permissions were not asked on the first run.** They were asked from the
+  start-up path and only when onboarding was already complete, which is exactly
+  backwards: on a fresh install the condition was false, nothing was asked, the
+  flag was written anyway, and they turned up on the second launch. Asked at the
+  end of the first run now, and the flag is written only after the prompts have
+  actually been shown.
+
+### Changed
+
+- **The waiting indicator animates and says what is happening.** Three flat dots
+  became a cycle through a flat, rising and triangle shape, driven by one
+  controller so the stages cannot drift apart. Beside it, a label names the phase:
+  waking up, reading your records, writing an answer, working out what you meant.
+  Dots answered "is it working" but not "is it working on the right thing", and on
+  this phone a prefill and a decode feel identical as an animation. The switch is
+  not guessed, it happens exactly when the first token lands.
+
 ## 0.8.1
 
 Chat stopped dying after a Stop, and editing stopped eating the conversation.
