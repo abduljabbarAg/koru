@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -101,16 +102,36 @@ class ChatState {
   final bool busy;
   final bool loaded;
 
+  /// Progress of the local engine warming up, 0 to 100, while null when it is
+  /// not happening. Shown on the splash and the chat rather than hidden in
+  /// Settings, because this is now something the app does on its own.
+  final int? engineProgress;
+
+  /// Set when the engine could not be brought up, so the failure is visible
+  /// where the question will be asked rather than only in Settings.
+  final String? engineProblem;
+
   const ChatState({
     required this.messages,
     required this.busy,
     this.loaded = false,
+    this.engineProgress,
+    this.engineProblem,
   });
 
-  ChatState copyWith({List<Msg>? messages, bool? busy, bool? loaded}) => ChatState(
+  ChatState copyWith({
+    List<Msg>? messages,
+    bool? busy,
+    bool? loaded,
+    int? engineProgress,
+    String? engineProblem,
+  }) =>
+      ChatState(
         messages: messages ?? this.messages,
         busy: busy ?? this.busy,
         loaded: loaded ?? this.loaded,
+        engineProgress: engineProgress ?? this.engineProgress,
+        engineProblem: engineProblem ?? this.engineProblem,
       );
 }
 
@@ -120,16 +141,22 @@ const _greeting = 'I am here, and I run on this phone. Ask about your work, '
 
 class ChatNotifier extends Notifier<ChatState> {
   @override
-  ChatState build() => const ChatState(
-        messages: [Msg(MsgRole.koru, _greeting, local: true)],
-        busy: false,
-      );
+  ChatState build() {
+    // Notifier has no dispose to override in this version of Riverpod, so the
+    // liveness flag is armed from here instead.
+    ref.onDispose(() => _gone = true);
+    return const ChatState(
+      messages: [Msg(MsgRole.koru, _greeting, local: true)],
+      busy: false,
+    );
+  }
 
   /// Loads the persisted thread. Chat history used to live only in this
   /// notifier, so closing the app lost the conversation.
   Future<void> load() async {
     if (state.loaded) return;
     final store = await ref.read(storeProvider.future);
+    _warmEngine(store);
     final records = await store.chat();
     if (records.isEmpty) {
       state = state.copyWith(loaded: true);
@@ -209,6 +236,65 @@ class ChatNotifier extends Notifier<ChatState> {
     ));
   }
 
+  /// Brings the chosen engine up without being asked.
+  ///
+  /// Choosing "on-device model" used to mean choosing it AND then going to
+  /// Settings and pressing start, every launch, with no indication anywhere
+  /// else in the app that anything needed doing. The model is bundled, so
+  /// nothing about starting it is a user decision, and the answer is already
+  /// stored: if they picked the local engine they want the local engine.
+  ///
+  /// Deliberately not awaited by load(). A cold start copies about half a
+  /// gigabyte out of the APK and takes tens of seconds, and blocking the chat
+  /// on it would make the app look dead on open. It reports progress instead.
+  void _warmEngine(ProfileStore store) {
+    unawaited(() async {
+      if (KoruEngine.parse(await store.get('engine')) != KoruEngine.onDevice) return;
+      final engine = ref.read(bundledEngineProvider);
+      final client = ref.read(localModelClientProvider);
+
+      // Already answering from a previous run of the app, so leave it alone.
+      final healthy = await client
+          .check('http://127.0.0.1:${BundledEngine.defaultPort}')
+          .then((r) => r is LocalReply)
+          .catchError((_) => false);
+      if (healthy) return;
+
+      state = state.copyWith(engineProgress: 0);
+      final result = await engine.start(
+        onProgress: (percent) {
+          if (_gone) return;
+          state = state.copyWith(engineProgress: percent);
+        },
+        isHealthy: () async {
+          final check =
+              await client.check('http://127.0.0.1:${BundledEngine.defaultPort}');
+          return check is LocalReply;
+        },
+      );
+
+      if (_gone) return;
+      if (result.started && result.endpoint != null) {
+        await store.put(
+          'local_model',
+          jsonEncode(LocalModelConfig(
+            endpoint: result.endpoint!,
+            modelId: 'qwen2.5-0.5b-instruct',
+            label: 'Bundled',
+            sizeBytes: 491400032,
+          ).toMap()),
+        );
+        ref.invalidate(localModelProvider);
+        state = state.copyWith(engineProgress: null, engineProblem: null);
+      } else {
+        state = state.copyWith(
+          engineProgress: null,
+          engineProblem: result.reason,
+        );
+      }
+    }());
+  }
+
   /// Characters of earlier conversation allowed into one prompt.
   ///
   /// The bundled engine runs with a 1024 token KV cache and the system prompt
@@ -220,6 +306,11 @@ class ChatNotifier extends Notifier<ChatState> {
 
   /// Whether the in-flight generation was stopped by the user.
   bool _cancelled = false;
+
+  /// Set when this notifier goes away. Riverpod's Notifier ref has no `mounted`,
+  /// and the engine start is a long await that can outlive the screen that
+  /// asked for it, so it needs its own liveness flag rather than a ref to ask.
+  bool _gone = false;
 
   /// Stops the answer being written.
   ///
@@ -287,10 +378,11 @@ class ChatNotifier extends Notifier<ChatState> {
       if (m.pending || m.text.trim().isEmpty) continue;
       if (m.role != MsgRole.user && m.role != MsgRole.koru) continue;
 
-      // Roughly four characters to a token, which is close enough for a
-      // budget and needs no tokenizer at the call site.
       final text = m.text.length > 400 ? '${m.text.substring(0, 400)}...' : m.text;
-      final cost = (text.length / 4).ceil() + 8;
+      // Counted in characters, not a token estimate. The two differ by about
+      // four to one, and a budget that is quietly measured in something other
+      // than what it says is how a limit stops being a limit.
+      final cost = text.length + 8;
       if (used + cost > budgetChars) break;
       used += cost;
 

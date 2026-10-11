@@ -55,6 +55,11 @@ class _RootGateState extends ConsumerState<RootGate> {
     if (!mounted) return;
     setState(() => _ready = true);
     ref.read(onboardedProvider.notifier).state = done;
+    // Started here rather than from the chat screen. The splash is where the
+    // model is actually being unpacked, so it is the only place that can show
+    // progress for it, and waiting until the chat screen meant the splash was
+    // already gone by the time the slow part began.
+    if (done) ref.read(chatProvider.notifier).load();
   }
 
   void _leaveSplash() {
@@ -86,19 +91,34 @@ class _RootGateState extends ConsumerState<RootGate> {
 /// Held for a minimum time so the character gets a few idle cycles and a blink
 /// in, which is the whole point of animating it. Long enough to read, short
 /// enough not to be in the way.
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key, this.onDone, this.minimum = const Duration(milliseconds: 1500)});
+///
+/// It is also held while the local engine is actually starting, because that
+/// takes tens of seconds on a cold install and the splash is the only honest
+/// place to say so. Capped, so a model that never arrives still lets the user in
+/// to read the error rather than stranding them on a progress bar forever.
+class SplashScreen extends ConsumerStatefulWidget {
+  const SplashScreen({
+    super.key,
+    this.onDone,
+    this.minimum = const Duration(milliseconds: 1500),
+    this.holdForEngine = const Duration(seconds: 25),
+  });
 
   final VoidCallback? onDone;
   final Duration minimum;
 
+  /// Longest the splash will stay for the engine before giving up on it.
+  final Duration holdForEngine;
+
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _fade;
   bool _leaving = false;
+  Duration _waited = Duration.zero;
 
   @override
   void initState() {
@@ -110,11 +130,25 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         if (status == AnimationStatus.completed) widget.onDone?.call();
       });
 
-    Future.delayed(widget.minimum, () {
-      if (!mounted || _leaving) return;
-      setState(() => _leaving = true);
-      _fade.forward();
-    });
+    _tick();
+  }
+
+  /// Waits for the minimum, then for the engine if one is warming.
+  void _tick() {
+    Future.delayed(widget.minimum, () => _ready());
+  }
+
+  /// Leaves once the engine has finished, or once the cap is reached.
+  void _ready() {
+    if (!mounted || _leaving) return;
+    final progress = ref.read(chatProvider).engineProgress;
+    if (progress != null && _waited < widget.holdForEngine) {
+      _waited += const Duration(milliseconds: 400);
+      Future.delayed(const Duration(milliseconds: 400), _ready);
+      return;
+    }
+    setState(() => _leaving = true);
+    _fade.forward();
   }
 
   @override
@@ -144,18 +178,57 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 style: TextStyle(color: KoruColors.inkFaint, fontSize: 14.5),
               ),
               const SizedBox(height: 28),
-              const SizedBox(
-                width: 120,
-                child: LinearProgressIndicator(
-                  minHeight: 3,
-                  backgroundColor: KoruColors.line,
-                  valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
-                ),
-              ),
+              // Determinate when there is real progress to report, and honest
+              // about what it is. The old bar swept forever regardless of
+              // whether anything was happening, which is a bar that tells you
+              // nothing while the app is doing its slowest work.
+              _EngineLoadingBar(progress: ref.watch(chatProvider).engineProgress),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The splash's loading bar, which knows what it is loading.
+class _EngineLoadingBar extends StatelessWidget {
+  const _EngineLoadingBar({this.progress});
+
+  final int? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = progress;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 120,
+          child: LinearProgressIndicator(
+            minHeight: 3,
+            // Null value means the bar sweeps, which is right when nothing is
+            // being reported yet and wrong once it is.
+            value: p == null ? null : (p / 100).clamp(0.0, 1.0),
+            backgroundColor: KoruColors.line,
+            valueColor: const AlwaysStoppedAnimation(KoruColors.leaf),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 16,
+          child: Text(
+            switch (p) {
+              null => 'Getting things ready',
+              // Copying half a gigabyte out of the APK is the slow part and it
+              // is not obvious why, so say what is happening.
+              <8 => 'Unpacking the model on this phone',
+              _ => 'Waking the model up  $p%',
+            },
+            style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12),
+          ),
+        ),
+      ],
     );
   }
 }

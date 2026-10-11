@@ -6,6 +6,10 @@ use std::net::{TcpListener, TcpStream};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 struct State {
+    /// Size of the KV cache, i.e. the longest prompt plus reply that can be
+    /// served. Held here so chat() can fit a prompt to it, which is the whole
+    /// reason this server stopped dying on long conversations.
+    max_pos: usize,
     pos: usize,
     prev: Vec<u32>,
     tpb: TmpB,
@@ -37,6 +41,7 @@ fn warm(m: &Model, bpe: &tok::Bpe, tpb: &mut TmpB) {
 
 pub fn run(m: &Model, bpe: &tok::Bpe, caches: &mut [Cache], tmp: &mut Tmp, max_pos: usize, port: u16) {
     let mut st = State {
+        max_pos,
         pos: 0,
         prev: Vec::new(),
         tpb: TmpB::new(256, m.hidden, m.n_head * m.head_dim, m.n_kv * m.head_dim, m.ff, max_pos),
@@ -261,13 +266,13 @@ fn chat(
     let mut kept = msgs.clone();
     let mut trimmed = false;
     let mut ids = build_prompt(m, bpe, &kept);
-    while ids.len() + reserve > max_pos {
+    while ids.len() + reserve > st.max_pos {
         if kept.len() > 2 {
             kept.remove(1); // index 0 is the system prompt, never dropped
         } else {
             // Even system plus the current question will not fit. Keep the
             // head so the model still knows who it is and what it is for.
-            let keep = max_pos.saturating_sub(reserve);
+            let keep = st.max_pos.saturating_sub(reserve);
             if keep == 0 || ids.len() > keep {
                 ids.truncate(keep.max(1));
             }
