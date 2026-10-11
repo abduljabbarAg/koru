@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'attention_bridge.dart';
 import 'mascot/mascot.dart';
 import 'onboarding.dart';
 import 'screens/business.dart';
@@ -59,7 +60,25 @@ class _RootGateState extends ConsumerState<RootGate> {
     // model is actually being unpacked, so it is the only place that can show
     // progress for it, and waiting until the chat screen meant the splash was
     // already gone by the time the slow part began.
-    if (done) ref.read(chatProvider.notifier).load();
+    if (done) {
+      ref.read(chatProvider.notifier).load();
+      _askOnce(ref, done);
+    }
+  }
+
+  /// Checks permissions on first run after an upgrade, and never nags again.
+  ///
+  /// Asked once, and recorded as asked. A permission prompt that returns on
+  /// every launch is how an app teaches people to dismiss dialogs without
+  /// reading them, which costs the permission that actually mattered the first
+  /// time it came up.
+  Future<void> _askOnce(WidgetRef ref, bool onboarded) async {
+    if (!onboarded) return;
+    final store = await ref.read(storeProvider.future);
+    if (await store.get('asked_permissions') == '1') return;
+    await store.put('asked_permissions', '1');
+    await ref.read(healthProvider.future);
+    await requestHealthPermissions(ref);
   }
 
   void _leaveSplash() {
@@ -188,7 +207,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               // about what it is. The old bar swept forever regardless of
               // whether anything was happening, which is a bar that tells you
               // nothing while the app is doing its slowest work.
-              _EngineLoadingBar(progress: ref.watch(chatProvider).engineProgress),
+              _EngineLoadingBar(
+                progress: ref.watch(chatProvider).engineProgress,
+                health: ref.watch(healthProvider).valueOrNull,
+              ),
             ],
           ),
         ),
@@ -199,9 +221,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
 /// The splash's loading bar, which knows what it is loading.
 class _EngineLoadingBar extends StatelessWidget {
-  const _EngineLoadingBar({this.progress});
+  const _EngineLoadingBar({this.progress, this.health});
 
   final int? progress;
+
+  /// Shown only once there is something worth saying about it.
+  final KoruHealth? health;
 
   @override
   Widget build(BuildContext context) {
@@ -234,6 +259,31 @@ class _EngineLoadingBar extends StatelessWidget {
             style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12),
           ),
         ),
+        if (health != null && !health!.complete) ...[
+          const SizedBox(height: 18),
+          // Named individually, because each of these can be refused on its own
+          // and "something is not set up" gives the reader nothing to do.
+          ...health!.problems.map(
+            (problem) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      size: 13, color: KoruColors.gold),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      problem,
+                      style: const TextStyle(
+                          color: KoruColors.inkSoft, fontSize: 11.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

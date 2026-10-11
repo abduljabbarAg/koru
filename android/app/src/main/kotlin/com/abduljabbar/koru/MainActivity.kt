@@ -77,6 +77,7 @@ class MainActivity : FlutterActivity() {
         attentionChannel.setMethodCallHandler(attentionService)
         attentionService.bind(attentionChannel)
         attentionService.onLinkReady { drainPendingLink() }
+        attentionService.bindActivity(this)
 
         // A link that arrived with the intent that launched us.
         pendingLink = linkFrom(intent)
@@ -128,9 +129,11 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        attention?.bindActivity(null)
         stopEngine()
         super.onDestroy()
     }
+
 
     // ------------------------------------------------------------- attention
 

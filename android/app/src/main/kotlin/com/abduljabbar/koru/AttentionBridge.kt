@@ -49,6 +49,9 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
         private const val METHOD_CHANNEL = "koru/attention"
         private const val PREFS = "koru_attention"
 
+        /** Request code for the notification permission prompt. */
+        private const val REQ_NOTIFICATIONS = 4711
+
         /**
          * NotificationManager.IMPORTANCE_LOW, written out.
          *
@@ -96,6 +99,11 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
                 // which is the ordinary case and not an error.
                 result.success(pendingLink())
             }
+            "health" -> result.success(health(ctx))
+            "requestBatteryExempt" -> result.success(requestBatteryExempt(ctx))
+            "requestNotifications" -> result.success(requestNotifications(ctx))
+            "openAutostartSettings" -> result.success(openAutostartSettings(ctx))
+            "openAppSettings" -> result.success(openAppSettings(ctx))
             "updateWidget" -> {
                 result.success(updateWidget(
                     ctx,
@@ -153,6 +161,144 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
             // Null result means Dart was not listening yet, which happens on a
             // cold start. It will ask for the link itself once it is up.
             channel?.invokeMethod("openLink", link)
+        }
+    }
+
+    // -- health ----------------------------------------------------------
+
+    /**
+     * What the app currently has permission to do.
+     *
+     * Asked separately for each grant rather than as one "ok" because they are
+     * granted independently, can be withdrawn independently, and telling someone
+     * "Koru has a problem" without saying which one is not something they can
+     * act on.
+     */
+    private fun health(ctx: Context): Map<String, Any?> {
+        val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val batteryExempt = pm.isIgnoringBatteryOptimizations(ctx.packageName)
+        val autostart = manufacturerSupportsAutostart()
+        return mapOf(
+            "notifications" to canPost(ctx),
+            "batteryExempt" to batteryExempt,
+            // Null, not false, when the question does not apply. Reporting false
+            // on a phone with no autostart screen would show a red cross for a
+            // setting the user does not have and cannot turn on.
+            "autostart" to if (autostart == null) null else isAutostartAllowed(ctx),
+        )
+    }
+
+    private fun requestBatteryExempt(ctx: Context): Boolean {
+        return try {
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) return true
+            val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                .setData(android.net.Uri.parse("package:${ctx.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "no battery optimisation screen", e)
+            false
+        }
+    }
+
+    private fun requestNotifications(ctx: Context): Boolean {
+        val activity = activity ?: return false
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity.requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    REQ_NOTIFICATIONS,
+                )
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "could not ask for notification permission", e)
+            false
+        }
+    }
+
+    /** The activity, when there is one. Null in a background service. */
+    private var activity: android.app.Activity? = null
+
+    fun bindActivity(a: android.app.Activity?) {
+        activity = a
+    }
+
+    /**
+     * Whether this phone has an autostart screen worth opening.
+     *
+     * Null means it does not, which is every stock Android phone. Guessing a
+     * manufacturer list is how an app ends up offering a setting that does not
+     * exist, so this asks the package manager whether the activity is really
+     * there rather than checking a brand string.
+     */
+    private fun manufacturerSupportsAutostart(): Boolean? {
+        val pm = context?.packageManager ?: return null
+        val intent = Intent().setComponent(
+            android.content.ComponentName(
+                "com.miui.securitycenter",
+                "com.miui.permcenter.autostart.AutoStartManagementActivity",
+            )
+        )
+        return if (pm.resolveActivity(intent, 0) != null) true else null
+    }
+
+    /**
+     * MIUI's autostart state.
+     *
+     * Read through AppOpsManager, which is where MIUI actually records it, so
+     * this reports what the system will really do rather than what it says on
+     * the settings page. Null when the reading is not available, which is
+     * treated as "unknown" rather than "off".
+     */
+    private fun isAutostartAllowed(ctx: Context): Boolean? {
+        if (manufacturerSupportsAutostart() == null) return null
+        return try {
+            val ops = ctx.getSystemService(Context.APP_OPS_SERVICE)
+                as android.app.AppOpsManager
+            val mode = ops.unsafeCheckOpNoThrow(
+                "android:op_run_in_background",
+                android.os.Process.myUid(),
+                ctx.packageName,
+            )
+            // MODE_ALLOWED is 0. Anything else means the system is refusing to
+            // let the app start by itself.
+            mode == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) {
+            Log.w(TAG, "could not read autostart state", e)
+            null
+        }
+    }
+
+    private fun openAutostartSettings(ctx: Context): Boolean {
+        return try {
+            val intent = Intent().setComponent(
+                android.content.ComponentName(
+                    "com.miui.securitycenter",
+                    "com.miui.permcenter.autostart.AutoStartManagementActivity",
+                )
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "no autostart screen on this phone", e)
+            false
+        }
+    }
+
+    private fun openAppSettings(ctx: Context): Boolean {
+        return try {
+            val intent = Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:${ctx.packageName}"),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "no app settings screen", e)
+            false
         }
     }
 

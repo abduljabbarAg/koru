@@ -319,6 +319,45 @@ void main() {
     });
   });
 
+  group('what the app has permission to do', () {
+    test('a healthy install has no problems to report', () {
+      const health = KoruHealth(notifications: true, batteryExempt: true);
+      expect(health.complete, isTrue);
+      expect(health.problems, isEmpty);
+    });
+
+    test('each refusal is named on its own', () {
+      // Three grants, refused independently. One combined "something is wrong"
+      // gives the reader nothing to act on.
+      const health = KoruHealth(
+          notifications: false, batteryExempt: false, autostart: false);
+      expect(health.problems, hasLength(3));
+      expect(health.problems.first, contains('notifications'));
+      expect(health.complete, isFalse);
+    });
+
+    test('notifications being blocked is the loudest problem', () {
+      const health = KoruHealth(notifications: false, batteryExempt: true);
+      expect(health.problems.first, contains('notifications'));
+    });
+
+    test('autostart that does not apply is not a failure', () {
+      // Null means this phone has no autostart screen, which is every stock
+      // Android phone. Reporting false would put a red cross next to a setting
+      // that does not exist and cannot be turned on.
+      const health = KoruHealth(notifications: true, batteryExempt: true);
+      expect(health.autostart, isNull);
+      expect(health.complete, isTrue);
+    });
+
+    test('a missing platform is not an unhealthy one', () {
+      // No platform means nothing to be unhealthy about. Claiming failure would
+      // put three red crosses on screen in every test run and on desktop.
+      const bridge = HealthBridge();
+      expect(bridge.check(), completes);
+    });
+  });
+
   group('the character\'s mood', () {
     test('cheerful when nothing needs you', () {
       expect(AttentionBridge.moodFor(const []), 'cheer');

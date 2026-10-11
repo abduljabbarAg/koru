@@ -57,6 +57,19 @@
                 android:resource="@xml/koru_widget_info"/>
         </receiver>
 
+        <!-- Restarts the attention watcher after a reboot, and on a slow
+             hourly tick. The receiver holds no state and decides nothing, it
+             only puts back what the app already decided. -->
+        <receiver
+            android:name=".AttentionRestarter"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="com.abduljabbar.koru.CHECK"/>
+            </intent-filter>
+        </receiver>
+
         <!-- Keeps Koru's attention checks running when the app is closed.
              Not optional and not incidental: a service that can do this work
              with the app closed has to be a foreground service, and Android

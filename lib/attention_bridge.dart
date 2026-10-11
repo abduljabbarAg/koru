@@ -175,3 +175,110 @@ class AttentionBridge {
         'link': link?.encode(),
       });
 }
+
+/// What the app needs from the system to keep an eye on things, and whether it
+/// has it.
+///
+/// Deliberately not a single "is everything fine" boolean. Each of these can be
+/// refused independently, and a person who declined one needs to be told which
+/// one, because "Koru cannot notify you" is not actionable while "Koru cannot
+/// post notifications, and its background checks will be stopped by the system"
+/// is.
+class KoruHealth {
+  /// Whether the system will show a notification at all.
+  ///
+  /// The one that matters most. Everything else is an optimisation; without this
+  /// the whole feature is silent and there is no sign of why.
+  final bool notifications;
+
+  /// Whether the app is exempt from battery optimisation.
+  ///
+  /// Without it the system stops the background checks to save power, which is
+  /// reasonable behaviour and the single most common reason Koru goes quiet after
+  /// a day of not opening the app.
+  final bool batteryExempt;
+
+  /// Whether the manufacturer will restart the app by itself.
+  ///
+  /// Null means the question does not apply, which is every phone that is not
+  /// running MIUI or one of its cousins. Shown as "not needed" rather than as a
+  /// failed check, because telling someone on a Pixel that autostart is broken
+  /// is just wrong.
+  final bool? autostart;
+
+  const KoruHealth({
+    required this.notifications,
+    required this.batteryExempt,
+    this.autostart,
+  });
+
+  /// The things that would stop Koru working, worst first.
+  List<String> get problems => [
+        if (!notifications) 'Koru cannot show notifications',
+        if (!batteryExempt) 'The system will stop background checks to save power',
+        if (autostart == false) 'This phone does not let Koru restart itself',
+      ];
+
+  /// True when everything that can be granted has been, or does not apply.
+  bool get complete =>
+      notifications && batteryExempt && (autostart ?? true);
+}
+
+/// Reads and repairs the permissions Koru needs to work when the app is closed.
+class HealthBridge {
+  const HealthBridge();
+
+  static const _channel = MethodChannel('koru/attention');
+
+  Future<KoruHealth> check() async {
+    try {
+      final raw = await _channel.invokeMapMethod<String, dynamic>('health');
+      if (raw == null) return const KoruHealth(notifications: false, batteryExempt: false);
+      return KoruHealth(
+        notifications: raw['notifications'] == true,
+        batteryExempt: raw['batteryExempt'] == true,
+        // Deliberately tri-state. "not applicable" has to survive the trip over
+        // the channel, and a missing key is how that is expressed.
+        autostart: raw.containsKey('autostart') && raw['autostart'] != null
+            ? raw['autostart'] == true
+            : null,
+      );
+    } on PlatformException {
+      return const KoruHealth(notifications: false, batteryExempt: false);
+    } on MissingPluginException {
+      // No platform, so nothing to be unhealthy about. Claiming failure here
+      // would put three red crosses on screen in every test and on desktop.
+      return const KoruHealth(notifications: true, batteryExempt: true);
+    }
+  }
+
+  /// Asks for battery optimisation exemption.
+  ///
+  /// Opens the system's own dialog. It cannot be granted silently, and any code
+  /// that tries is abusing an install-time permission, so this is a request and
+  /// nothing more.
+  Future<bool> requestBatteryExempt() =>
+      _invokeFlag('requestBatteryExempt');
+
+  /// Opens the notification permission prompt.
+  Future<bool> requestNotifications() => _invokeFlag('requestNotifications');
+
+  /// Opens the manufacturer's autostart screen, where such a thing exists.
+  ///
+  /// Returns false when there is no such screen, which is the normal case off
+  /// MIUI and is not an error.
+  Future<bool> openAutostartSettings() => _invokeFlag('openAutostartSettings');
+
+  /// Opens the system's app info page, as a way out of anything above.
+  Future<bool> openAppSettings() => _invokeFlag('openAppSettings');
+
+  Future<bool> _invokeFlag(String method) async {
+    try {
+      return await _channel.invokeMethod<bool>(method) ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+}

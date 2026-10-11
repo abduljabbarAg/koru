@@ -771,6 +771,36 @@ KoruDeepLink? _linkFor(List<AttentionItem> items) {
 
 final attentionBridgeProvider = Provider<AttentionBridge>((ref) => const AttentionBridge());
 
+/// What the app has permission to do when it is closed.
+final healthProvider = FutureProvider<KoruHealth>((ref) async {
+  return ref.watch(healthBridgeProvider).check();
+});
+
+final healthBridgeProvider = Provider<HealthBridge>((ref) => const HealthBridge());
+
+/// Asks for the permissions Koru needs, in the order that is least annoying.
+///
+/// Notifications first because without them nothing else matters, and because a
+/// refusal there explains the silence better than a battery setting does.
+/// Battery exemption after, since it opens a system dialog that looks alarming
+/// and should not be the first thing the app asks for.
+///
+/// Never throws and never blocks. A person who says no to all of it still gets
+/// into the app, because a helper that holds the door until you agree to
+/// everything is not a helper.
+Future<void> requestHealthPermissions(WidgetRef ref) async {
+  final bridge = ref.read(healthBridgeProvider);
+  var health = await bridge.check();
+  if (!health.notifications) await bridge.requestNotifications();
+  // The prompt is a dialog and the answer comes back to the settings screen, so
+  // this re-reads rather than assuming.
+  health = await bridge.check();
+  if (!health.batteryExempt) await bridge.requestBatteryExempt();
+  health = await bridge.check();
+  if (health.autostart == false) await bridge.openAutostartSettings();
+  ref.invalidate(healthProvider);
+}
+
 /// The payments ledger, newest first, for the money section.
 final paymentsProvider = FutureProvider<List<Payment>>((ref) async {
   final store = await ref.watch(storeProvider.future);

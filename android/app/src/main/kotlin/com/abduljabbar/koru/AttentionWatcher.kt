@@ -60,6 +60,15 @@ class AttentionWatcher : Service() {
         // START_STICKY so the system brings this back after a low-memory kill.
         // Without it, a reboot or an aggressive task clear silently ends all
         // attention checking until the user happens to open the app.
+        //
+        // And the alarm is (re)armed on every start, so the hourly tick exists
+        // as soon as the service has ever run once, without the app having to
+        // schedule it separately and possibly forgetting.
+        try {
+            AttentionRestarter.schedule(this)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not schedule the hourly check", e)
+        }
         return START_STICKY
     }
 
