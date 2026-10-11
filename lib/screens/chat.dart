@@ -9,6 +9,51 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
+/// The engine warming up, or having failed to.
+///
+/// Reported here instead of on the splash so the app is usable while it happens.
+class _EngineBanner extends StatelessWidget {
+  const _EngineBanner({this.progress, this.problem});
+
+  final int? progress;
+  final String? problem;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = progress;
+    if (p == null && problem == null) return const SizedBox.shrink();
+    final failed = p == null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      color: failed ? KoruColors.claySoft : KoruColors.leafSoft,
+      child: Row(
+        children: [
+          if (!failed)
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            const Icon(Icons.error_outline_rounded,
+                size: 15, color: KoruColors.clay),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              failed
+                  ? 'The on-device model did not start. $problem'
+                  : 'Waking the local model up, $p%. You can carry on in the '
+                      'meanwhile.',
+              style: const TextStyle(fontSize: 12, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
@@ -102,6 +147,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(chatProvider);
+    final engineProgress = st.engineProgress;
+    final engineProblem = st.engineProblem;
 
     return Scaffold(
       appBar: AppBar(
@@ -154,6 +201,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     itemBuilder: (_, i) => _bubble(context, st.messages[i], i),
                   ),
           ),
+          // The engine's progress lives here rather than on the splash.
+          //
+          // It is the same information in the same place, but here being slow
+          // costs nothing: the user can read the conversation, start typing, or
+          // close the app, whereas holding the start screen for it meant a slow
+          // copy or a system dialog left them stuck with nothing to do.
+          if (engineProgress != null || engineProblem != null)
+            _EngineBanner(progress: engineProgress, problem: engineProblem),
           _composer(st.busy),
         ],
       ),

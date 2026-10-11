@@ -134,6 +134,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     await store.putNumber('capacity', _capacity.toDouble());
     await store.put('currency', _currency);
     await store.completeOnboarding();
+    // Asked here, at the end of the first run, rather than on a later launch.
+    //
+    // It used to be asked from the start-up path and only when onboarding was
+    // already finished, which is exactly backwards: on a genuinely fresh install
+    // the condition was false, nothing was asked, the flag was written anyway,
+    // and the permissions turned up on the second launch instead of the first.
+    await store.put('asked_permissions', '1');
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) await requestHealthPermissions(ref);
+    });
     ref.invalidate(packetProvider);
     ref.invalidate(guideFactsProvider);
     ref.read(onboardedProvider.notifier).state = true;

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'attention_bridge.dart';
@@ -62,7 +64,12 @@ class _RootGateState extends ConsumerState<RootGate> {
     // already gone by the time the slow part began.
     if (done) {
       ref.read(chatProvider.notifier).load();
-      _askOnce(ref, done);
+      // Deferred past the first frame, deliberately. Permission prompts open
+      // system Activities, and doing that while the splash is deciding whether
+      // to leave is how an app ends up stuck on its own start screen.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _askOnce(ref);
+      });
     }
   }
 
@@ -72,13 +79,17 @@ class _RootGateState extends ConsumerState<RootGate> {
   /// every launch is how an app teaches people to dismiss dialogs without
   /// reading them, which costs the permission that actually mattered the first
   /// time it came up.
-  Future<void> _askOnce(WidgetRef ref, bool onboarded) async {
-    if (!onboarded) return;
+  Future<void> _askOnce(WidgetRef ref) async {
     final store = await ref.read(storeProvider.future);
     if (await store.get('asked_permissions') == '1') return;
-    await store.put('asked_permissions', '1');
-    await ref.read(healthProvider.future);
     await requestHealthPermissions(ref);
+    // Recorded only after the prompts have actually been shown.
+    //
+    // It used to be set first, so an app killed mid prompt, or one whose first
+    // run happened before onboarding finished, never asked again. That is why
+    // permissions turned up on the second launch instead of the first: the
+    // flag was written on a run that had no business asking.
+    await store.put('asked_permissions', '1');
   }
 
   void _leaveSplash() {
@@ -126,14 +137,10 @@ class SplashScreen extends ConsumerStatefulWidget {
     super.key,
     this.onDone,
     this.minimum = const Duration(milliseconds: 1500),
-    this.holdForEngine = const Duration(seconds: 25),
   });
 
   final VoidCallback? onDone;
   final Duration minimum;
-
-  /// Longest the splash will stay for the engine before giving up on it.
-  final Duration holdForEngine;
 
   @override
   ConsumerState<SplashScreen> createState() => _SplashScreenState();
@@ -143,7 +150,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _fade;
   bool _leaving = false;
-  Duration _waited = Duration.zero;
 
   @override
   void initState() {
@@ -155,29 +161,34 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         if (status == AnimationStatus.completed) widget.onDone?.call();
       });
 
-    _tick();
+    // One timer, one hard deadline. Deliberately not a chain that waits for
+    // anything.
+    //
+    // The splash used to poll the engine's progress and hold until the model had
+    // finished starting. That made the start screen hostage to work happening
+    // behind it: a system dialog for battery optimisation, a model copy that
+    // took longer than expected, or a health check that never answered, and the
+    // app sat there with no way forward and nothing to tap.
+    //
+    // The splash now leaves on a timer that cannot be starved by any of it, and
+    // the engine reports its progress inside the chat instead, where being slow
+    // is fine because there is other work to do.
+    _timer = Timer(widget.minimum + const Duration(milliseconds: 250), _leave);
   }
 
-  /// Waits for the minimum, then for the engine if one is warming.
-  void _tick() {
-    Future.delayed(widget.minimum, () => _ready());
-  }
+  Timer? _timer;
 
-  /// Leaves once the engine has finished, or once the cap is reached.
-  void _ready() {
+  void _leave() {
     if (!mounted || _leaving) return;
-    final progress = ref.read(chatProvider).engineProgress;
-    if (progress != null && _waited < widget.holdForEngine) {
-      _waited += const Duration(milliseconds: 400);
-      Future.delayed(const Duration(milliseconds: 400), _ready);
-      return;
-    }
     setState(() => _leaving = true);
     _fade.forward();
   }
 
   @override
   void dispose() {
+    // Cancelled, because a timer that fires after dispose is exactly the kind of
+    // thing that logs an exception on a slow start.
+    _timer?.cancel();
     _fade.dispose();
     super.dispose();
   }

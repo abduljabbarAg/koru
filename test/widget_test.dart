@@ -189,6 +189,32 @@ void main() {
     /// Walks the whole flow the way a person does. The regression this covers is
     /// real: the Start button used to do nothing, because RootGate held the
     /// onboarded flag in a field and never watched the provider onboarding set.
+    /// The regression that made the app unusable. The splash used to hold until
+    /// the engine reported progress, which made the start screen hostage to work
+    /// happening behind it: a system dialog for battery optimisation, a slow
+    /// model copy, a health check that never answered. Any of those left the
+    /// user on the splash with nothing to tap.
+    ///
+    /// So the splash now leaves on a plain timer that none of that can starve.
+    testWidgets('the splash leaves on a timer whatever the engine is doing',
+        (tester) async {
+      useTallSurface(tester);
+      await pumpApp(tester, const RootGate());
+
+      // Put the engine into its slowest possible state: warming, and never
+      // finishing. A splash that waited on this would hang forever.
+      final container = ProviderScope.containerOf(
+          tester.element(find.byType(RootGate)));
+      container.read(chatProvider.notifier);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      await pumpFrames(tester, frames: 12);
+
+      expect(find.byType(SplashScreen), findsNothing,
+          reason: 'the splash must not wait on the engine');
+      expect(find.byType(OnboardingScreen), findsOneWidget);
+    });
+
     testWidgets('Start on the last step lands you in the app', (tester) async {
       useTallSurface(tester);
       await pumpApp(tester, const RootGate());
