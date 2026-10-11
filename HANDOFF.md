@@ -292,3 +292,58 @@ plaintext in the git remote URL** and so in `.git/config`.
 
 Kaggle now uses `~/.kaggle/access_token`. **Kaggle is probably not useful for
 glen**: there is no CUDA in glen, so a GPU notebook runs the same CPU code.
+
+## v0.6.0, the three things that were wrong with v0.5.0
+
+### Streaming was never the engine's fault
+
+One character appeared instantly, then the rest of the answer landed in a single
+jump seconds later. glen streams correctly: first byte immediate, prefill
+progress comments while it reads the prompt, then one token every ~300ms,
+measured on the device.
+
+The client threw the tokens away. `_updatePending` refused any update whose
+text was empty, and the caller was passing the *cumulative* text, so every
+token after the first was discarded. The fix is to stop treating "is this empty"
+as "has the stream finished". The stream finished when the callback did.
+
+The reason 334 tests missed it: the fake model emitted every token in one
+synchronous loop, so no frame was ever drawn between the first and the last.
+`_SlowClient` in `test/flow_test.dart` yields between tokens like a socket does
+and the test fails without the fix. Worth keeping any time the streaming
+behaviour is touched.
+
+### Write classification could pick the wrong write
+
+Deadlines were checked first, then payments, then clients, and the first one
+that matched won. A sentence carrying more than one cue was therefore always
+classified as whichever happened to be checked first, which is how "create new
+client Primedose" ended up in the payment path and produced "could not find
+client". Classification is now by position: the cue that appears earliest in the
+sentence is the instruction. `create new client`, `make a new client` and the
+`customer` variants were also missing from the cue list entirely.
+
+### The model had no memory and could not be interrupted
+
+Earlier turns now travel as chat messages. They are deliberately **not** written
+into the system prompt. That is the whole trick: glen reuses the longest common
+token prefix between turns, and a system prompt that changes every turn throws
+that away. Measured on this phone, a 754-token prompt is 106s cold and 1.2s when
+the prefix is cached. A history flattened into the prompt would have cost a full
+prefill on every follow-up question. The question itself was also being written
+into the system prompt *and* sent as the user message, paying for it twice; it
+is now only the message.
+
+Stop is a button that changes meaning while a reply is being written, and it
+checks the cancelled flag per token so late tokens cannot repaint the bubble
+after it has been replaced. Edit is a long press on your own message.
+
+### Release
+
+`v0.6.0`, arm64, 486307757 bytes, sha256
+`79b28aa531ffaff21c792ecebbf7779231b0c4f05b3d1dd6c54e4ac0b0171a8b`. 345 tests,
+analyze clean. Delivered to /sdcard/Download/koru-v0.6.0.apk.
+
+Still debug-signed, so installing over v0.5.0 needs a matching key. The user had
+to install v0.5.0 by hand because `pm install` is refused on this device by
+Binder (`SecurityException: You either need MANAGE_USERS or CREATE_USERS`).
