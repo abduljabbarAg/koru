@@ -115,12 +115,21 @@ class ChatState {
   /// where the question will be asked rather than only in Settings.
   final String? engineProblem;
 
+  /// What the model is doing right now, so the waiting indicator can say so.
+  ///
+  /// A prefill on this phone takes seconds and a decode is four tokens a second.
+  /// Those feel identical as three bouncing dots and completely different once
+  /// named, which is the difference between "it is working" and "it is working on
+  /// the right thing".
+  final String? activity;
+
   const ChatState({
     required this.messages,
     required this.busy,
     this.loaded = false,
     this.engineProgress,
     this.engineProblem,
+    this.activity,
   });
 
   ChatState copyWith({
@@ -129,6 +138,7 @@ class ChatState {
     bool? loaded,
     int? engineProgress,
     String? engineProblem,
+    String? activity,
   }) =>
       ChatState(
         messages: messages ?? this.messages,
@@ -136,6 +146,7 @@ class ChatState {
         loaded: loaded ?? this.loaded,
         engineProgress: engineProgress ?? this.engineProgress,
         engineProblem: engineProblem ?? this.engineProblem,
+        activity: activity ?? this.activity,
       );
 }
 
@@ -209,6 +220,8 @@ class ChatNotifier extends Notifier<ChatState> {
     // because starting a request is what makes the previous one stale.
     final mine = ++_generation;
     bool stale() => mine != _generation;
+
+    state = state.copyWith(activity: 'Waking up');
     // Captured before the new turn is added, so the model sees the conversation
     // that happened before this question and not the question twice.
     final history = _recentTurns();
@@ -723,7 +736,11 @@ class ChatNotifier extends Notifier<ChatState> {
           _updatePending(buffer.toString());
         },
         onProgress: (done, total) {
-          if (!isStale()) _updatePendingProgress(done, total);
+          if (isStale()) return;
+          if (state.activity != 'Reading your records') {
+            state = state.copyWith(activity: 'Reading your records');
+          }
+          _updatePendingProgress(done, total);
         },
       );
       switch (result) {

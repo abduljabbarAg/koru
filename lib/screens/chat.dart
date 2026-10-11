@@ -8,6 +8,7 @@ import '../proposed_write.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../widgets/thinking_dots.dart';
 
 /// The engine warming up, or having failed to.
 ///
@@ -198,7 +199,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     itemCount: st.messages.length,
-                    itemBuilder: (_, i) => _bubble(context, st.messages[i], i),
+                    itemBuilder: (_, i) =>
+                        _bubble(context, st.messages[i], i, st.activity),
                   ),
           ),
           // The engine's progress lives here rather than on the splash.
@@ -267,7 +269,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _bubble(BuildContext context, Msg m, int index) {
+  Widget _bubble(BuildContext context, Msg m, int index, String? activity) {
     final isUser = m.role == MsgRole.user;
     final dismissed = ValueNotifier<bool>(false);
 
@@ -319,8 +321,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   border: isUser ? null : Border.all(color: KoruColors.line),
                 ),
                 child: m.pending && m.text.isEmpty
-                    ? const Text('...',
-                        style: TextStyle(color: KoruColors.inkFaint, fontSize: 15))
+                    ? KoruThinkingDots(
+                        activity: switch (activity) {
+                          'Reading your records' => KoruActivity.reading,
+                          'Writing an answer' => KoruActivity.writing,
+                          'Waking up' => KoruActivity.waking,
+                          _ => KoruActivity.thinking,
+                        },
+                      )
                     : Text(
                         m.text,
                         style: TextStyle(

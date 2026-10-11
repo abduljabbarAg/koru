@@ -13,6 +13,7 @@ import 'package:koru/state.dart';
 import 'package:koru/store.dart';
 import 'package:koru/theme.dart';
 import 'package:koru/widgets.dart';
+import 'package:koru/widgets/thinking_dots.dart';
 
 import 'test_store.dart';
 
@@ -832,6 +833,45 @@ void main() {
       await tapVisible(tester, find.byTooltip('Mark Send invoice done'));
 
       expect(await tester.runAsync(() => store.deadlines()), isEmpty);
+    });
+  });
+
+  group('the waiting indicator', () {
+    testWidgets('says what the model is doing, not just that something is',
+        (tester) async {
+      // The dots answered "is it working". They did not answer "is it working on
+      // the right thing", and on this phone prefill takes seconds and decode
+      // runs at four tokens a second, which feel identical as bouncing dots.
+      await pumpApp(tester, const MaterialApp(
+        home: Scaffold(body: KoruThinkingDots(activity: KoruActivity.reading)),
+      ));
+      expect(find.text('Reading your records'), findsOneWidget);
+    });
+
+    testWidgets('every phase has its own wording', (tester) async {
+      final labels = <String, KoruActivity>{
+        'Waking up': KoruActivity.waking,
+        'Reading your records': KoruActivity.reading,
+        'Writing an answer': KoruActivity.writing,
+        'Working out what you meant': KoruActivity.thinking,
+      };
+      for (final entry in labels.entries) {
+        await pumpApp(tester, MaterialApp(
+          home: Scaffold(body: KoruThinkingDots(activity: entry.value)),
+        ));
+        expect(find.text(entry.key), findsOneWidget,
+            reason: 'for ${entry.value}');
+      }
+    });
+
+    testWidgets('it animates rather than sitting still', (tester) async {
+      await pumpApp(tester, const MaterialApp(
+        home: Scaffold(body: KoruThinkingDots()),
+      ));
+      // Repeated forever, because the whole point is that the screen is not
+      // frozen while the model works.
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.hasRunningAnimations, isTrue);
     });
   });
 
