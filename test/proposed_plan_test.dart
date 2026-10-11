@@ -30,7 +30,11 @@ void main() {
 
       await plan.apply(store);
 
-      expect((await store.clients()).map((c) => c.name), ['Bilal', 'Acme', 'Lumen']);
+      // Unordered, because the store returns most recent first and these three
+      // were written within the same millisecond, so insertion order is not
+      // something the list is meant to preserve.
+      expect((await store.clients()).map((c) => c.name).toSet(),
+          {'Bilal', 'Acme', 'Lumen'});
     });
 
     test('nothing lands when a step in the middle fails', () async {
@@ -38,6 +42,10 @@ void main() {
       // refuses rather than inventing one. If the import were applied row by row,
       // Bilal would already be in the ledger by the time it hit that, and the
       // user would have no way to tell what got in.
+      // Real behaviour rather than a test double. ProposedWrite is sealed on
+      // purpose, and a payment for a client who is not on file now refuses,
+      // which is exactly the sort of failure a real import hits: someone
+      // deleted a client while a plan sat on screen waiting to be approved.
       const orphan = ProposedPayment(
         client: Client(id: 9999, name: 'Ghost', created: ''),
         amount: 100,
@@ -64,6 +72,34 @@ void main() {
     test('an empty plan does nothing rather than opening a transaction', () async {
       await const ProposedPlan(steps: []).apply(store);
       expect(await store.clients(), isEmpty);
+    });
+  });
+
+  group('a write checks its target still exists', () {
+    // Found while building this. The payments table carries no foreign key to
+    // the business table, so a payment for a client that was deleted between
+    // proposing and approving was written happily and then belonged to nobody:
+    // money recorded, invisible from every balance, no error anywhere.
+    test('a payment for a missing client is refused', () async {
+      const gone = ProposedPayment(
+        client: Client(id: 4242, name: 'Deleted', created: ''),
+        amount: 100,
+      );
+
+      await expectLater(gone.apply(store), throwsStateError);
+      expect(await store.payments(), isEmpty,
+          reason: 'the payment must not have been written');
+    });
+
+    test('and it is fine when the client is there', () async {
+      final id = await store.addClient(
+          const Client(name: 'Bilal', amount: 1000, created: '2026-01-01T00:00:00Z'));
+      final client = (await store.clients()).single;
+
+      await ProposedPayment(client: client, amount: 100).apply(store);
+
+      expect((await store.payments()).single.clientId, id);
+      expect(await store.balanceFor(client), 900);
     });
   });
 

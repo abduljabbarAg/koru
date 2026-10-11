@@ -107,8 +107,22 @@ class ProposedPayment extends ProposedWrite {
 
   @override
   Future<void> apply(ProfileStore store) async {
+    // Checked here, not only in the resolver.
+    //
+    // The payments table has no foreign key to the business table, so a payment
+    // for a client that was deleted between proposing and approving would be
+    // written happily and then show up in nobody's balance: money recorded,
+    // invisible, and no error anywhere. The resolver refuses to propose that,
+    // but the window between the two is exactly where this kind of thing slips
+    // through, so the write checks again.
+    final id = client.id;
+    if (id == null || await store.client(id) == null) {
+      throw StateError(
+        '${client.name} is no longer on file, so their payment was not saved.',
+      );
+    }
     await store.addPayment(Payment(
-      clientId: client.id!,
+      clientId: id,
       amount: amount!,
       date: DateTime.now().toIso8601String().substring(0, 10),
       note: note,

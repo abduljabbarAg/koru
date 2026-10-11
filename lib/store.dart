@@ -298,6 +298,18 @@ class ProfileStore {
 
   Future<int> addClient(Client c) => _db.insert('business', c.toMap());
 
+  /// One client by id, or null when it is not on file.
+  ///
+  /// Exists so a write can confirm its target still exists. The payments table
+  /// carries no foreign key to this one, so without this check a payment for a
+  /// deleted client is recorded against nobody and simply vanishes from every
+  /// balance.
+  Future<Client?> client(int id) async {
+    final rows = await _db.query('business',
+        where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : Client.fromMap(rows.first);
+  }
+
   Future<List<Client>> clients() async {
     // '<' inside a string is fine, but Dart's parser treats an unbalanced
     // '<' after a quote in an argument as a type argument, so orderBy uses a
