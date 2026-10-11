@@ -13,9 +13,23 @@ import 'packet.dart';
 /// per app. The encryption layer is a named later task; the schema and access
 /// path are written so that swapping in SQLCipher changes only [open].
 class ProfileStore {
-  ProfileStore(this._db);
+  ProfileStore(Database db) : _db = db, _root = db;
 
-  final Database _db;
+  /// A store scoped to an open transaction, so writes through it cannot escape
+  /// one. [transaction] uses this and nothing else should.
+  ProfileStore._scoped(DatabaseExecutor db) : _db = db, _root = null;
+
+  /// Queries and writes. Either the real database or an open transaction.
+  final DatabaseExecutor _db;
+
+  /// The real database, for the things a transaction cannot do.
+  ///
+  /// Null inside a scoped store. Casting it there threw a type error at runtime
+  /// and, worse, made the rollback test pass for the wrong reason: it proved
+  /// nothing landed because the cast failed before anything ran, not because the
+  /// transaction rolled back. A test that passes for the wrong reason is worse
+  /// than no test, so [transaction] and [close] refuse clearly instead.
+  final Database? _root;
 
   static const int schemaVersion = 6;
 
@@ -501,6 +515,33 @@ class ProfileStore {
 
   Future<void> clearChat() => _db.delete('chat');
 
+  /// Runs [action] against the database as one all-or-nothing unit.
+  ///
+  /// Used by bulk import. Twenty rows applied one at a time can fail on the
+  /// eleventh and leave nine clients behind with no record of which nine, and
+  /// the user has no way to tell what happened from what they see afterwards.
+  /// A transaction means the import either lands whole or not at all, so the
+  /// screen and the ledger can never disagree about how far it got.
+  ///
+  /// The [ProfileStore] handed to [action] is scoped to the transaction. Using
+  /// the outer store inside would quietly write outside it, which defeats the
+  /// entire point and is the reason this returns a scoped instance rather than
+  /// just running [action].
+  Future<T> transaction<T>(Future<T> Function(ProfileStore scoped) action) async {
+    late T result;
+    final root = _root;
+    if (root == null) {
+      throw StateError(
+        'This store is already inside a transaction and cannot open another. '
+        'Nested transactions are not needed here and would not be atomic.',
+      );
+    }
+    await root.transaction((txn) async {
+      result = await action(ProfileStore._scoped(txn));
+    });
+    return result;
+  }
+
   /// Keeps the first [keep] messages and drops everything after them.
   ///
   /// Used when an earlier message is edited: the exchange it started, and the
@@ -513,7 +554,13 @@ class ProfileStore {
     await _db.delete('chat', where: 'id > ?', whereArgs: [rows.last['id']!]);
   }
 
-  Future<void> close() => _db.close();
+  Future<void> close() async {
+    final root = _root;
+    if (root == null) {
+      throw StateError('A transaction-scoped store does not own the database.');
+    }
+    await root.close();
+  }
 }
 
 /// A persisted chat turn.

@@ -1,3 +1,4 @@
+import 'local/bulk_import.dart';
 import 'local/write_intent.dart';
 import 'models.dart';
 import 'store.dart';
@@ -18,25 +19,78 @@ sealed class ProposedWrite {
 }
 
 class ProposedClient extends ProposedWrite {
-  const ProposedClient({required this.name, this.amount, this.due});
+  const ProposedClient({
+    required this.name,
+    this.amount,
+    this.due,
+    this.deposit,
+    this.retainer = false,
+    this.termsDays,
+    this.invoicedOn,
+  });
 
   final String name;
   final double? amount;
   final String? due;
 
-  @override
-  String get summary => amount == null
-      ? 'Add a client called $name'
-      : 'Add $name, invoiced ${_plain(amount!)}';
+  /// Paid up front. Applied as a ledger payment, never subtracted here.
+  final double? deposit;
+
+  final bool retainer;
+  final int? termsDays;
+  final DateTime? invoicedOn;
 
   @override
-  Future<void> apply(ProfileStore store) => store.addClient(Client(
-        name: name,
-        amount: amount,
-        due: due,
-        status: amount == null ? 'lead' : 'active',
-        created: DateTime.now().toIso8601String(),
+  String get summary {
+    final parts = <String>['Add $name'];
+    if (retainer) {
+      parts.add('${_plain(amount ?? 0)} a month');
+    } else if (amount != null) {
+      parts.add('invoiced ${_plain(amount!)}');
+    }
+    if (deposit != null) parts.add('${_plain(deposit!)} paid up front');
+    if (due != null) {
+      parts.add('due $due');
+    } else if (termsDays != null) {
+      parts.add(termsDays == 0 ? 'due on completion' : 'net $termsDays');
+    }
+    return parts.join(', ');
+  }
+
+  @override
+  Future<void> apply(ProfileStore store) async {
+    final on = invoicedOn ?? DateTime.now();
+    final id = await store.addClient(Client(
+      name: name,
+      amount: amount,
+      due: due,
+      deposit: deposit,
+      monthly: retainer ? amount : null,
+      termsDays: termsDays,
+      invoicedOn: _dateOf(on),
+      status: amount == null ? 'lead' : 'active',
+      created: on.toIso8601String(),
+    ));
+    // Copied to a local first. Dart promotes local variables but not fields, so
+    // checking `deposit` and then using `deposit` leaves the type nullable and
+    // every use below is a cast the compiler rightly refuses.
+    final paid = deposit;
+    // addClient returns a non-nullable id, so there is no "did it save" case to
+    // handle here: either the insert succeeded or it threw and the surrounding
+    // transaction rolled the whole plan back.
+    if (paid != null && paid > 0) {
+      await store.addPayment(Payment(
+        clientId: id,
+        amount: paid,
+        date: _dateOf(on),
+        note: 'Deposit',
       ));
+    }
+  }
+
+  static String _dateOf(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 }
 
 class ProposedPayment extends ProposedWrite {
@@ -86,6 +140,114 @@ class ProposedDeadline extends ProposedWrite {
         title: title,
         due: due ?? DateTime.now().toIso8601String().substring(0, 10),
       ));
+}
+
+/// A list of writes, shown to the user as numbered steps and applied together.
+///
+/// The shape a multi step task needs, and the one Gemini-style interfaces get
+/// right: the user sees exactly what is going to happen, in what order, before
+/// any of it happens. Nothing is written by showing it.
+///
+/// Atomic on purpose. Part of an import landing is worse than none of it,
+/// because there is then no way to tell what went in from what did not.
+class ProposedPlan extends ProposedWrite {
+  const ProposedPlan({required this.steps, this.problems = const []});
+
+  final List<ProposedWrite> steps;
+
+  /// Lines that could not be read, carried through to the card.
+  ///
+  /// Never discarded. A list of twenty that silently becomes seventeen is the
+  /// same failure as the Business page reading zero, at a scale where it takes
+  /// a month to notice.
+  final List<UnreadableLine> problems;
+
+  @override
+  String get summary => switch (steps.length) {
+        0 => 'Nothing to add',
+        1 => steps.first.summary,
+        _ => '${steps.length} things to add',
+      };
+
+  @override
+  Future<void> apply(ProfileStore store) async {
+    if (steps.isEmpty) return;
+    await store.transaction((scoped) async {
+      for (final step in steps) {
+        await step.apply(scoped);
+      }
+    });
+  }
+}
+
+/// A proposed import, tied to the text it came from.
+///
+/// The fingerprint is what stops the same list being pasted twice and quietly
+/// doubling everyone's balance. It is stored rather than checked against the
+/// client names, because a second paste of a corrected list is a legitimate
+/// thing to want and a name match would refuse it.
+class ProposedImport extends ProposedPlan {
+  ProposedImport({
+    required super.steps,
+    super.problems,
+    required this.source,
+    required this.fingerprint,
+  });
+
+  /// The text the user pasted, kept so the card can show them what it read.
+  final String source;
+  final String fingerprint;
+
+  /// True when this exact text has already been imported.
+  Future<bool> alreadyImported(ProfileStore store) async =>
+      await store.get('import:$fingerprint').then((v) => v != null);
+
+  /// Records the text so a second paste of it is refused.
+  Future<void> rememberImport(ProfileStore store) =>
+      store.put('import:$fingerprint', DateTime.now().toIso8601String());
+
+  /// A stable id for a block of text, so the same paste is recognised.
+  ///
+  /// FNV-1a rather than SHA-256, and deliberately so. This is not a security
+  /// boundary, it is a "have I seen this exact text before" check on one device
+  /// holding a handful of imports, and adding a crypto dependency for it would
+  /// be paying a supply chain cost for something a wrong answer cannot exploit.
+  /// A collision would refuse an import the user wanted, and re-pasting with a
+  /// space added produces a different fingerprint, so it is recoverable rather
+  /// than a trap.
+  static String fingerprintOf(String text) {
+    // 64 bit FNV-1a over the trimmed text.
+    const offset = 0xcbf29ce484222325;
+    const prime = 0x100000001b3;
+    var hash = offset;
+    for (final byte in text.trim().codeUnits) {
+      hash = (hash ^ (byte & 0xff)) * prime;
+      hash = hash & 0xffffffffffffffff;
+    }
+    return hash.toRadixString(16).padLeft(16, '0');
+  }
+}
+
+/// Turns parsed rows into steps, posting any deposit into the ledger.
+///
+/// A deposit is a payment, not a subtraction, for the same reason the client
+/// form does it that way: money is computed from the ledger everywhere and a
+/// second copy that only affects one screen eventually disagrees with it.
+List<ProposedWrite> stepsForImport(List<ImportRow> rows, {DateTime? invoicedOn}) {
+  final on = invoicedOn ?? DateTime.now();
+  final out = <ProposedWrite>[];
+  for (final row in rows) {
+    out.add(ProposedClient(
+      name: row.name,
+      amount: row.amount,
+      due: row.due,
+      deposit: row.deposit,
+      retainer: row.retainer,
+      termsDays: row.termsDays,
+      invoicedOn: on,
+    ));
+  }
+  return out;
 }
 
 /// The outcome of turning a sentence into something the app can act on.
