@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.6.0
+
+Replies that arrive the way they are typed, and a model that knows what was
+said before. All five of the complaints from testing v0.5.0.
+
+### Fixed
+
+- **Only the first token ever appeared.** One letter landed instantly, then the
+  rest of the answer arrived in a single jump several seconds later. The model
+  was streaming correctly the whole time; the client threw every token after the
+  first away. A pending flag meaning "this message is still being generated" was
+  being set from "this message has no text yet", so the first token ended the
+  generation as far as the screen was concerned. The 334 passing tests missed it
+  because the fake model emitted all its tokens in one synchronous loop, so no
+  frame was ever drawn between the first and the last. There is now a fake that
+  yields between tokens like a real socket does, and it fails without this fix.
+- **"create new client Primedose" said the client could not be found.** The
+  parser tried one kind of write at a time in a fixed order, so a sentence
+  carrying more than one cue was always classified as whichever kind happened to
+  be checked first, and it could reach the model instead of the parser. The cue
+  that appears earliest in the sentence now wins, and the client phrasings
+  people actually type are recognised.
+
+### Added
+
+- **The model remembers the conversation.** Earlier turns now travel as real
+  chat messages, so "how much is that?" resolves. They are deliberately kept out
+  of the system prompt: glen reuses the longest common token prefix across
+  turns, and a prompt that changed every turn would mean a full prefill every
+  turn. On this phone that is the difference between 1.2 seconds and over a
+  minute, and the question no longer appears in the prompt at all since it is
+  already the user message.
+- **Stop.** The send button becomes a stop button while an answer is being
+  written. A greyed-out button for fifteen seconds is the app looking busy; a
+  stop square is the app offering a way out. Tokens that arrive afterwards
+  cannot repaint the bubble.
+- **Edit a message.** Long press anything you sent, change it, ask again. The
+  abandoned exchange is dropped from the screen and from the stored transcript,
+  so there is never two answers to the same question with nothing saying which
+  one is current.
+
 ## 0.4.0
 
 The freelancer loop, made real. The tables for payments and deadlines existed
