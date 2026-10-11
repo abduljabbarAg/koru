@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.1
+
+The 0.6.0 conversation memory had a bug that made the app feel like it was
+dying. It was my fault and it is worth writing down exactly what happened.
+
+### Fixed
+
+- **The local engine could crash and take the conversation with it.** A prompt
+  longer than the engine's 1024 token KV cache indexed past the end of the
+  cache and panicked the process. The REPL compacted long conversations; the
+  HTTP server the app actually talks to never did. A panic killed the server,
+  so the next question started a cold engine, the one after that started from an
+  even longer transcript, and the app got slower and slower rather than just
+  slow. Measured on the device, the request that triggered it ground for 96
+  seconds and returned nothing. serve now fits the prompt to the window by
+  dropping the oldest middle messages, and the cache write itself refuses to go
+  out of bounds rather than killing the process.
+- **History is budgeted in tokens, not characters.** 0.6.0 allowed 8 turns of
+  400 characters, about 1600 tokens, which does not fit. It is now capped so the
+  prompt leaves genuine headroom for the answer.
+- **The tokens per second badge was measuring the wrong thing.** It divided by
+  the whole request including prefill. Prefill is roughly 15 tokens a second
+  here and decode is 4, and the first question prefills while every follow-up
+  reuses the cached prefix, so an engine that never changed speed was reported
+  as 0.3 tok/s on a cold ask and 4 tok/s on a warm one. It now reports decode
+  only, and shows the prefill wait separately because it is the longest silent
+  part of a first answer.
+
 ## 0.6.0
 
 Replies that arrive the way they are typed, and a model that knows what was

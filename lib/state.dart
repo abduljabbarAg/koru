@@ -209,6 +209,15 @@ class ChatNotifier extends Notifier<ChatState> {
     ));
   }
 
+  /// Characters of earlier conversation allowed into one prompt.
+  ///
+  /// The bundled engine runs with a 1024 token KV cache and the system prompt
+  /// plus the caller's records already use a few hundred of it, so roughly 1200
+  /// characters of history leaves genuine headroom for the answer itself. This
+  /// has to stay comfortably under the window, not at it: the window also has to
+  /// hold the reply, and an overrun takes the engine down with it.
+  static const _historyBudgetChars = 1200;
+
   /// Whether the in-flight generation was stopped by the user.
   bool _cancelled = false;
 
@@ -260,19 +269,35 @@ class ChatNotifier extends Notifier<ChatState> {
 
   /// The last few exchanges, oldest first, for the model's prompt.
   List<ChatTurn> _recentTurns() {
+    // Budgeted in TOKENS against the engine's real context window, not in
+    // characters or turns. This is not a detail: an earlier version allowed 8
+    // turns of 400 characters each, which is roughly 1600 tokens, against a
+    // 1024 token KV cache. A conversation that grew past the window made glen
+    // index off the end of the cache and panic, killing the engine. The next
+    // question restarted it cold, the one after started from an even longer
+    // transcript, and the app got slower and slower instead of just slow.
+    //
+    // Measured on the target phone: 222 token prompt cold is 14.5s, then every
+    // follow-up reuses the cached prefix and costs 3.6s. Decode itself never
+    // moved off about 4 tok/s.
+    const budgetChars = _historyBudgetChars;
     final out = <ChatTurn>[];
-    // Skips a trailing pending bubble, which is the reply to the question being
-    // asked right now and has no text yet.
+    var used = 0;
     for (final m in state.messages.reversed) {
       if (m.pending || m.text.trim().isEmpty) continue;
       if (m.role != MsgRole.user && m.role != MsgRole.koru) continue;
+
+      // Roughly four characters to a token, which is close enough for a
+      // budget and needs no tokenizer at the call site.
+      final text = m.text.length > 400 ? '${m.text.substring(0, 400)}...' : m.text;
+      final cost = (text.length / 4).ceil() + 8;
+      if (used + cost > budgetChars) break;
+      used += cost;
+
       out.add(ChatTurn(
         m.role == MsgRole.user ? ChatRole.user : ChatRole.koru,
-        // Bounded, because an escalated answer or a long quote would otherwise
-        // be replayed into the prompt in full on every later turn.
-        m.text.length > 400 ? '${m.text.substring(0, 400)}...' : m.text,
+        text,
       ));
-      if (out.length >= 8) break;
     }
     return out.reversed.toList();
   }

@@ -239,9 +239,49 @@ fn chat(
     if let Some(p) = req.get("top_p").and_then(|v| v.as_f64()) {
         samp.top_p = p as f32;
     }
-    let ids = build_prompt(m, bpe, &msgs);
+    // Fit the prompt inside the KV cache BEFORE anything writes to it.
+    //
+    // Without this the engine can kill itself. cache_put indexes
+    // c.k[pos * kv_dim..], and nothing checked that pos stayed below max_pos,
+    // so a conversation long enough to overrun the window panicked the process
+    // outright: "range end index 131200 out of range for slice of length
+    // 131072". The request that triggered it ground for 96 seconds and returned
+    // nothing, and because the process was dead the next question started it
+    // cold, and the one after that started from an even longer transcript. That
+    // is why it felt like the app was getting slower and slower instead of
+    // merely slow once: the failure compounded.
+    //
+    // The REPL already compacts here. serve did not, and serve is the path the
+    // app actually uses.
+    //
+    // Oldest middle messages are dropped rather than truncating raw token ids,
+    // so the system prompt stays at the front (the prefix that makes the cache
+    // reuse work) and the most recent exchange survives intact.
+    let reserve = max_tokens + 8;
+    let mut kept = msgs.clone();
+    let mut trimmed = false;
+    let mut ids = build_prompt(m, bpe, &kept);
+    while ids.len() + reserve > max_pos {
+        if kept.len() > 2 {
+            kept.remove(1); // index 0 is the system prompt, never dropped
+        } else {
+            // Even system plus the current question will not fit. Keep the
+            // head so the model still knows who it is and what it is for.
+            let keep = max_pos.saturating_sub(reserve);
+            if keep == 0 || ids.len() > keep {
+                ids.truncate(keep.max(1));
+            }
+            break;
+        }
+        trimmed = true;
+        ids = build_prompt(m, bpe, &kept);
+    }
     if ids.is_empty() {
         return respond_json(&mut s, 400, "{\"error\":{\"message\":\"empty prompt\"}}");
+    }
+    if trimmed {
+        // The transcript changed, so nothing from the previous one is valid.
+        st.prev.clear();
     }
 
     // KV reuse: longest common prefix with the cached transcript.

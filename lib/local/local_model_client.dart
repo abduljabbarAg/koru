@@ -13,13 +13,19 @@ sealed class LocalModelResult {
 }
 
 class LocalReply extends LocalModelResult {
-  const LocalReply(this.text, this.tokensPerSecond);
+  const LocalReply(this.text, this.tokensPerSecond, {this.prefillMs});
 
   final String text;
 
   /// Measured, not estimated. Shown in the chat so a slow answer is explained
   /// rather than looking broken.
   final double? tokensPerSecond;
+
+  /// How long the engine spent reading the prompt before the first token.
+  ///
+  /// Silent, and on this device it is the longest part of a cold first ask, so
+  /// it is worth separating from decode rather than blending the two.
+  final int? prefillMs;
 }
 
 class LocalUnavailable extends LocalModelResult {
@@ -123,6 +129,9 @@ class LocalModelClient {
   }) async {
     final base = normaliseEndpoint(endpoint);
     final started = DateTime.now();
+    // When the first token actually arrived, which is what separates the time
+    // spent reading the prompt from the time spent writing the answer.
+    DateTime? firstTokenAt;
     final client = http.Client();
     try {
       final request = http.Request('POST', _uri(base, '/v1/chat/completions'))
@@ -169,15 +178,29 @@ class LocalModelClient {
         if (delta.isEmpty) continue;
         buffer.write(delta);
         emitted++;
+        firstTokenAt ??= DateTime.now();
         onToken(delta);
       }
 
       final text = buffer.toString().trim();
       if (text.isEmpty) return const LocalFailed('The local model returned nothing.');
-      final elapsed = DateTime.now().difference(started).inMilliseconds;
-      // Counted locally: not every server reports usage on a streamed reply.
-      final tps = elapsed > 0 ? emitted * 1000 / elapsed : null;
-      return LocalReply(text, tps);
+      final total = DateTime.now().difference(started).inMilliseconds;
+      // Decode rate only, and this distinction was the difference between
+      // "the model got slower" and "the model is fine".
+      //
+      // The old number was emitted tokens over the whole request, prefill
+      // included. Prefill on this phone runs about 15 tokens a second against a
+      // decode of 4, and the first message of a conversation prefills the whole
+      // prompt while every message after it reuses the cached prefix. So the
+      // same 4 tok/s decode was being reported as 4 tok/s on a warm follow-up
+      // and 0.3 tok/s on a cold first ask, and reading those two numbers as a
+      // 13x slowdown in the engine is exactly what it looked like.
+      //
+      // Both are still worth knowing, so decode is what is shown and the
+      // prefill wait is reported separately where it can be explained.
+      final decode = DateTime.now().difference(firstTokenAt ?? started).inMilliseconds;
+      final tps = decode > 0 ? emitted * 1000 / decode : null;
+      return LocalReply(text, tps, prefillMs: total - decode);
     } on TimeoutException {
       return const LocalFailed('The local model took too long to answer.');
     } catch (e) {

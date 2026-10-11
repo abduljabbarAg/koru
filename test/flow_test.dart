@@ -272,6 +272,23 @@ void main() {
       expect(second.map((t) => t.role), contains('assistant'));
     });
 
+    testWidgets('history cannot overrun the engine context window', (tester) async {
+      // The engine runs a 1024 token KV cache. History that pushes the prompt
+      // past it used to kill glen outright, which is not a slow answer, it is a
+      // dead server and a colder one on every question afterwards.
+      final model = _RecordingClient('sure');
+      await boot(tester, engine: 'onDevice', model: model);
+
+      for (var i = 0; i < 6; i++) {
+        await say(tester, 'x' * 700);
+      }
+
+      final last = model.turns.last;
+      final chars = last.fold<int>(0, (n, t) => n + t.content.length);
+      expect(chars, lessThanOrEqualTo(1200),
+          reason: 'history budget is 1200 characters, about 300 tokens');
+    });
+
     testWidgets('history stays out of the system prompt', (tester) async {
       final model = _RecordingClient('sure');
       await boot(tester, engine: 'onDevice', model: model);

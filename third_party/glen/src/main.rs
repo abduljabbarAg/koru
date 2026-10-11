@@ -368,8 +368,23 @@ pub fn cache_new(max_pos: usize, kv_dim: usize, q8: bool) -> Cache {
 }
 
 /// Append one position, quantized to int8 in 32-blocks when q8 is on.
+///
+/// Bounds checked on purpose. The slices below are indexed by `pos`, and a
+/// caller that believed it had a longer cache than it did used to take the whole
+/// process down with a range panic: a panic here kills the server, the client's
+/// request is never answered, and the next request starts a cold engine. A
+/// silently dropped position is recoverable in a way a dead process is not, so
+/// this returns without writing rather than panicking.
 fn cache_put(c: &mut Cache, pos: usize, k: &[f32], v: &[f32]) {
     let kd = c.kv_dim;
+    // The live storage differs by mode: q8 keeps the vectors in kq and kd, the
+    // f32 path uses k. Measuring the wrong one would make every write look out
+    // of range in q8 mode, where k is legitimately empty.
+    let slots = if c.q8 { c.kq.len() } else { c.k.len() } / kd.max(1);
+    if pos >= slots {
+        eprintln!("[glen] refusing to write past the cache at pos {pos} ({slots} slots)");
+        return;
+    }
     if c.q8 {
         let (kq, ks) = (&mut c.kq[pos * kd..(pos + 1) * kd], &mut c.kd[pos * c.nblk..(pos + 1) * c.nblk]);
         let (vq, vs) = (&mut c.vq[pos * kd..(pos + 1) * kd], &mut c.vd[pos * c.nblk..(pos + 1) * c.nblk]);
