@@ -3,9 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'attention.dart';
+import 'attention_bridge.dart';
 import 'cloud.dart';
 import 'cloud_providers.dart';
 import 'currency.dart';
+import 'deep_link.dart';
 import 'engine.dart';
 import 'guide.dart';
 import 'handoff.dart';
@@ -703,6 +706,66 @@ final receivedTotalsProvider = FutureProvider<Map<int, double>>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return store.receivedTotals();
 });
+
+/// What is worth interrupting the user about, worst first.
+///
+/// Shared by the widget, the notification and the launcher badge so that all
+/// three cannot drift apart: the badge saying 3 while the notification says 2 is
+/// the sort of thing that makes a helper feel broken rather than busy.
+///
+/// Invalidated whenever the data underneath it changes, so a payment recorded in
+/// the app clears the badge without the user having to do anything.
+final attentionProvider = FutureProvider<List<AttentionItem>>((ref) async {
+  // Watching each source rather than the store, so the list is only rebuilt when
+  // something in it actually moved.
+  final clients = await ref.watch(clientsProvider.future);
+  final received = await ref.watch(receivedTotalsProvider.future);
+  final deadlines = await ref.watch(openDeadlinesProvider.future);
+  final projects = await ref.watch(projectsProvider.future);
+  return Attention.build(
+    clients: clients,
+    deadlines: deadlines,
+    received: received,
+    projects: projects,
+  );
+});
+
+/// Every project, most recently touched first.
+final projectsProvider = FutureProvider<List<Project>>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  return store.projects();
+});
+
+/// Keeps the notification in step with the data.
+///
+/// Watching [attentionProvider] rather than recomputing is what keeps the badge,
+/// the notification and the app from disagreeing: there is one list, computed
+/// once, and every surface reads that same list.
+final attentionPublisher = Provider<void>((ref) {
+  final bridge = ref.watch(attentionBridgeProvider);
+  ref.listen(attentionProvider, (previous, next) {
+    final items = next.valueOrNull;
+    // Skipped while loading, on purpose. Publishing the empty list during a
+    // reload would clear a perfectly correct badge every time the database was
+    // read, which looks like the app losing track of what it owes.
+    if (items == null) return;
+    bridge.publish(items, link: _linkFor(items));
+    // Let the app close the shade and land somewhere sensible when nothing is
+    // outstanding any more.
+    if (items.isEmpty && (previous?.valueOrNull?.isNotEmpty ?? false)) {
+      bridge.clear();
+    }
+  }, fireImmediately: true);
+});
+
+/// Where tapping the notification should open.
+KoruDeepLink? _linkFor(List<AttentionItem> items) {
+  if (items.isEmpty) return null;
+  final first = items.first;
+  return KoruDeepLink(kind: first.kind, target: first.target);
+}
+
+final attentionBridgeProvider = Provider<AttentionBridge>((ref) => const AttentionBridge());
 
 /// The payments ledger, newest first, for the money section.
 final paymentsProvider = FutureProvider<List<Payment>>((ref) async {

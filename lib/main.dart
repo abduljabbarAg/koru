@@ -82,7 +82,13 @@ class _RootGateState extends ConsumerState<RootGate> {
     // over to the app. Holding a copy in a field meant the last button on the
     // last screen did nothing at all.
     final onboarded = ref.watch(onboardedProvider);
-    return onboarded ? const HomeShell() : const OnboardingScreen();
+    if (!onboarded) return const OnboardingScreen();
+    // Watched from here so the notification is kept up to date for the whole
+    // time the app is open, not only while a particular screen happens to be
+    // mounted. Watching it inside the chat screen meant the badge went stale the
+    // moment the user went to look at their clients.
+    ref.watch(attentionPublisher);
+    return const HomeShell();
   }
 }
 

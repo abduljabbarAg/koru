@@ -1,5 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Post notifications. Runtime-requested from Android 13, and without it
+         every notification this app posts is silently dropped by the system
+         rather than refused, which is indistinguishable from a bug. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Re-posting the badge when something changes while the app is closed. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Android 14+ refuses a foreground service without a declared type. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <application
         android:label="Koru"
         android:name="${applicationName}"
@@ -19,7 +29,26 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Tapping a Koru notification. singleTop so the running app is
+                 brought forward and handed the link instead of being rebuilt
+                 behind the notification, which would lose the conversation. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="koru" android:host="attention"/>
+            </intent-filter>
         </activity>
+
+        <!-- Keeps Koru's attention checks running when the app is closed.
+             Not optional and not incidental: a service that can do this work
+             with the app closed has to be a foreground service, and Android
+             requires one to show a permanent notification. That is the deal, and
+             it is the same one every reminder app on the store makes. -->
+        <service
+            android:name=".AttentionWatcher"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"/>
         <meta-data android:name="flutterEmbedding" android:value="2"/>
     </application>
 </manifest>

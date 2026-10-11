@@ -1,6 +1,7 @@
 package com.abduljabbar.koru
 
 import android.content.Context
+import android.content.Intent
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -41,6 +42,8 @@ class MainActivity : FlutterActivity() {
 
     private val channelName = "koru/secure_key"
     private val engineChannelName = "koru/local_engine"
+    private val attentionChannelName = "koru/attention"
+
     private val prefsName = "koru_secrets"
     private val keyAlias = "koru_cloud_key"
 
@@ -49,9 +52,34 @@ class MainActivity : FlutterActivity() {
 
     private var engine: Process? = null
 
+    /** Notifications and the background attention service. */
+    private var attention: AttentionBridge? = null
+
+    /**
+     * A Koru link waiting to be handed to Dart.
+     *
+     * The tap can arrive before Flutter is ready, and quite often does, because
+     * a notification tap launches a process that is not running. Holding the link
+     * here and draining it once Dart asks is what makes a cold start from a
+     * notification work at all; the other option is silently opening the app to
+     * the home screen, which looks exactly like the tap not working.
+     */
+    private var pendingLink: String? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+
+        val attentionService = AttentionBridge()
+        attentionService.attach(applicationContext)
+        attention = attentionService
+        val attentionChannel = MethodChannel(messenger, attentionChannelName)
+        attentionChannel.setMethodCallHandler(attentionService)
+        attentionService.bind(attentionChannel)
+        attentionService.onLinkReady { drainPendingLink() }
+
+        // A link that arrived with the intent that launched us.
+        pendingLink = linkFrom(intent)
 
         MethodChannel(messenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -83,9 +111,46 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * A tap on a notification while the app is already running.
+     *
+     * singleTop in the manifest means this is called instead of the activity
+     * being rebuilt, which is what keeps the current conversation instead of
+     * throwing it away and showing the home screen.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        linkFrom(intent)?.let {
+            pendingLink = it
+            attention?.drainPendingLink()
+        }
+    }
+
     override fun onDestroy() {
         stopEngine()
         super.onDestroy()
+    }
+
+    // ------------------------------------------------------------- attention
+
+    /** Our own links only. Anything else on the device is ignored. */
+    private fun linkFrom(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "koru" || data.host != "attention") return null
+        return data.toString()
+    }
+
+    /**
+     * Hands over a waiting link and clears it.
+     *
+     * Cleared as it is read, so one tap cannot replay the same destination every
+     * time the app is next built.
+     */
+    private fun drainPendingLink(): String? {
+        val link = pendingLink ?: return null
+        pendingLink = null
+        return link
     }
 
     // ---------------------------------------------------------------- engine
