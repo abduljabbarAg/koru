@@ -40,6 +40,23 @@
             </intent-filter>
         </activity>
 
+        <!-- The home screen widget. Exported because the launcher is a
+             different app and has to be able to send it broadcasts; the
+             receiver reads nothing and draws nothing on its own, it only ever
+             repaints what Dart already decided. -->
+        <receiver
+            android:name=".KoruWidgetProvider"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                <action android:name="com.abduljabbar.koru.WIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/koru_widget_info"/>
+        </receiver>
+
         <!-- Keeps Koru's attention checks running when the app is closed.
              Not optional and not incidental: a service that can do this work
              with the app closed has to be a foreground service, and Android

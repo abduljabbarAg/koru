@@ -96,6 +96,15 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
                 // which is the ordinary case and not an error.
                 result.success(pendingLink())
             }
+            "updateWidget" -> {
+                result.success(updateWidget(
+                    ctx,
+                    call.argument<Int>("count") ?: 0,
+                    call.argument<String>("headline") ?: "",
+                    call.argument<String>("top") ?: "",
+                    call.argument<String>("mood") ?: "calm",
+                ))
+            }
             "clear" -> {
                 // Everything dealt with. Cleared rather than set to a
                 // placeholder so the badge genuinely clears instead of showing
@@ -179,6 +188,37 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
      * saying would post an empty notification over the top of a correct one.
      * One stored copy, written here and read there, so the two cannot disagree.
      */
+    /**
+     * Repaints every placed widget.
+     *
+     * Returns false when nothing is placed, which is the normal case and not a
+     * failure. The broadcast is only sent if there is something to receive it,
+     * so adding a widget does not mean paying for a broadcast that lands
+     * nowhere.
+     */
+    private fun updateWidget(
+        ctx: Context,
+        count: Int,
+        headline: String,
+        top: String,
+        mood: String,
+    ): Boolean {
+        val manager = android.appwidget.AppWidgetManager.getInstance(ctx)
+        val ids = manager.getAppWidgetIds(
+            android.content.ComponentName(ctx, KoruWidgetProvider::class.java)
+        )
+        if (ids.isEmpty()) return false
+        val intent = Intent(ctx, KoruWidgetProvider::class.java).apply {
+            action = KoruWidgetProvider.ACTION_UPDATE
+            putExtra(KoruWidgetProvider.EXTRA_COUNT, count)
+            putExtra(KoruWidgetProvider.EXTRA_HEADLINE, headline)
+            putExtra(KoruWidgetProvider.EXTRA_TOP, top)
+            putExtra(KoruWidgetProvider.EXTRA_MOOD, mood)
+        }
+        ctx.sendBroadcast(intent)
+        return true
+    }
+
     private fun persist(ctx: Context) {
         try {
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

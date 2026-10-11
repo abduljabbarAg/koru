@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  How the launcher is allowed to size this widget.
+
+  minResizeWidth and minResizeHeight are what make it usable at all on a modern
+  home screen, where a widget gets a fraction of the space and can be resized by
+  the user. Without them the launcher will only ever offer the default size and
+  the user cannot shrink it, which is how a widget ends up eating a quarter of
+  the screen.
+
+  targetCellWidth is API 31+; older launchers ignore the pair and fall back to
+  the resize bounds, which is the intended behaviour rather than a failure.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/koru_widget"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:previewLayout="@layout/koru_widget"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

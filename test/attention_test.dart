@@ -255,6 +255,24 @@ void main() {
       expect(payload['link'], 'koru://attention/overdueMoney/client');
     });
 
+    testWidgets('repaints the widget from the same list', (tester) async {
+      const bridge = AttentionBridge();
+      final items = Attention.build(
+        clients: [client('Bilal', due: '2026-10-01')],
+        deadlines: const [],
+        received: const {},
+        today: today,
+      );
+      await bridge.updateWidget(items);
+
+      final args = calls.single.arguments as Map;
+      expect(calls.single.method, 'updateWidget');
+      expect(args['count'], 1);
+      expect(args['mood'], 'thinking',
+          reason: 'a widget with a calm face over an overdue invoice is worse '
+              'than no widget');
+    });
+
     testWidgets('nothing outstanding is still published, with no link',
         (tester) async {
       // The quiet state has to reach the platform too, or the badge keeps
@@ -298,6 +316,43 @@ void main() {
       expect(KoruDeepLink.decode('koru://attention/nonsense/client'), isNull);
       expect(KoruDeepLink.decode('not a uri at all'), isNull);
       expect(KoruDeepLink.decode(''), isNull);
+    });
+  });
+
+  group('the character\'s mood', () {
+    test('cheerful when nothing needs you', () {
+      expect(AttentionBridge.moodFor(const []), 'cheer');
+    });
+
+    test('thinking when money or a deadline is involved', () {
+      final money = Attention.build(
+        clients: [client('Bilal', due: '2026-10-01')],
+        deadlines: const [],
+        received: const {},
+        today: today,
+      );
+      final due = Attention.build(
+        clients: const [],
+        deadlines: [const Deadline(title: 'Invoice', due: '2026-10-11')],
+        received: const {},
+        today: today,
+      );
+      expect(AttentionBridge.moodFor(money), 'thinking');
+      expect(AttentionBridge.moodFor(due), 'thinking');
+    });
+
+    test('a quiet project alone is not urgent', () {
+      final quiet = Attention.build(
+        clients: const [],
+        deadlines: const [],
+        received: const {},
+        projects: const [
+          Project(name: 'My app', updated: '2026-01-01T00:00:00Z', created: '2026-01-01'),
+        ],
+        today: today,
+      );
+      expect(quiet.single.kind, AttentionKind.stalledProject);
+      expect(AttentionBridge.moodFor(quiet), 'wave');
     });
   });
 

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The home screen widget.
+
+  A plain RelativeLayout rather than anything fancier, because RemoteViews only
+  supports a small set of widgets, and the fewer that are used the fewer ways
+  this can fail on a launcher nobody tested it on.
+
+  Sizes are in dp so it sits correctly at any density, and nothing is fixed
+  width, because the launcher decides how much room a widget gets and a layout
+  that insists would either clip or overflow.
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/koru_widget"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="12dp"
+    android:background="@drawable/koru_widget_bg">
+
+    <ImageView
+        android:id="@+id/koru_character"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:contentDescription="@string/koru_widget_description"
+        android:src="@drawable/koru_idle" />
+
+    <TextView
+        android:id="@+id/koru_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentTop="true"
+        android:background="@drawable/koru_badge_bg"
+        android:gravity="center"
+        android:minWidth="20dp"
+        android:paddingStart="6dp"
+        android:paddingEnd="6dp"
+        android:paddingTop="1dp"
+        android:paddingBottom="1dp"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/koru_headline"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/koru_character"
+        android:layout_marginTop="10dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#2E2A26"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/koru_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/koru_headline"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="#7C726A"
+        android:textSize="12sp" />
+
+</RelativeLayout>

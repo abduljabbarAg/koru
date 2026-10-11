@@ -750,6 +750,10 @@ final attentionPublisher = Provider<void>((ref) {
     // read, which looks like the app losing track of what it owes.
     if (items == null) return;
     bridge.publish(items, link: _linkFor(items));
+    // The widget and the notification are repainted from the same list in the
+    // same pass, so the home screen can never show a different answer to
+    // "what needs me" than the notification does.
+    bridge.updateWidget(items);
     // Let the app close the shade and land somewhere sensible when nothing is
     // outstanding any more.
     if (items.isEmpty && (previous?.valueOrNull?.isNotEmpty ?? false)) {

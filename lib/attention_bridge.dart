@@ -65,6 +65,48 @@ class AttentionBridge {
     }
   }
 
+  /// Repaints the home screen widget, if one is placed.
+  ///
+  /// Returns false when there is no widget, which is the common case. Callers
+  /// ignore it: not having placed a widget is not an error, it is just nobody
+  /// having asked for one yet.
+  Future<bool> updateWidget(List<AttentionItem> items) async {
+    try {
+      return await _channel.invokeMethod<bool>('updateWidget', {
+        'count': items.length,
+        'headline': Attention.headline(items),
+        'top': Attention.top(items),
+        'mood': moodFor(items),
+      }) ??
+          false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// Which face the character wears.
+  ///
+  /// Derived from the same list that drives the notification, because a widget
+  /// showing a calm character next to an overdue invoice is worse than no
+  /// character at all. Deliberately only four states: a face that changes with
+  /// every possible situation stops being readable, and the point is that it
+  /// means something.
+  ///
+  /// Nothing outstanding is cheer, not idle. There is a difference between
+  /// "nothing is wrong" and "I do not know what is going on", and showing the
+  /// same calm face for both throws away the one time the character is actually
+  /// saying something good.
+  static String moodFor(List<AttentionItem> items) {
+    if (items.isEmpty) return 'cheer';
+    final urgent = items.any((i) =>
+        i.kind == AttentionKind.overdueMoney ||
+        i.kind == AttentionKind.dueToday ||
+        i.kind == AttentionKind.dueSoon);
+    return urgent ? 'thinking' : 'wave';
+  }
+
   /// Stops the service and removes the ongoing notification.
   Future<void> stop() async {
     try {

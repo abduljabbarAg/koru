@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Only what a launcher or the system needs to read. The app's own visible
+      strings live in Dart, because that is where they can be translated and
+      tested; duplicating them here would mean two copies to keep in step.
+    -->
+    <string name="app_name">Koru</string>
+    <string name="koru_widget_description">Koru, your helper. Shows what needs you today.</string>
+</resources>
