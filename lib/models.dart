@@ -19,6 +19,22 @@ class Client {
   final String? note;
   final String created;
 
+  /// Paid up front, before any work was delivered.
+  ///
+  /// Stored for the record and shown as "agreed X, deposit paid Y, so Z owed",
+  /// but deliberately not subtracted in [balanceWith]. A deposit is a payment,
+  /// so it is written into the ledger as a payment row, and money is computed
+  /// from the ledger everywhere. Keeping a second copy that only affects this
+  /// one screen is how a balance starts disagreeing with the ledger.
+  final double? deposit;
+
+  /// Days allowed to pay, counted from [invoicedOn]. Null means no terms were
+  /// agreed, which is different from zero days, which means due immediately.
+  final int? termsDays;
+
+  /// When the work was invoiced. The anchor the terms count from.
+  final String? invoicedOn;
+
   /// Money that arrives every month by standing agreement, rather than against
   /// a fresh invoice. Null means this is not a retainer.
   ///
@@ -38,6 +54,9 @@ class Client {
     this.note,
     this.created = '',
     this.monthly,
+    this.deposit,
+    this.termsDays,
+    this.invoicedOn,
   });
 
   bool get isRetainer => monthly != null && monthly! > 0;
@@ -52,6 +71,9 @@ class Client {
         if (note != null) 'note': note,
         'created': created,
         if (monthly != null) 'monthly': monthly,
+        if (deposit != null) 'deposit': deposit,
+        if (termsDays != null) 'terms_days': termsDays,
+        if (invoicedOn != null) 'invoiced_on': invoicedOn,
       };
 
   /// Row for an UPDATE.
@@ -68,6 +90,9 @@ class Client {
         'note': note,
         'created': created,
         'monthly': monthly,
+        'deposit': deposit,
+        'terms_days': termsDays,
+        'invoiced_on': invoicedOn,
       };
 
   factory Client.fromMap(Map<String, Object?> m) => Client(
@@ -80,6 +105,9 @@ class Client {
         note: m['note'] as String?,
         created: m['created'] as String? ?? '',
         monthly: (m['monthly'] as num?)?.toDouble(),
+        deposit: (m['deposit'] as num?)?.toDouble(),
+        termsDays: (m['terms_days'] as int?),
+        invoicedOn: m['invoiced_on'] as String?,
       );
 
   Client copyWith({
@@ -97,6 +125,10 @@ class Client {
     bool clearAmount = false,
     bool clearSource = false,
     bool clearMonthly = false,
+    double? deposit,
+    int? termsDays,
+    String? invoicedOn,
+    bool clearTerms = false,
   }) =>
       Client(
         id: id ?? this.id,
@@ -108,9 +140,35 @@ class Client {
         note: clearNote ? null : (note ?? this.note),
         created: created ?? this.created,
         monthly: clearMonthly ? null : (monthly ?? this.monthly),
+        deposit: deposit ?? this.deposit,
+        termsDays: clearTerms ? null : (termsDays ?? this.termsDays),
+        invoicedOn: invoicedOn ?? this.invoicedOn,
       );
 
   DateTime? get parsedDue => due == null ? null : DateTime.tryParse(due!);
+
+  /// When the money is actually due.
+  ///
+  /// An explicit date always wins, because it is the only thing the user can be
+  /// certain about. Failing that it is the invoice date plus the agreed terms,
+  /// which is what makes "net 14" mean something: previously the due date had to
+  /// be typed by hand, nobody typed it, and nothing was ever overdue.
+  DateTime? get dueDate {
+    final explicit = parsedDue;
+    if (explicit != null) return explicit;
+    final invoiced = invoicedOn == null ? null : DateTime.tryParse(invoicedOn!);
+    final terms = termsDays;
+    if (invoiced == null || terms == null) return null;
+    return DateTime(invoiced.year, invoiced.month, invoiced.day + terms);
+  }
+
+  /// Terms in words, for the screen and for telling the model.
+  String get termsLabel {
+    final terms = termsDays;
+    if (terms == null) return 'no terms agreed';
+    if (terms == 0) return 'due on completion';
+    return 'net $terms days';
+  }
 
   /// Outstanding balance once [received] has come off the invoiced amount.
   ///
@@ -132,12 +190,25 @@ class Client {
   /// Unpaid work that is past its date. Takes [today] rather than reading the
   /// clock so the answer is testable and the UI stays the only place that knows
   /// what time it is.
+  /// Uses [dueDate] rather than the raw column, so a client whose terms imply a
+  /// date goes overdue on that date without anyone having typed a due date in.
   bool isOverdueOn(DateTime today) {
     if (status == 'paid' || status == 'lost') return false;
-    final d = parsedDue;
+    final d = dueDate;
     if (d == null) return false;
     final midnight = DateTime(today.year, today.month, today.day);
     return d.isBefore(midnight);
+  }
+
+  /// Days until due. Negative when already late, null when no date is known.
+  ///
+  /// Asked more often than "is it late", because what someone wants to know is
+  /// usually "how many days have I got" rather than a yes or no.
+  int? daysUntilDue(DateTime today) {
+    final d = dueDate;
+    if (d == null) return null;
+    final midnight = DateTime(today.year, today.month, today.day);
+    return DateTime(d.year, d.month, d.day).difference(midnight).inDays;
   }
 }
 

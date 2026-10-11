@@ -44,8 +44,19 @@ class BusinessScreen extends ConsumerWidget {
     final source = TextEditingController(text: existing?.leadSource ?? '');
     final note = TextEditingController(text: existing?.note ?? '');
     final monthly = TextEditingController(text: existing?.monthly?.toStringAsFixed(0) ?? '');
+    final deposit =
+        TextEditingController(text: existing?.deposit?.toStringAsFixed(0) ?? '');
     var status = existing?.status ?? 'lead';
-    DateTime? due = existing?.parsedDue;
+    // Terms, not a due date. The date is worked out from these two, which is
+    // the whole point: typing "due in 14 days" by hand is a thing nobody does,
+    // and it is why nothing was ever overdue.
+    var invoicedOn = existing?.invoicedOn == null
+        ? DateTime.now()
+        : DateTime.tryParse(existing!.invoicedOn!) ?? DateTime.now();
+    int terms = existing?.termsDays ?? 14;
+    // Null means "work out the date for me". A date here overrides the terms,
+    // because an explicit date is the one thing the user is certain of.
+    DateTime? overrideDue = existing?.termsDays == null ? existing?.parsedDue : null;
 
     final saved = await showKoruSheet<bool>(
       context,
@@ -53,7 +64,8 @@ class BusinessScreen extends ConsumerWidget {
       subtitle: existing == null
           ? 'Amounts are in ${currency.code}. This is what you invoiced them.'
           : 'Changes are kept on this device.',
-      builder: (ctx) => Column(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           TextField(controller: name, decoration: const InputDecoration(labelText: 'Name or company')),
@@ -104,6 +116,22 @@ class BusinessScreen extends ConsumerWidget {
             maxLines: 2,
             decoration: const InputDecoration(labelText: 'Note', hintText: 'What was agreed?'),
           ),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+          const Text('Payment terms',
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 13, color: KoruColors.inkSoft)),
+          const SizedBox(height: 10),
+          TextField(
+            controller: deposit,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Deposit already paid',
+              suffixText: currency.symbol,
+              helperText: 'Only if they paid something up front.',
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -112,51 +140,148 @@ class BusinessScreen extends ConsumerWidget {
                   onPressed: () async {
                     final picked = await showDatePicker(
                       context: ctx,
-                      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                      firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
                       lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
-                      initialDate: due ?? DateTime.now().add(const Duration(days: 14)),
+                      initialDate: invoicedOn,
+                      helpText: 'When did you invoice them?',
                     );
-                    if (picked != null) due = picked;
+                    if (picked != null) setSheetState(() => invoicedOn = picked);
                   },
-                  icon: const Icon(Icons.event_outlined, size: 18),
-                  label: Text(due == null ? 'Add a due date' : _fmtDate(due!)),
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: Text('Invoiced ${_fmtDate(invoicedOn)}'),
                 ),
               ),
-              if (due != null)
-                IconButton(
-                  tooltip: 'Clear due date',
-                  icon: const Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
-                  onPressed: () => due = null,
-                ),
             ],
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final option in const [
+                (label: 'On completion', days: 0),
+                (label: 'Net 7', days: 7),
+                (label: 'Net 14', days: 14),
+                (label: 'Net 30', days: 30),
+              ])
+                ChoiceChip(
+                  label: Text(option.label),
+                  selected: overrideDue == null && terms == option.days,
+                  onSelected: (_) => setSheetState(() {
+                    terms = option.days;
+                    overrideDue = null;
+                  }),
+                ),
+              ChoiceChip(
+                label: const Text('Exact date'),
+                selected: overrideDue != null,
+                onSelected: (_) async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
+                    lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                    initialDate: overrideDue ?? DateTime.now().add(Duration(days: terms)),
+                  );
+                  if (picked != null) {
+                    setSheetState(() => overrideDue = picked);
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // The date the rest of the app will use, shown rather than typed. A
+          // figure the app worked out and the user can see is a figure they can
+          // catch; a figure they had to type is one they will get wrong.
+          Builder(builder: (_) {
+            final computed = overrideDue ??
+                DateTime(invoicedOn.year, invoicedOn.month, invoicedOn.day + terms);
+            return Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: KoruColors.leafSoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.event_available_rounded, size: 18, color: KoruColors.leaf),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      overrideDue == null
+                          ? 'Due ${_fmtDate(computed)} (${terms == 0 ? 'on completion' : 'net $terms days'})'
+                          : 'Due ${_fmtDate(computed)}',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(existing == null ? 'Save client' : 'Save changes'),
           ),
         ],
+        ),
       ),
     );
 
     if (saved == true && name.text.trim().isNotEmpty) {
       final store = await ref.read(storeProvider.future);
+      final agreed = double.tryParse(amount.text.trim());
+
+      // An agreed amount is required, not optional.
+      //
+      // Every total on this screen is agreed minus received, so a client saved
+      // without one contributes zero to owed, zero to outstanding, and never
+      // goes overdue. That is not an edge case, it was the normal outcome of
+      // the old form, and it is why the Business page read zero across the
+      // board and the notifications had nothing to ever say.
+      if (agreed == null || agreed <= 0) {
+        if (context.mounted) {
+          toast(context, 'Put the amount you agreed with them');
+        }
+        return;
+      }
+
+      final depositValue = double.tryParse(deposit.text.trim()) ?? 0;
       final record = Client(
         id: existing?.id,
         name: name.text.trim(),
         status: status,
-        amount: double.tryParse(amount.text.trim()),
-        due: due == null ? null : _fmtDate(due!),
+        amount: agreed,
+        due: overrideDue == null ? null : _fmtDate(overrideDue!),
         leadSource: source.text.trim().isEmpty ? null : source.text.trim(),
         note: note.text.trim().isEmpty ? null : note.text.trim(),
         created: existing?.created ?? DateTime.now().toIso8601String(),
         monthly: double.tryParse(monthly.text.trim()),
+        deposit: depositValue > 0 ? depositValue : null,
+        termsDays: overrideDue == null ? terms : null,
+        invoicedOn: _fmtDate(invoicedOn),
       );
+
+      int? clientId;
       if (existing == null) {
-        await store.addClient(record);
+        clientId = await store.addClient(record);
       } else {
         await store.updateClient(record);
+        clientId = existing.id;
       }
+
+      // The deposit goes into the ledger rather than being subtracted from the
+      // amount. One place holds money: agreed minus received. A deposit held
+      // only on the client row would be a second opinion, and the two would
+      // disagree the first time somebody paid something else too.
+      if (depositValue > 0 && clientId != null) {
+        await store.addPayment(Payment(
+          clientId: clientId,
+          amount: depositValue,
+          date: _fmtDate(invoicedOn),
+          note: 'Deposit',
+        ));
+      }
+
       _invalidateMoney(ref);
       if (context.mounted) {
         toast(context, existing == null ? 'Client added' : 'Client updated');

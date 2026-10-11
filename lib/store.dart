@@ -17,7 +17,7 @@ class ProfileStore {
 
   final Database _db;
 
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 6;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -30,12 +30,14 @@ class ProfileStore {
         if (v >= 3) await _migrateToV3(d);
         if (v >= 4) await _migrateToV4(d);
         if (v >= 5) await _migrateToV5(d);
+        if (v >= 6) await _migrateToV6(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
         if (from < 3) await _migrateToV3(d);
         if (from < 4) await _migrateToV4(d);
         if (from < 5) await _migrateToV5(d);
+        if (from < 6) await _migrateToV6(d);
       },
     );
     return ProfileStore(db);
@@ -81,6 +83,27 @@ class ProfileStore {
         updated TEXT NOT NULL
       )
     ''');
+  }
+
+  /// How a client actually gets paid, worked out rather than typed in.
+  ///
+  /// Added because "add client" was a name and an optional amount and an
+  /// optional date, and all three were optional. Which meant the normal outcome
+  /// was a client with nothing in it, every total on the Business page reading
+  /// zero, and nothing ever overdue, so the notification and widget system had
+  /// nothing to ever say. The features worked; they were being handed empty.
+  ///
+  /// Deposit, terms and the invoice date are the three things that were missing.
+  /// The deposit is a payment, so it goes into the ledger rather than being
+  /// subtracted here, which keeps one source of truth for money: agreed minus
+  /// received, where received includes the deposit.
+  static Future<void> _migrateToV6(Database d) async {
+    // Additive columns, all nullable. Existing rows keep working exactly as
+    // they did, including clients with no amount, because making them required
+    // here would mean a migration that can fail on someone's real data.
+    for (final column in ['deposit', 'terms_days', 'invoiced_on']) {
+      await d.execute('ALTER TABLE business ADD COLUMN $column');
+    }
   }
 
   /// Projects and their notes.

@@ -34,6 +34,8 @@ class LocalAssistant {
         );
       case _Intent.status:
         return LocalAnswer(_status(facts), usedData: facts.hasRecords);
+      case _Intent.due:
+        return LocalAnswer(_due(facts), usedData: facts.hasRecords);
       case _Intent.business:
         return LocalAnswer(_business(facts), usedData: facts.clients.isNotEmpty);
       case _Intent.goals:
@@ -71,6 +73,18 @@ class LocalAssistant {
     }
     if (has(const ['how am i', 'how are we', 'status', 'update', 'where do i stand', 'summary'])) {
       return _Intent.status;
+    }
+    // Due-specific questions come first because the sentence usually also
+    // contains a word the business intent matches: "what is due today" contains
+    // neither 'client' nor 'money', so it used to fall all the way through to
+    // the fallback and the user was told Koru could not help with its own
+    // deadlines. That is the single most likely question anyone asks this app.
+    if (has(const [
+      'due today', 'due this week', 'due soon', 'due now', 'whats due', 'what is due',
+      'what are due', 'due tomorrow', 'what do i owe', 'what do they owe',
+      'anything due', 'due next', 'not due yet', 'late', 'overdue', 'past due',
+    ])) {
+      return _Intent.due;
     }
     if (has(const [
       'client', 'invoice', 'payment', 'paid', 'pipeline', 'revenue', 'lead',
@@ -197,6 +211,84 @@ class LocalAssistant {
         'what you are owed.';
   }
 
+  /// What is due, and when.
+  ///
+  /// Split into three lists on purpose: already late, due today, and coming up.
+  /// A single merged list has to be read for the answer, and the first item is
+  /// the one that was left out of the thing people actually open this app to
+  /// see, which is what is due right now.
+  String _due(LocalFacts f) {
+    final now = f.today;
+    final midnight = DateTime(now.year, now.month, now.day);
+
+    // Money late, from the clients themselves, using the derived due date so
+    // agreed terms count without anyone having typed a date.
+    final lateMoney = <String>[];
+    for (final c in f.clients) {
+      final owing = f.balanceOf(c);
+      if (owing <= 0) continue;
+      final days = c.daysUntilDue(now);
+      if (days == null || days >= 0) continue;
+      lateMoney.add('${c.name}, ${owing.toStringAsFixed(0)} ${-days} day'
+          '${days == -1 ? '' : 's'} late');
+    }
+
+    final lateWork = <String>[];
+    final todayWork = <String>[];
+    final soonWork = <String>[];
+    for (final d in f.deadlines) {
+      if (d.done) continue;
+      final due = DateTime.tryParse(d.due);
+      if (due == null) continue;
+      final days = DateTime(due.year, due.month, due.day).difference(midnight).inDays;
+      if (days < 0) {
+        lateWork.add('${d.title} (${-days} day${days == -1 ? '' : 's'} late)');
+      } else if (days == 0) {
+        todayWork.add(d.title);
+      } else if (days <= 7) {
+        soonWork.add('${d.title} (in $days day${days == 1 ? '' : 's'})');
+      }
+    }
+
+    if (lateMoney.isEmpty && lateWork.isEmpty && todayWork.isEmpty &&
+        soonWork.isEmpty) {
+      return 'Nothing is due. No money is late and no deadline is inside a '
+          'week. Add a client with an agreed amount and terms, or a deadline, '
+          'and I will start tracking them.';
+    }
+
+    final out = StringBuffer();
+    if (lateMoney.isNotEmpty) {
+      out.writeln('Money you are owed and already late:');
+      for (final line in lateMoney.take(4)) {
+        out.writeln('  $line');
+      }
+      if (lateMoney.length > 4) out.writeln('  and ${lateMoney.length - 4} more');
+    }
+    if (lateWork.isNotEmpty) {
+      out.writeln('Work already late:');
+      for (final line in lateWork.take(4)) {
+        out.writeln('  $line');
+      }
+      if (lateWork.length > 4) out.writeln('  and ${lateWork.length - 4} more');
+    }
+    if (todayWork.isNotEmpty) {
+      out.writeln('Due today:');
+      for (final line in todayWork.take(4)) {
+        out.writeln('  $line');
+      }
+      if (todayWork.length > 4) out.writeln('  and ${todayWork.length - 4} more');
+    }
+    if (soonWork.isNotEmpty) {
+      out.writeln('Coming up in the next week:');
+      for (final line in soonWork.take(4)) {
+        out.writeln('  $line');
+      }
+      if (soonWork.length > 4) out.writeln('  and ${soonWork.length - 4} more');
+    }
+    return out.toString().trimRight();
+  }
+
   String _fallback(LocalFacts f) {
     if (!f.hasRecords) {
       return 'I could not answer that from what is on this phone. On device I '
@@ -210,7 +302,7 @@ class LocalAssistant {
   }
 }
 
-enum _Intent { greeting, identity, capabilities, status, business, goals, unknown }
+enum _Intent { greeting, identity, capabilities, status, due, business, goals, unknown }
 
 /// Case folds a question without importing the routing layer, so this file can
 /// be unit tested on its own.

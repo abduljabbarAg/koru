@@ -119,6 +119,55 @@ void main() {
     });
   });
 
+  group('a client with agreed terms', () {
+    test('a deposit lands in the ledger, not just on the row', () async {
+      final id = await store.addClient(const Client(
+        name: 'Acme',
+        amount: 3000,
+        status: 'delivered',
+        created: '2026-10-01T00:00:00Z',
+        deposit: 1000,
+        termsDays: 14,
+        invoicedOn: '2026-10-01',
+      ));
+
+      await store.addPayment(Payment(clientId: id, amount: 1000, date: '2026-10-01', note: 'Deposit'));
+
+      // Money is agreed minus received, from the ledger, everywhere.
+      final c = (await store.clients()).single;
+      expect(await store.balanceFor(c), 2000,
+          reason: 'the deposit is a payment, not a second way of subtracting');
+    });
+
+    test('terms are stored and survive a reload', () async {
+      await store.addClient(const Client(
+        name: 'Acme',
+        amount: 3000,
+        status: 'delivered',
+        created: '2026-10-01T00:00:00Z',
+        deposit: 500,
+        termsDays: 30,
+        invoicedOn: '2026-10-01',
+      ));
+      final c = (await store.clients()).single;
+      expect(c.termsDays, 30);
+      expect(c.deposit, 500);
+      expect(c.invoicedOn, '2026-10-01');
+      expect(c.termsLabel, 'net 30 days');
+      expect(c.dueDate, DateTime(2026, 10, 31));
+    });
+
+    test('a client from before this change still works', () async {
+      await store.addClient(const Client(
+          name: 'Old', amount: 100, status: 'delivered', created: '2026-01-01T00:00:00Z'));
+      final c = (await store.clients()).single;
+      expect(c.termsDays, isNull);
+      expect(c.deposit, isNull);
+      expect(c.dueDate, isNull);
+      expect(c.isOverdueOn(DateTime(2026, 10, 11)), isFalse);
+    });
+  });
+
   group('projects', () {
     test('a personal project is not money and stays out of the ledger', () async {
       final id = await store.addProject(const Project(

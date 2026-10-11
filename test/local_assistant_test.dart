@@ -183,6 +183,107 @@ void main() {
     });
   });
 
+  group('what is due', () {
+    // The reported failure: "what is due today" contains none of the words the
+    // business intent matched on, so it fell through to the fallback and the
+    // user was told Koru could not help with its own deadlines.
+    test('answers a dues question instead of shrugging', () {
+      final out = a.answer(
+        question: 'what is due today',
+        facts: LocalFacts(
+          today: DateTime(2026, 10, 11),
+          clients: const [
+            Client(
+              id: 1,
+              name: 'Bilal',
+              amount: 2000,
+              status: 'delivered',
+              created: '2026-10-01',
+              termsDays: 14,
+              invoicedOn: '2026-10-01',
+            ),
+          ],
+        ),
+      );
+      expect(out.text, isNot(contains('could not')));
+      expect(out.text.toLowerCase(), contains('due'));
+    });
+
+    test('separates late money from what is due today', () {
+      final out = a.answer(
+        question: 'anything due',
+        facts: LocalFacts(
+          today: DateTime(2026, 10, 11),
+          clients: const [
+            Client(
+              id: 1,
+              name: 'Bilal',
+              amount: 2000,
+              status: 'delivered',
+              created: '2026-09-01',
+              termsDays: 14,
+              invoicedOn: '2026-09-01',
+            ),
+          ],
+          deadlines: const [
+            Deadline(id: 1, title: 'Send invoice', due: '2026-10-11'),
+            Deadline(id: 2, title: 'Call Acme', due: '2026-10-10'),
+            Deadline(id: 3, title: 'Something later', due: '2026-12-01'),
+          ],
+        ),
+      );
+      expect(out.text, contains('Bilal'));
+      // Invoiced 1 Sep on net 14 is due 15 Sep, which is 26 days before the
+      // 11th. The figure comes from the terms, not from a date anyone typed.
+      expect(out.text, contains('26 days late'));
+      expect(out.text, contains('Send invoice'));
+      expect(out.text, contains('Call Acme'));
+      expect(out.text, isNot(contains('Something later')),
+          reason: 'a deadline months away is not what was asked for');
+    });
+
+    test('uses agreed terms to decide what is late', () {
+      const late = Client(
+        id: 1,
+        name: 'Bilal',
+        amount: 2000,
+        status: 'delivered',
+        created: '2026-09-01',
+        termsDays: 14,
+        invoicedOn: '2026-09-01',
+      );
+      // No due column at all. Terms alone have to be enough.
+      expect(late.due, isNull);
+      expect(late.dueDate, DateTime(2026, 9, 15));
+      expect(late.isOverdueOn(DateTime(2026, 10, 11)), isTrue);
+
+      final ok = late.copyWith(invoicedOn: '2026-10-05');
+      expect(ok.isOverdueOn(DateTime(2026, 10, 11)), isFalse);
+    });
+
+    test('an explicit date beats the terms', () {
+      const c = Client(
+        id: 1,
+        name: 'Bilal',
+        amount: 100,
+        status: 'delivered',
+        created: '2026-09-01',
+        due: '2026-12-01',
+        termsDays: 14,
+        invoicedOn: '2026-09-01',
+      );
+      expect(c.dueDate, DateTime(2026, 12, 1));
+    });
+
+    test('says so plainly when nothing is due', () {
+      final out = a.answer(
+        question: 'what is due today',
+        facts: LocalFacts(today: DateTime(2026, 10, 11)),
+      );
+      expect(out.text, contains('Nothing is due'));
+    });
+  });
+
   group('LocalFacts', () {
     test('hasRecords reflects actual data', () {
       expect(facts().hasRecords, isFalse);
