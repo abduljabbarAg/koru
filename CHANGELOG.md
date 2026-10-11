@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.2
+
+Koru now assumes it will be stopped, and says so when it has not been set up
+properly.
+
+### Added
+
+- **Koru puts itself back together.** A boot receiver and a slow hourly alarm
+  re-post the last known state, so a service the phone stopped is restored
+  instead of staying silent. The alarm is inexact on purpose: an exact one would
+  wake the phone to a precise minute to discover nothing had changed, and
+  Android 12+ treats that as a misuse of a capability meant for alarms.
+- **Permission checks, named one by one.** Notifications, battery optimisation
+  and, where the phone has such a screen, autostart. Each is granted separately
+  and can be refused separately, so "Koru cannot show notifications" is shown
+  rather than "Koru has a problem", which nobody can act on.
+- **Asked once.** On first run, in the least annoying order, and never again. A
+  prompt that returns every launch teaches people to dismiss dialogs without
+  reading them, which costs the permission that actually mattered. Declining
+  everything still gets you into the app; a helper that holds the door until you
+  agree to everything is not a helper.
+- **Autostart is reported as not applicable, not failed,** on phones that have
+  no such screen. A stock device is not shown a red cross for a setting it does
+  not have.
+
 ## 0.7.1
 
 Adding a client now means something, and Koru can answer the question the app
