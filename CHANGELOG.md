@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.3
+
+Koru is present while you set him up, and you see what he was told before he
+starts answering from it.
+
+### Changed
+
+- **Koru appears on every setup screen, not just the first.** He introduced
+  himself and then vanished for the five screens where you were actually filling
+  things in. A character present during setup is a guide; one only present to
+  say hello is decoration. His expression follows the step, so the face carries
+  information rather than just moving.
+- **There is a review screen before anything is saved.** The old flow went
+  straight from the last question to the home screen, so the first thing anyone
+  learned about their assistant was by it being wrong later: six answers,
+  silently stored, no chance to see them.
+- **Skipped answers are shown as skipped, and can be jumped back to.** That
+  silence is the same one that made the client screen read zero. Nothing
+  defaulted to a real value and nothing said so, so the app looked like it was
+  ignoring what was typed.
+
 ## 0.7.2
 
 Koru now assumes it will be stopped, and says so when it has not been set up
