@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.0
+
+Koru is allowed to make a sound, and bulk import has a plan in front of it.
+
+### Changed
+
+- **Koru now has two notification channels rather than one quiet one.** Money
+  already late and work due today make a sound; everything else, and the ongoing
+  status, stay silent. The old reasoning was that a helper which nags gets swiped
+  away unread, which was half right: a silent deadline is a deadline that gets
+  missed, and that cost lands on the user rather than on us.
+- **Sound on change, not on every check.** The hourly alarm re-posts state, so an
+  alert that sounded each hour for a deadline that has not moved would be exactly
+  the nag this avoids. Koru speaks when the set of urgent things differs from
+  last time, sorted, so the same three in a different order is not a change.
+- **A payment for a client who has been deleted is refused.** The payments table
+  carried no foreign key, so such a payment was written and then belonged to
+  nobody: money recorded, invisible from every balance, no error anywhere.
+
+### Added
+
+- **Bulk import of a client list**, read one row per line and shown as a numbered
+  plan before anything is written. Applied as one transaction, so a partly
+  imported list is impossible. Lines the parser could not read are listed on the
+  card rather than dropped, and the same list cannot be pasted twice.
+
 ## 0.7.3
 
 Koru is present while you set him up, and you see what he was told before he
