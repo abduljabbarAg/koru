@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.0
+
+Koru outside the app: on the home screen, and in the shade when it has
+something to say.
+
+### Added
+
+- **A home screen widget.** Koru sits on the home screen and shows what needs
+  you. The face changes with the situation, and it is driven by the same list
+  that drives the notification and the badge, so the three cannot disagree. A
+  widget showing a content face over an overdue invoice would be worse than no
+  widget at all, so "cheer" means nothing is outstanding, "thinking" means money
+  or a deadline is, and a quiet project on its own is neither.
+- **Notifications that survive the app being closed.** A foreground service, which
+  is what Android requires to keep checking for overdue work once the app is not
+  running. It shows one permanent, silent, low importance notification. That is
+  the deal every reminder app on the store makes, and it is quiet on purpose: no
+  sound, no heads up, nothing that trains you to swipe Koru away.
+- **Tapping a notification opens the thing it was about**, even from a cold
+  start. The link survives the process being killed and rebuilt, which is the
+  normal case when tapping a notification.
+- **Projects, and the difference between client work and your own.**
+  Personal projects have no money on them at all, not a hidden zero, so they
+  cannot leak into a balance or a "who owes you" answer. Notes accumulate in
+  order because they are what progress is worked out from.
+
+### Changed
+
+- **The local engine starts itself** when it is the selected engine, instead of
+  needing a trip to Settings every launch.
+- **The splash bar is real.** It held for the engine and says which of the two
+  slow things is happening, rather than sweeping forever regardless.
+
 ## 0.6.1
 
 The 0.6.0 conversation memory had a bug that made the app feel like it was
