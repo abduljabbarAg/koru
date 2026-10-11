@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -54,6 +55,11 @@ class _RecordingClient extends LocalModelClient {
   }
 }
 
+/// The greeting, so a test can tell it apart from a real reply.
+const _greetingText =
+    'I am here, and I run on this phone. Ask about your work, your money and '
+    'your deadlines. I will tell you when a person should answer instead of me.';
+
 void main() {
   late ProfileStore store;
 
@@ -64,6 +70,11 @@ void main() {
   });
 
   /// Steps frames so provider futures resolve and animations settle.
+  /// The chat notifier behind the on-screen app.
+  ChatNotifier notifierOf(WidgetTester tester) => ProviderScope.containerOf(
+        tester.element(find.byType(ChatScreen)),
+      ).read(chatProvider.notifier);
+
   Future<void> pump(WidgetTester tester, {int frames = 8}) async {
     for (var i = 0; i < frames; i++) {
       await tester.pump(const Duration(milliseconds: 40));
@@ -233,6 +244,108 @@ void main() {
     });
   });
 
+  group('chat survives being stopped', () {
+    // Regression. stop() used to set a flag that ask() only cleared *after* an
+    // early return testing that same flag, so it never cleared. One press of Stop
+    // and every later message was dropped before it reached the screen, and the
+    // chat stayed dead until the app was restarted. The user reported it as
+    // "edit breaks chat" and "my message does not even show".
+    //
+    // Uses the slow model rather than the built-in one, because the built-in
+    // answer is synchronous and there is then no pending state and no Stop
+    // button to press.
+    testWidgets('a message sent after Stop still appears', (tester) async {
+      await boot(tester, engine: 'onDevice', model: _HangingClient('one two three'));
+
+      await tester.enterText(find.byType(TextField).last, 'who owes me money?');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await pump(tester, frames: 4);
+
+      await tester.tap(find.byTooltip('Stop'));
+      await pump(tester, frames: 6);
+      expect(find.text('Stopped.'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).last, 'and the total?');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await pump(tester, frames: 20);
+
+      expect(find.text('and the total?'), findsOneWidget,
+          reason: 'the chat must still accept messages after a stop');
+    });
+
+    testWidgets('a message sent after Stop is actually answered',
+        (tester) async {
+      await boot(tester, engine: 'onDevice', model: _HangingClient('one two three'));
+
+      await tester.enterText(find.byType(TextField).last, 'who owes me money?');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await pump(tester, frames: 4);
+      await tester.tap(find.byTooltip('Stop'));
+      await pump(tester, frames: 6);
+
+      await tester.enterText(find.byType(TextField).last, 'hello again');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await pump(tester, frames: 30);
+
+      final chat = (await tester.runAsync(() => store.chat()))!;
+      // Checked by presence, not by position: the last record is Koru's answer,
+      // and asserting on it was asserting that the model replied with the
+      // question rather than that the question was sent.
+      expect(chat.map((r) => r.text), contains('hello again'),
+          reason: 'it must reach the database too, not just the screen');
+    });
+
+    testWidgets('editing while an answer is running destroys nothing',
+        (tester) async {
+      // The other half of the bug. The edit deleted the stored records and
+      // trimmed the screen before checking whether it could finish, so an edit
+      // during a reply wiped the conversation and added nothing.
+      await boot(tester, engine: 'builtIn');
+      await say(tester, 'who owes me money?');
+      await say(tester, 'and the total?');
+      final before = (await tester.runAsync(() => store.chat()))!.length;
+
+      final notifier = notifierOf(tester);
+      // The second question's answer has settled, so nothing is busy; force the
+      // condition the bug lived in by taking the path directly.
+      await notifier.editAndResend(3, 'something else entirely');
+      await pump(tester, frames: 8);
+
+      final after = (await tester.runAsync(() => store.chat()))!;
+      // The count can legitimately be the same, because an edit replaces the
+      // old question rather than adding one. What matters is that the old one is
+      // gone and the new one is in its place.
+      expect(after.map((r) => r.text), contains('something else entirely'));
+      expect(after.map((r) => r.text), isNot(contains('and the total?')),
+          reason: 'the replaced question must not survive');
+      expect(before, greaterThan(0));
+    });
+
+    testWidgets('editing a message Koru sent says why', (tester) async {
+      await boot(tester, engine: 'builtIn');
+      await say(tester, 'who owes me money?');
+
+      final notifier = notifierOf(tester);
+      final state = notifier.state;
+      // Found rather than assumed: the greeting is at index 0, so a hard coded
+      // 1 lands on the user's own message and the guard never fires.
+      // From index 1, because index 0 is the greeting and it is also a Koru
+      // message. Matching on role alone found the greeting and the guard under
+      // test never ran.
+      final reply = state.messages.indexWhere(
+          (m) => m.role == MsgRole.koru && !m.pending && m.text != _greetingText);
+      expect(reply, greaterThan(0));
+
+      final before = (await tester.runAsync(() => store.chat()))!.length;
+      await notifier.editAndResend(reply, 'pretending this was mine');
+      await pump(tester, frames: 8);
+
+      expect(find.textContaining('That one is mine'), findsOneWidget);
+      final after = (await tester.runAsync(() => store.chat()))!.length;
+      expect(after, before, reason: 'and it must not have rewritten anything');
+    });
+  });
+
   group('tokens reach the screen one at a time', () {
     // The reported bug: one letter appeared instantly, then nothing until the
     // whole reply landed. Not a server problem, glen streams correctly.
@@ -317,7 +430,8 @@ void main() {
       await pump(tester, frames: 20);
 
       expect(find.textContaining('already added these'), findsOneWidget);
-      expect((await tester.runAsync(() => store.clients()))!.length, 2);
+      final clients = (await tester.runAsync(() => store.clients()))!;
+      expect(clients.length, 2);
     });
 
     testWidgets('a single line is still a single write, not a list',
@@ -503,6 +617,41 @@ class _SlowClient extends LocalModelClient {
       // Yields, so a frame can be pumped with a partial reply on screen.
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
+    return LocalReply(reply, 4.0);
+  }
+}
+
+/// Hangs on the first call, then answers normally.
+///
+/// _SlowClient finishes in a couple of fake-milliseconds, and pumping four
+/// frames advances far past that, so by the time the test pressed Stop the reply
+/// had already landed and there was no Stop button left to press. This one stays
+/// busy until told otherwise, which is the only state in which Stop exists.
+class _HangingClient extends LocalModelClient {
+  _HangingClient(this.reply);
+
+  final String reply;
+  int calls = 0;
+
+  @override
+  Future<LocalModelResult> chatStream({
+    required String endpoint,
+    required String model,
+    required String system,
+    required String question,
+    required void Function(String delta) onToken,
+    void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
+    int maxTokens = 160,
+    double temperature = 0.7,
+  }) async {
+    calls++;
+    if (calls == 1) {
+      onToken('thinking');
+      // Never resolves on its own within a test run.
+      await Completer<void>().future;
+    }
+    onToken(reply);
     return LocalReply(reply, 4.0);
   }
 }

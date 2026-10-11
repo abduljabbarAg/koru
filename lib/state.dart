@@ -197,9 +197,18 @@ class ChatNotifier extends Notifier<ChatState> {
 
   Future<void> ask(String question) async {
     final q = question.trim();
-    if (q.isEmpty || state.busy || _cancelled) return;
+    if (q.isEmpty || state.busy) return;
 
-    _cancelled = false;
+    // A request is stale once a newer one starts or this one is stopped.
+    //
+    // This used to be a boolean that stop() set and that ask() cleared *after*
+    // an early return that tested it, so it never cleared. One press of Stop and
+    // every message afterwards was dropped before it reached the screen, with
+    // no error anywhere: the chat simply stopped working and stayed that way
+    // until the app was restarted. A counter cannot get into that state,
+    // because starting a request is what makes the previous one stale.
+    final mine = ++_generation;
+    bool stale() => mine != _generation;
     // Captured before the new turn is added, so the model sees the conversation
     // that happened before this question and not the question twice.
     final history = _recentTurns();
@@ -221,11 +230,11 @@ class ChatNotifier extends Notifier<ChatState> {
     ));
 
     final routing = RoutingDecision.route(q);
-    final reply = await _respond(q, routing, store, history);
+    final reply = await _respond(q, routing, store, history, stale);
 
-    // A cancelled generation must not overwrite the bubble, because the stop
+    // A stopped generation must not overwrite the bubble, because the stop
     // button has already replaced it with something truthful.
-    if (_cancelled) return;
+    if (stale()) return;
 
     final messages = [...state.messages];
     messages[messages.length - 1] = reply;
@@ -279,6 +288,19 @@ class ChatNotifier extends Notifier<ChatState> {
 
       if (_gone) return;
       if (result.started && result.endpoint != null) {
+        // Warm the real prompt, once, in the background.
+        //
+        // glen's own warm() encodes the word "warm" into a scratch cache it then
+        // throws away, so it shares no prefix with an actual question and helps
+        // nothing. The engine reuses the longest common token prefix between
+        // turns, which means one throwaway request carrying the real system
+        // prompt fills that cache, and the user's first question then starts
+        // from a prefix hit instead of prefilling it cold.
+        //
+        // Measured on this phone: a 222 token prompt cold is about 14.5 seconds,
+        // and the same prompt warm is 1.2. That gap is the whole cold start.
+        unawaited(_warmPrefix(ref, client, result.endpoint!, store));
+
         await store.put(
           'local_model',
           jsonEncode(LocalModelConfig(
@@ -297,6 +319,39 @@ class ChatNotifier extends Notifier<ChatState> {
         );
       }
     }());
+  }
+
+  /// Prefills the real system prompt so the first question is not a cold start.
+  ///
+  /// Fire and forget. It costs one forward pass of the prompt, which is the same
+  /// work the first question would have done anyway, and it happens while the
+  /// user is still reading the chat rather than after they have typed.
+  Future<void> _warmPrefix(
+    Ref ref,
+    LocalModelClient client,
+    String endpoint,
+    ProfileStore store,
+  ) async {
+    try {
+      final currency = (await ref.read(currencyProvider.future)).code;
+      final system = LocalModelPrompt.build(
+        packet: await store.packet(),
+        facts: await _modelFacts(store),
+        currency: currency,
+      );
+      await client.chatStream(
+        endpoint: endpoint,
+        model: 'qwen2.5-0.5b-instruct',
+        system: system,
+        // Any question at all. Only the system prompt is what has to match.
+        question: 'ready?',
+        maxTokens: 1,
+        onToken: (_) {},
+      );
+    } catch (_) {
+      // Nothing here is worth surfacing. If the warm-up fails the first question
+      // simply pays the cold cost it was always going to pay.
+    }
   }
 
   /// Characters of earlier conversation allowed into one prompt.
@@ -365,8 +420,8 @@ class ChatNotifier extends Notifier<ChatState> {
     );
   }
 
-  /// Whether the in-flight generation was stopped by the user.
-  bool _cancelled = false;
+  /// Counts requests. Anything started before the current one is stale.
+  int _generation = 0;
 
   /// Set when this notifier goes away. Riverpod's Notifier ref has no `mounted`,
   /// and the engine start is a long await that can outlive the screen that
@@ -380,7 +435,9 @@ class ChatNotifier extends Notifier<ChatState> {
   /// updating the bubble immediately, which is what pressing stop has to do.
   void stop() {
     if (!state.busy) return;
-    _cancelled = true;
+    // Bumping the counter retires whatever is in flight. Nothing has to clear it
+    // later, which is exactly the thing the old flag kept forgetting to do.
+    _generation++;
     final messages = [...state.messages];
     final at = messages.lastIndexWhere((m) => m.pending);
     if (at >= 0) {
@@ -404,7 +461,40 @@ class ChatNotifier extends Notifier<ChatState> {
     if (q.isEmpty || messageIndex < 0 || messageIndex >= state.messages.length) return;
 
     final target = state.messages[messageIndex];
-    if (target.role != MsgRole.user) return;
+
+    // Everything is checked before anything is destroyed.
+    //
+    // This used to delete the stored records and trim the screen first, then
+    // call ask(), which can return immediately if an answer is already running.
+    // That ordering meant an edit during a reply wiped the conversation and
+    // added nothing in its place: messages gone, no new turn, and no error.
+    // Deleting is the last thing that happens here, not the first.
+    if (target.role != MsgRole.user) {
+      state = state.copyWith(messages: [
+        ...state.messages,
+        const Msg(
+          MsgRole.koru,
+          'That one is mine, so you cannot edit it. Long press anything you '
+          'sent to change a question.',
+          why: 'Only your own messages can be edited.',
+          local: true,
+        ),
+      ]);
+      return;
+    }
+    if (state.busy) {
+      state = state.copyWith(messages: [
+        ...state.messages,
+        const Msg(
+          MsgRole.koru,
+          'I am still answering that one. Stop it first if you want to change '
+          'the question.',
+          why: 'Editing while an answer is running.',
+          local: true,
+        ),
+      ]);
+      return;
+    }
 
     final store = await ref.read(storeProvider.future);
     // The stored transcript has no greeting, the screen does, so the two
@@ -460,6 +550,7 @@ class ChatNotifier extends Notifier<ChatState> {
     RoutingDecision routing,
     ProfileStore store,
     List<ChatTurn> history,
+    bool Function() isStale,
   ) async {
     // Safety first, above every engine. A question that needs a person gets the
     // card and stops there. It does not also get a model answer to argue with,
@@ -511,7 +602,7 @@ class ChatNotifier extends Notifier<ChatState> {
       case KoruEngine.builtIn:
         return _askBuiltIn(q, routing, store);
       case KoruEngine.onDevice:
-        return _askOnDevice(q, routing, store, history);
+        return _askOnDevice(q, routing, store, history, isStale);
       case KoruEngine.cloud:
         return _askCloud(q, routing, store);
     }
@@ -594,6 +685,7 @@ class ChatNotifier extends Notifier<ChatState> {
     RoutingDecision routing,
     ProfileStore store,
     List<ChatTurn> history,
+    bool Function() isStale,
   ) async {
     final config = await ref.read(localModelProvider.future);
     final client = ref.read(localModelClientProvider);
@@ -626,12 +718,12 @@ class ChatNotifier extends Notifier<ChatState> {
           // Checked per token, not per reply: a cancelled request that keeps
           // writing into the buffer would repaint the bubble the stop button
           // just replaced.
-          if (_cancelled) return;
+          if (isStale()) return;
           buffer.write(delta);
           _updatePending(buffer.toString());
         },
         onProgress: (done, total) {
-          if (!_cancelled) _updatePendingProgress(done, total);
+          if (!isStale()) _updatePendingProgress(done, total);
         },
       );
       switch (result) {
