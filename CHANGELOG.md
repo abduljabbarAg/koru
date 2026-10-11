@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.1
+
+Chat stopped dying after a Stop, and editing stopped eating the conversation.
+
+### Fixed
+
+- **One press of Stop killed the chat for the rest of the session.** The flag
+  stop() set was only cleared on a line that came *after* an early return
+  testing that same flag, so it never cleared. Every message sent afterwards was
+  dropped before it reached the screen, and nothing said so. Reported as "edit
+  breaks chat" and "my message does not even show". Replaced with a generation
+  counter: starting a request is what makes the previous one stale, so there is
+  nothing left behind to be forgotten.
+- **Editing during a reply destroyed the conversation.** It deleted the stored
+  records and trimmed the screen before checking whether it could finish, so an
+  edit while an answer was running wiped everything and added nothing in its
+  place. Everything is now checked first, and each refusal explains itself.
+- **Editing a reply from Koru did nothing at all.** It now says which message is
+  his and why it cannot be edited, rather than closing the sheet and appearing
+  to break.
+- **The first question of a session is no longer a cold start.** glen's warm-up
+  encodes the word "warm" into a scratch cache it then throws away, which shares
+  no prefix with a real question and helps nothing. One background request now
+  carries the real system prompt, so the first question starts from a filled
+  cache instead of prefilling cold.
+
 ## 0.8.0
 
 Koru is allowed to make a sound, and bulk import has a plan in front of it.
