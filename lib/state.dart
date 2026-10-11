@@ -166,7 +166,12 @@ class ChatNotifier extends Notifier<ChatState> {
 
   Future<void> ask(String question) async {
     final q = question.trim();
-    if (q.isEmpty || state.busy) return;
+    if (q.isEmpty || state.busy || _cancelled) return;
+
+    _cancelled = false;
+    // Captured before the new turn is added, so the model sees the conversation
+    // that happened before this question and not the question twice.
+    final history = _recentTurns();
 
     state = state.copyWith(
       busy: true,
@@ -185,7 +190,11 @@ class ChatNotifier extends Notifier<ChatState> {
     ));
 
     final routing = RoutingDecision.route(q);
-    final reply = await _respond(q, routing, store);
+    final reply = await _respond(q, routing, store, history);
+
+    // A cancelled generation must not overwrite the bubble, because the stop
+    // button has already replaced it with something truthful.
+    if (_cancelled) return;
 
     final messages = [...state.messages];
     messages[messages.length - 1] = reply;
@@ -200,7 +209,80 @@ class ChatNotifier extends Notifier<ChatState> {
     ));
   }
 
-  Future<Msg> _respond(String q, RoutingDecision routing, ProfileStore store) async {
+  /// Whether the in-flight generation was stopped by the user.
+  bool _cancelled = false;
+
+  /// Stops the answer being written.
+  ///
+  /// There is no way to interrupt a socket read part way through, so this marks
+  /// the request dead and lets it drain in the background. The tokens stop
+  /// updating the bubble immediately, which is what pressing stop has to do.
+  void stop() {
+    if (!state.busy) return;
+    _cancelled = true;
+    final messages = [...state.messages];
+    final at = messages.lastIndexWhere((m) => m.pending);
+    if (at >= 0) {
+      messages[at] = const Msg(
+        MsgRole.koru,
+        'Stopped.',
+        why: 'You stopped this one.',
+        local: true,
+      );
+    }
+    state = state.copyWith(busy: false, messages: messages);
+  }
+
+  /// Edits a message the user sent and asks again from there.
+  ///
+  /// Everything from that point on is dropped, because keeping the old answer
+  /// would leave two replies to the same question on screen with nothing saying
+  /// which one is current.
+  Future<void> editAndResend(int messageIndex, String text) async {
+    final q = text.trim();
+    if (q.isEmpty || messageIndex < 0 || messageIndex >= state.messages.length) return;
+
+    final target = state.messages[messageIndex];
+    if (target.role != MsgRole.user) return;
+
+    final store = await ref.read(storeProvider.future);
+    // The stored transcript has no greeting, the screen does, so the two
+    // indices are offset by one. Getting this wrong would delete the wrong
+    // part of the conversation, which is why it is not left implicit.
+    const greetingOffset = 1;
+    await store.truncateChat(messageIndex - greetingOffset);
+
+    // ask() appends the user turn itself, so the screen is trimmed to just
+    // before the edited message and the new turn is added once, not twice.
+    state = state.copyWith(messages: state.messages.sublist(0, messageIndex));
+    await ask(q);
+  }
+
+  /// The last few exchanges, oldest first, for the model's prompt.
+  List<ChatTurn> _recentTurns() {
+    final out = <ChatTurn>[];
+    // Skips a trailing pending bubble, which is the reply to the question being
+    // asked right now and has no text yet.
+    for (final m in state.messages.reversed) {
+      if (m.pending || m.text.trim().isEmpty) continue;
+      if (m.role != MsgRole.user && m.role != MsgRole.koru) continue;
+      out.add(ChatTurn(
+        m.role == MsgRole.user ? ChatRole.user : ChatRole.koru,
+        // Bounded, because an escalated answer or a long quote would otherwise
+        // be replayed into the prompt in full on every later turn.
+        m.text.length > 400 ? '${m.text.substring(0, 400)}...' : m.text,
+      ));
+      if (out.length >= 8) break;
+    }
+    return out.reversed.toList();
+  }
+
+  Future<Msg> _respond(
+    String q,
+    RoutingDecision routing,
+    ProfileStore store,
+    List<ChatTurn> history,
+  ) async {
     // Safety first, above every engine. A question that needs a person gets the
     // card and stops there. It does not also get a model answer to argue with,
     // which is what the old text prefix invited, and no engine may override this.
@@ -241,7 +323,7 @@ class ChatNotifier extends Notifier<ChatState> {
       case KoruEngine.builtIn:
         return _askBuiltIn(q, routing, store);
       case KoruEngine.onDevice:
-        return _askOnDevice(q, routing, store);
+        return _askOnDevice(q, routing, store, history);
       case KoruEngine.cloud:
         return _askCloud(q, routing, store);
     }
@@ -310,14 +392,18 @@ class ChatNotifier extends Notifier<ChatState> {
   /// someone who picked the local model on a phone that has since filled up
   /// should get an answer, not an error. The fallback says so, so nothing is
   /// quietly downgraded behind their back.
-  Future<Msg> _askOnDevice(String q, RoutingDecision routing, ProfileStore store) async {
+  Future<Msg> _askOnDevice(
+    String q,
+    RoutingDecision routing,
+    ProfileStore store,
+    List<ChatTurn> history,
+  ) async {
     final config = await ref.read(localModelProvider.future);
     final client = ref.read(localModelClientProvider);
     final routing2 = routing;
 
     final system = LocalModelPrompt.build(
       packet: await store.packet(),
-      question: q,
       facts: await _modelFacts(store),
       currency: (await ref.read(currencyProvider.future)).code,
     );
@@ -332,11 +418,24 @@ class ChatNotifier extends Notifier<ChatState> {
         model: config.modelId,
         system: system,
         question: q,
+        history: [
+          for (final t in history)
+            (
+              role: t.role == ChatRole.user ? 'user' : 'assistant',
+              content: t.text,
+            ),
+        ],
         onToken: (delta) {
+          // Checked per token, not per reply: a cancelled request that keeps
+          // writing into the buffer would repaint the bubble the stop button
+          // just replaced.
+          if (_cancelled) return;
           buffer.write(delta);
           _updatePending(buffer.toString());
         },
-        onProgress: _updatePendingProgress,
+        onProgress: (done, total) {
+          if (!_cancelled) _updatePendingProgress(done, total);
+        },
       );
       switch (result) {
         case LocalReply(:final tokensPerSecond):
@@ -380,15 +479,25 @@ class ChatNotifier extends Notifier<ChatState> {
     return fallback.copyWith(text: '${fallback.text}\n\n($note)');
   }
 
-  /// Replaces the pending bubble so streamed tokens appear as they arrive.
+  /// Replaces the text of the bubble currently being written.
+  ///
+  /// `pending` means "this message is still being generated", not "this message
+  /// has no text yet". It used to be set from `text.isEmpty`, which meant the
+  /// very first token cleared the flag, this guard then rejected every token
+  /// after it, and the answer appeared all at once when generation finished.
+  ///
+  /// Symptom, for anyone reading this later: one letter appears instantly and
+  /// the rest of the reply lands in a single jump several seconds later. The
+  /// engine was streaming the whole time. glen sends each token as its own
+  /// flushed chunk, 300ms apart, and that was measured on the device.
   void _updatePending(String text) {
+    if (text.isEmpty) return;
     final messages = [...state.messages];
-    if (messages.isEmpty) return;
-    final last = messages.last;
-    if (last.pending) {
-      messages[messages.length - 1] = last.copyWith(text: text, pending: text.isEmpty);
-      state = state.copyWith(messages: messages);
-    }
+    final at = messages.lastIndexWhere((m) => m.pending);
+    if (at < 0) return;
+    // Still pending: the answer is not finished, so the typing indicator stays.
+    messages[at] = messages[at].copyWith(text: text);
+    state = state.copyWith(messages: messages);
   }
 
   /// Shows how far the model has got reading the prompt.

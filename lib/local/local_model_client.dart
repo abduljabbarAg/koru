@@ -117,6 +117,7 @@ class LocalModelClient {
     required String question,
     required void Function(String delta) onToken,
     void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
     int maxTokens = 160,
     double temperature = 0.7,
   }) async {
@@ -130,6 +131,14 @@ class LocalModelClient {
           'model': model,
           'messages': [
             {'role': 'system', 'content': system},
+            // Earlier turns go in as real messages rather than being flattened
+            // into the prompt, because the engine's chat template already knows
+            // how to lay them out and that layout is what the token prefix
+            // reuse matches on. Flattening them into prose would break the
+            // cache and make every follow-up a full prefill again.
+            for (final turn in history) ...[
+              {'role': turn.role, 'content': turn.content},
+            ],
             {'role': 'user', 'content': question},
           ],
           'max_tokens': maxTokens,

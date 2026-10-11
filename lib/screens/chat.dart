@@ -150,7 +150,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     itemCount: st.messages.length,
-                    itemBuilder: (_, i) => _bubble(context, st.messages[i]),
+                    itemBuilder: (_, i) => _bubble(context, st.messages[i], i),
                   ),
           ),
           _composer(st.busy),
@@ -211,11 +211,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _bubble(BuildContext context, Msg m) {
+  Widget _bubble(BuildContext context, Msg m, int index) {
     final isUser = m.role == MsgRole.user;
     final dismissed = ValueNotifier<bool>(false);
 
-    return ValueListenableBuilder<bool>(
+    final body = ValueListenableBuilder<bool>(
       valueListenable: dismissed,
       builder: (context, isDismissed, _) {
         return Padding(
@@ -294,6 +294,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       },
     );
+
+    // Long press, not a button on every message: an edit icon beside each of
+    // your own messages clutters the thread, and editing is rare enough that
+    // reaching for it is fine.
+    if (!isUser) return body;
+    return GestureDetector(
+      onLongPress: () => _editMessage(context, index, m.text),
+      child: body,
+    );
+  }
+
+  Future<void> _editMessage(BuildContext context, int index, String current) async {
+    final controller = TextEditingController(text: current);
+    final edited = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: KoruColors.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            18, 18, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Edit message',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const SizedBox(height: 4),
+            const Text('Asking again drops the reply below it.',
+                style: TextStyle(color: KoruColors.inkFaint, fontSize: 12.5)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 1,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                contentPadding: EdgeInsets.all(14),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: const Text('Ask again'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (edited == null) return;
+    final q = edited.trim();
+    if (q.isEmpty || q == current.trim()) return;
+    await ref.read(chatProvider.notifier).editAndResend(index, q);
   }
 
   Widget _composer(bool busy) {
@@ -322,20 +379,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
           const SizedBox(width: 9),
-          Container(
+          // While an answer is being written the same button stops it, rather
+          // than sitting greyed out. A disabled button for fifteen seconds is
+          // the app looking busy; a stop square is the app offering a way out.
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: busy ? KoruColors.line : KoruColors.leaf,
+              color: busy ? KoruColors.clay : KoruColors.leaf,
               borderRadius: BorderRadius.circular(14),
             ),
             child: IconButton(
               icon: Icon(
-                busy ? Icons.hourglass_top_rounded : Icons.arrow_upward_rounded,
-                color: busy ? KoruColors.inkFaint : Colors.white,
+                busy ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                color: Colors.white,
+                size: busy ? 26 : 22,
               ),
-              onPressed: busy ? null : _send,
-              tooltip: busy ? 'Thinking' : 'Send',
+              onPressed: busy
+                  ? () => ref.read(chatProvider.notifier).stop()
+                  : _send,
+              tooltip: busy ? 'Stop' : 'Send',
             ),
           ),
         ],

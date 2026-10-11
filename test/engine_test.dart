@@ -86,7 +86,6 @@ void main() {
     test('never carries the nickname', () {
       final prompt = LocalModelPrompt.build(
         packet: packet,
-        question: 'how am I doing?',
         facts: const LocalEngineFacts(),
       );
       expect(prompt, isNot(contains('kami')));
@@ -95,7 +94,6 @@ void main() {
     test('states the three rules a small model needs', () {
       final prompt = LocalModelPrompt.build(
         packet: packet,
-        question: 'x',
         facts: const LocalEngineFacts(),
       );
       expect(prompt, contains('at most three short sentences'));
@@ -103,19 +101,20 @@ void main() {
       expect(prompt, contains('say what you do not know'));
     });
 
-    test('includes the question', () {
+    test('leaves the question to the user message', () {
       final prompt = LocalModelPrompt.build(
         packet: packet,
-        question: 'what should I charge?',
         facts: const LocalEngineFacts(),
       );
-      expect(prompt, contains('User question: what should I charge?'));
+      // The question is deliberately not here: it is the user message, and
+      // the system prompt has to stay identical turn to turn so glen can reuse
+      // the token prefix instead of prefilling the lot again.
+      expect(prompt, isNot(contains('what should I charge?')));
     });
 
     test('omits the context block when there is nothing to say', () {
       final prompt = LocalModelPrompt.build(
         packet: packet,
-        question: 'x',
         facts: const LocalEngineFacts(),
       );
       expect(prompt, isNot(contains('What you know right now')));
@@ -453,7 +452,6 @@ void main() {
           goals: 'ship more',
           focus: 'money',
         ),
-        question: 'how am i doing',
         facts: const LocalEngineFacts(goals: 'ship more'),
       );
       // Duplicated prefill the user waits through before the first token.
@@ -469,7 +467,6 @@ void main() {
           goals: '',
           focus: '',
         ),
-        question: 'hello',
         facts: const LocalEngineFacts(),
       );
       expect(prompt, contains('stage: freelance'));

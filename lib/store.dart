@@ -370,6 +370,18 @@ class ProfileStore {
 
   Future<void> clearChat() => _db.delete('chat');
 
+  /// Keeps the first [keep] messages and drops everything after them.
+  ///
+  /// Used when an earlier message is edited: the exchange it started, and the
+  /// answer it produced, are both wrong now. Deleting by id rather than
+  /// re-inserting the survivors keeps their original timestamps.
+  Future<void> truncateChat(int keep) async {
+    if (keep <= 0) return clearChat();
+    final rows = await _db.query('chat', columns: ['id'], orderBy: 'id ASC', limit: keep);
+    if (rows.length < keep) return;
+    await _db.delete('chat', where: 'id > ?', whereArgs: [rows.last['id']!]);
+  }
+
   Future<void> close() => _db.close();
 }
 

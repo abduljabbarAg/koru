@@ -46,7 +46,6 @@ enum KoruEngine {
 class LocalModelPrompt {
   static String build({
     required ContextPacket packet,
-    required String question,
     required LocalEngineFacts facts,
     String currency = 'AED',
   }) {
@@ -88,9 +87,24 @@ class LocalModelPrompt {
         ..writeln(context);
     }
 
-    buffer
-      ..writeln()
-      ..writeln('User question: $question');
+    // The question is NOT in this prompt either. It travels as the user message,
+    // and repeating it here would cost a second copy of every question on the
+    // most expensive machine in the app.
+    //
+    // Earlier turns are NOT written into this prompt either.
+    //
+    // They travel as real chat messages instead, and that is not a style
+    // choice. glen reuses the longest common token prefix between turns, so a
+    // system prompt that changes on every turn means every turn is a full
+    // prefill again. Prefill costs about 7 tokens a second on this phone: a
+    // 754-token prompt measured 106 seconds cold and 1.2 seconds when the prefix
+    // was already cached. Flattening the conversation into the system prompt
+    // would have thrown that away and made every follow-up take a minute and a
+    // half.
+    //
+    // So the system prompt stays byte-identical turn to turn, and the history
+    // rides along in the messages array where the chat template puts it.
+
     return buffer.toString();
   }
 }
@@ -171,6 +185,16 @@ class LocalEngineFacts {
     return lines.join('\n');
   }
 }
+
+/// One earlier turn, carried into the model prompt.
+class ChatTurn {
+  const ChatTurn(this.role, this.text);
+
+  final ChatRole role;
+  final String text;
+}
+
+enum ChatRole { user, koru }
 
 /// Re-checks what a model returned before it is shown.
 ///

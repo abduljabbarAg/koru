@@ -206,4 +206,37 @@ void main() {
           'Record 500.50 from Bilal');
     });
   });
+  group('the phrasings that were actually reported', () {
+    // "create new client primedose" came back saying the client could not be
+    // found, which is the reply you get when a sentence meant to create
+    // somebody reaches the payment path, or reaches the model instead of the
+    // parser. Both were possible: the cue list had no "create new client", and
+    // classification used to try one kind of write at a time in a fixed order.
+    for (final sentence in [
+      'create new client Primedose',
+      'create a new client called Primedose',
+      'create a new client Primedose',
+      'make a new client called Primedose',
+      'new client Primedose',
+    ]) {
+      test('"$sentence" creates a client', () {
+        final intent = parse(sentence);
+        expect(intent, isA<AddClientIntent>(), reason: 'got $intent');
+        expect((intent as AddClientIntent).name, 'Primedose');
+      });
+    }
+
+    test('a sentence with a payment cue still creates the client it asks for',
+        () {
+      // Earliest cue wins. Reading this as a payment was the whole bug.
+      final intent = parse('create new client Primedose, they already paid 500');
+      expect(intent, isA<AddClientIntent>());
+    });
+
+    test('a question that merely names a client is not an instruction', () {
+      expect(parse('tell me about Primedose'), isNull);
+      expect(parse('how much does Primedose owe'), isNull);
+    });
+  });
+
 }

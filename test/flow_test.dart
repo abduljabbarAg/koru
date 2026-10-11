@@ -25,6 +25,7 @@ class _RecordingClient extends LocalModelClient {
 
   final String reply;
   final prompts = <String>[];
+  final turns = <List<({String role, String content})>>[];
   final progress = <(int, int)>[];
 
   @override
@@ -35,10 +36,12 @@ class _RecordingClient extends LocalModelClient {
     required String question,
     required void Function(String delta) onToken,
     void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
     int maxTokens = 160,
     double temperature = 0.7,
   }) async {
     prompts.add(system);
+    turns.add(history);
     progress.addAll(const [(0, 100), (100, 100)]);
     onProgress?.call(0, 100);
     // Split into a few pieces so the streaming path is genuinely exercised
@@ -229,6 +232,81 @@ void main() {
     });
   });
 
+  group('tokens reach the screen one at a time', () {
+    // The reported bug: one letter appeared instantly, then nothing until the
+    // whole reply landed. Not a server problem, glen streams correctly.
+    testWidgets('a partial answer is visible before the reply finishes',
+        (tester) async {
+      await boot(tester, engine: 'onDevice', model: _SlowClient('one two three'));
+
+      await tester.tap(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), 'who owes me money?');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+
+      // A couple of frames in, some but not all of the tokens should be up.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 5));
+
+      final shown = find.textContaining('one');
+      expect(shown, findsWidgets,
+          reason: 'the first token should be on screen straight away');
+
+      await pump(tester, frames: 40);
+
+      expect(find.textContaining('one two three'), findsWidgets,
+          reason: 'and the rest should follow');
+    });
+
+    testWidgets('history is carried into the next question', (tester) async {
+      final model = _RecordingClient('Bilal owes you 1500 AED');
+      await boot(tester, engine: 'onDevice', model: model);
+
+      await say(tester, 'who owes me money?');
+      await say(tester, 'how much is that?');
+
+      expect(model.turns.length, 2);
+      final second = model.turns[1];
+      expect(second.map((t) => t.content), contains('who owes me money?'),
+          reason: 'the model has to see what was asked before to know what '
+              '"that" means');
+      expect(second.map((t) => t.role), contains('assistant'));
+    });
+
+    testWidgets('history stays out of the system prompt', (tester) async {
+      final model = _RecordingClient('sure');
+      await boot(tester, engine: 'onDevice', model: model);
+
+      await say(tester, 'who owes me money?');
+      await say(tester, 'and who else?');
+
+      // glen reuses the longest common token prefix between turns, so a system
+      // prompt that changed every turn would mean a full prefill every turn.
+      // Prefill on this phone runs about 7 tokens a second, so that is the
+      // difference between 1.2 seconds and over a minute.
+      expect(model.prompts[0], model.prompts[1],
+          reason: 'if this changes, every turn is a full prefill again');
+    });
+
+    testWidgets('stopping leaves a truthful bubble', (tester) async {
+      await boot(tester, engine: 'onDevice', model: _SlowClient('one two three'));
+
+      await tester.tap(find.byType(TextField));
+      await tester.enterText(find.byType(TextField), 'who owes me money?');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Stop'));
+      await tester.pump();
+
+      expect(find.text('Stopped.'), findsOneWidget);
+
+      // The late tokens must not creep back in afterwards.
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('one two three'), findsNothing);
+      expect(find.text('Stopped.'), findsOneWidget);
+    });
+  });
+
   group('the on-device model path, end to end', () {
     testWidgets('streams a reply and records it', (tester) async {
       final model = _RecordingClient('Bilal owes you 1500 AED on that invoice');
@@ -320,6 +398,40 @@ void main() {
   });
 }
 
+/// Emits one token per event loop turn, the way a real server does.
+///
+/// The other fakes emit every token in a tight synchronous loop, which is why
+/// this bug survived 334 passing tests: no frame was ever rendered between the
+/// first token and the last, so nothing could observe the intermediate state.
+/// A real socket hands control back to the event loop between chunks, and that
+/// is the only place the bug was visible.
+class _SlowClient extends LocalModelClient {
+  _SlowClient(this.reply);
+
+  final String reply;
+
+  @override
+  Future<LocalModelResult> chatStream({
+    required String endpoint,
+    required String model,
+    required String system,
+    required String question,
+    required void Function(String delta) onToken,
+    void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
+    int maxTokens = 160,
+    double temperature = 0.7,
+  }) async {
+    final pieces = reply.split(' ');
+    for (var i = 0; i < pieces.length; i++) {
+      onToken('${pieces[i]} ');
+      // Yields, so a frame can be pumped with a partial reply on screen.
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    return LocalReply(reply, 4.0);
+  }
+}
+
 /// A local model that is not answering, standing in for glen not having started.
 class _ThrowingClient extends LocalModelClient {
   @override
@@ -330,6 +442,7 @@ class _ThrowingClient extends LocalModelClient {
     required String question,
     required void Function(String delta) onToken,
     void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
     int maxTokens = 160,
     double temperature = 0.7,
   }) async =>

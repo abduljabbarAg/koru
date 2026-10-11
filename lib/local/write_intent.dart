@@ -19,6 +19,12 @@
 // It is deliberately reluctant. "How much does Bilal owe" is not a request to
 // record a payment, and a parser that fired on it would be worse than none.
 
+/// Which kind of write a sentence is asking for.
+///
+/// Resolved by which cue appears earliest, not by trying one kind at a time and
+/// taking the first that matches.
+enum _Kind { deadline, payment, client, none }
+
 /// What the user appears to have asked to record.
 sealed class WriteIntent {
   const WriteIntent();
@@ -115,12 +121,22 @@ class WriteIntentParser {
     'log client',
     'create a client',
     'create client',
+    'create a new client',
+    'create new client',
     'create a customer',
     'create customer',
+    'create a new customer',
+    'create new customer',
+    'make a new client',
+    'make new client',
+    'make a client',
     'register a client',
     'register a customer',
     'add a customer',
     'add customer',
+    'new customer',
+    'add a new customer',
+    'add new customer',
   ];
 
   static const _paymentCues = [
@@ -184,15 +200,54 @@ class WriteIntentParser {
     // "how much did bilal pay" cannot read as a payment arriving.
     if (_interrogatives.any(lower.contains)) return null;
 
-    // Deadlines first: "add a deadline to call Bilal about the invoice" also
-    // contains a name and a number, and is about neither.
-    final deadline = _deadline(clean, lower);
-    if (deadline != null) return deadline;
+    // Earliest cue wins, across all three kinds at once.
+    //
+    // This used to try deadlines, then payments, then clients, in that fixed
+    // order, which meant a sentence carrying more than one cue was always
+    // classified as whichever kind happened to be checked first. "create new
+    // client Primedose" contains no payment cue and was fine, but anything
+    // mentioning a payment and a client together became a payment, and the user
+    // was told a client they had just asked to create could not be found.
+    //
+    // The verb position is the signal: whichever intent's cue appears earliest
+    // in the sentence is the one being asked for.
+    final kind = _kindFor(lower);
+    switch (kind) {
+      case _Kind.deadline:
+        return _deadline(clean, lower);
+      case _Kind.payment:
+        return _payment(clean, lower);
+      case _Kind.client:
+        return _client(clean, lower);
+      case _Kind.none:
+        // No write cue anywhere. A sentence that merely mentions "client" is a
+        // question for the model, not an instruction, and guessing here is how
+        // "tell me about Acme" ends up trying to create a client called it.
+        return null;
+    }
+  }
 
-    final payment = _payment(clean, lower);
-    if (payment != null) return payment;
+  _Kind _kindFor(String lower) {
+    final d = _earliestCue(lower, _deadlineCues);
+    final p = _earliestCue(lower, _paymentCues);
+    final c = _earliestCue(lower, _clientCues);
+    // The "X paid N" shape has no cue phrase at all, it is its own pattern, so
+    // it is detected separately and only when no explicit cue beat it.
+    final paidAt = lower.indexOf(' paid');
 
-    return _client(clean, lower);
+    var best = _Kind.none;
+    var bestAt = 1 << 30;
+    void offer(_Kind k, int? at) {
+      if (at == null || at < 0 || at >= bestAt) return;
+      best = k;
+      bestAt = at;
+    }
+
+    offer(_Kind.deadline, d?.$1);
+    offer(_Kind.payment, p?.$1);
+    offer(_Kind.client, c?.$1);
+    if (best == _Kind.none && paidAt >= 0) best = _Kind.payment;
+    return best;
   }
 
   bool _isWordChar(String c) {
