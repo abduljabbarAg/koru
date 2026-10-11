@@ -10,6 +10,7 @@ import 'package:koru/screens/chat.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
 import 'package:koru/store.dart';
+import 'package:koru/widgets.dart';
 
 import 'test_store.dart';
 
@@ -270,6 +271,63 @@ void main() {
           reason: 'the model has to see what was asked before to know what '
               '"that" means');
       expect(second.map((t) => t.role), contains('assistant'));
+    });
+
+    testWidgets('a pasted list becomes a plan, and saving it lands every row',
+        (tester) async {
+      // The whole point of the feature, walked the way a person does it: paste,
+      // see the plan, press the button, find the rows on the Business page.
+      await boot(tester, engine: 'builtIn');
+
+      await tester.enterText(
+        find.byType(TextField).last,
+        'Bilal 3000\nAcme 5000 net 30\nNorthwind retainer 1500',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await pump(tester, frames: 20);
+
+      // A numbered plan, not a model answer and not a single giant client.
+      expect(find.textContaining('I read 3 clients'), findsOneWidget);
+      // Exactly one card. More than one would mean the same plan is on screen
+      // twice, and pressing Add would then be ambiguous.
+      expect(find.byType(PlanCard), findsOneWidget);
+      expect(find.textContaining('Bilal, invoiced 3000'), findsWidgets);
+      expect(find.text('Add Acme, invoiced 5000, net 30'), findsOneWidget);
+
+      await tester.tap(find.text('Add 3'));
+      await pump(tester, frames: 20);
+
+      final names = await tester.runAsync(() async =>
+          (await store.clients()).map((c) => c.name).toList());
+      expect(names!.toSet(), {'Bilal', 'Acme', 'Northwind'});
+    });
+
+    testWidgets('pasting the same list twice does not double it', (tester) async {
+      await boot(tester, engine: 'builtIn');
+      const list = 'Bilal 3000\nAcme 5000';
+
+      await tester.enterText(find.byType(TextField).last, list);
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await pump(tester, frames: 20);
+      await tester.tap(find.text('Add 2'));
+      await pump(tester, frames: 20);
+
+      await tester.enterText(find.byType(TextField).last, list);
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await pump(tester, frames: 20);
+
+      expect(find.textContaining('already added these'), findsOneWidget);
+      expect((await tester.runAsync(() => store.clients()))!.length, 2);
+    });
+
+    testWidgets('a single line is still a single write, not a list',
+        (tester) async {
+      // One line must not take the list path, or its amount stops being
+      // correctable in the card.
+      await boot(tester, engine: 'builtIn');
+      await say(tester, 'add client Bilal for 3000');
+      expect(find.byType(PlanCard), findsNothing);
+      expect(find.byType(WriteCard), findsOneWidget);
     });
 
     testWidgets('history cannot overrun the engine context window', (tester) async {

@@ -593,3 +593,159 @@ String money(double v) {
   if (v.abs() >= 10000) return '${(v / 1000).toStringAsFixed(0)}k';
   return v.toStringAsFixed(0);
 }
+
+/// A numbered plan, shown before anything is written.
+///
+/// Deliberately different from [WriteCard] rather than a variant of it. A single
+/// write is one line and one decision; an import is a list, and showing twenty
+/// rows behind a card meant for one makes the size of the change invisible until
+/// after it has happened. So the steps are numbered, visible, and the lines that
+/// could not be read are on the card too.
+///
+/// Naming the unreadable lines is the point. A list of twenty that silently
+/// becomes seventeen is the same failure as the Business page reading zero,
+/// only slower to notice.
+class PlanCard extends StatelessWidget {
+  const PlanCard({
+    super.key,
+    required this.write,
+    required this.onApprove,
+    required this.onDiscard,
+    this.busy = false,
+  });
+
+  final ProposedPlan write;
+  final VoidCallback onApprove;
+  final VoidCallback onDiscard;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = write.steps;
+    final problems = write.problems;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: KoruColors.goldSoft,
+        borderRadius: BorderRadius.circular(KoruRadius.card),
+        border: Border.all(color: KoruColors.gold),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.playlist_add_check_rounded,
+                  size: 17, color: KoruColors.clay),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  steps.length == 1 ? 'Koru wants to add one client' : 'Koru wants to add ${steps.length} clients',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Every step, numbered. Not a summary of a summary: the user is being
+          // asked to agree to twenty specific claims about money, so all twenty
+          // are on the screen.
+          for (var i = 0; i < steps.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 7),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    child: Text('${i + 1}.',
+                        style: const TextStyle(
+                            color: KoruColors.inkFaint, fontSize: 12.5)),
+                  ),
+                  Expanded(
+                    child: Text(steps[i].summary,
+                        style: const TextStyle(fontSize: 13, height: 1.35)),
+                  ),
+                ],
+              ),
+            ),
+          if (problems.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: KoruColors.claySoft,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${problems.length} line${problems.length == 1 ? '' : 's'} I could not read',
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  for (final p in problems.take(6))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text('"${p.text}" — ${p.reason}',
+                          style: const TextStyle(
+                              fontSize: 11.5, color: KoruColors.inkSoft)),
+                    ),
+                  if (problems.length > 6)
+                    Text('and ${problems.length - 6} more',
+                        style: const TextStyle(
+                            fontSize: 11.5, color: KoruColors.inkFaint)),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Text(
+            'Nothing is saved until you press Add. All of it goes in together, '
+            'or none of it does.',
+            style: TextStyle(
+                fontSize: 11.5, color: KoruColors.inkFaint, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              if (busy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: KoruColors.clay),
+                  ),
+                )
+              else ...[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onDiscard,
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: steps.isEmpty ? null : onApprove,
+                    icon: const Icon(Icons.check_rounded, size: 18),
+                    label: Text(steps.length == 1 ? 'Add' : 'Add ${steps.length}'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

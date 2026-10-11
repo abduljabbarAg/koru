@@ -12,6 +12,7 @@ import 'deep_link.dart';
 import 'engine.dart';
 import 'guide.dart';
 import 'handoff.dart';
+import 'local/bulk_import.dart';
 import 'local/bundled_engine.dart';
 import 'local/local_assistant.dart';
 import 'local/local_model_client.dart';
@@ -307,6 +308,63 @@ class ChatNotifier extends Notifier<ChatState> {
   /// hold the reply, and an overrun takes the engine down with it.
   static const _historyBudgetChars = 1200;
 
+  /// Reads a pasted list, or null when the message is not one.
+  ///
+  /// Returns null rather than a message for anything it is not confident about,
+  /// because the caller has an ordinary path for those and falling through to it
+  /// is always better than forcing a list onto a sentence.
+  Future<Msg?> _importPlan(String q, ProfileStore store) async {
+    // Two lines or more. One line is a sentence, not a list.
+    final lines = q.split('\n').where((l) => l.trim().isNotEmpty).length;
+    if (lines < 2) return null;
+
+    final parsed = const BulkClientParser().parse(q);
+    // One readable row out of several lines is a sentence that happened to be
+    // split, not a list. Treating it as one would put a list card in front of
+    // somebody who asked a question.
+    if (parsed.rows.length < 2) return null;
+
+    final fingerprint = ProposedImport.fingerprintOf(q);
+    final plan = ProposedImport(
+      steps: stepsForImport(parsed.rows),
+      problems: parsed.problems,
+      source: q,
+      fingerprint: fingerprint,
+    );
+
+    // The same list pasted twice must not double everyone's balance. Says so
+    // rather than quietly doing nothing, because a card that appears to do
+    // nothing looks broken.
+    if (await plan.alreadyImported(store)) {
+      return const Msg(
+        MsgRole.koru,
+        'You have already added these. I did not add them again, in case that '
+        'was not what you meant.',
+        why: 'This exact list was imported before.',
+        local: true,
+      );
+    }
+
+    final count = parsed.rows.length;
+    final clients = count == 1 ? 'client' : 'clients';
+    final missed = parsed.problems.length;
+    // Built as one string rather than an interpolation of conditionals, because
+    // the earlier version read as four sentences glued together and one of them
+    // was empty whenever every line parsed.
+    final tail = missed == 0
+        ? ''
+        : ', and $missed '
+            '${missed == 1 ? 'line' : 'lines'} I could not read';
+    return Msg(
+      MsgRole.koru,
+      'I read $count $clients out of that$tail. '
+          'Nothing is saved until you say so.',
+      why: 'Read as a list, not a sentence.',
+      local: true,
+      proposed: plan,
+    );
+  }
+
   /// Whether the in-flight generation was stopped by the user.
   bool _cancelled = false;
 
@@ -415,6 +473,16 @@ class ChatNotifier extends Notifier<ChatState> {
       );
     }
 
+    // A pasted list, before anything else.
+    //
+    // Checked first because a list and a sentence can both contain "add client",
+    // and a list read as a sentence produces one enormous client called
+    // "Bilal 3000 Acme 5000". Two or more readable rows is the signal, so a
+    // single line still takes the ordinary single-write path and its amount can
+    // still be corrected in the card.
+    final imported = await _importPlan(q, store);
+    if (imported != null) return imported;
+
     // An instruction to record something never reaches an engine at all. It is
     // recognised by a plain parser, resolved against the real records, and comes
     // back as a card to approve. A 0.5B model is a poor tool caller, and waiting
@@ -463,12 +531,21 @@ class ChatNotifier extends Notifier<ChatState> {
       ..invalidate(openDeadlinesProvider)
       ..invalidate(guideFactsProvider);
 
+    // An import is remembered only once it has actually landed. Recording it
+    // before would mean a failed import could never be retried, because the
+    // next attempt would be refused as a duplicate of a list that never made it.
+    if (write is ProposedImport) {
+      await write.rememberImport(store);
+    }
+
     final messages = [...state.messages];
     final at = messages.lastIndexWhere((m) => m.proposed != null);
     if (at < 0) return;
+    // Says how many, not "saved". Twenty rows going in silently is the thing a
+    // user cannot check afterwards, and the count is the one fact they want.
     messages[at] = Msg(
       MsgRole.koru,
-      'Saved. ${write.summary}.',
+      'Added ${write.summary}. You can undo this from Clients.',
       why: 'You approved this.',
       local: true,
     );

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../currency.dart';
 import '../engine.dart';
 import '../mascot/mascot.dart';
+import '../proposed_write.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -281,7 +282,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
               if (m.handoff != null && !isDismissed)
                 HandoffCard(plan: m.handoff!, onDismiss: () => dismissed.value = true),
-              if (m.proposed != null)
+              if (m.proposed is ProposedPlan)
+                PlanCard(
+                  write: m.proposed! as ProposedPlan,
+                  onApprove: () => ref.read(chatProvider.notifier).applyWrite(m.proposed!),
+                  onDiscard: () => ref.read(chatProvider.notifier).discardWrite(),
+                )
+              else if (m.proposed != null)
                 WriteCard(
                   write: m.proposed!,
                   currency:
