@@ -319,6 +319,59 @@ void main() {
     });
   });
 
+  group('when Koru is allowed to make a sound', () {
+    AttentionItem money(String n) => AttentionItem(
+          kind: AttentionKind.overdueMoney,
+          title: n,
+          detail: '1000 late',
+          target: AttentionTarget.client,
+        );
+    AttentionItem due(String n) => AttentionItem(
+          kind: AttentionKind.dueToday,
+          title: n,
+          detail: 'Due today',
+          target: AttentionTarget.deadline,
+        );
+    AttentionItem stalled(String n) => AttentionItem(
+          kind: AttentionKind.stalledProject,
+          title: n,
+          detail: 'No note for 30 days',
+          target: AttentionTarget.project,
+        );
+
+    test('only money and due-today count as urgent', () {
+      // A stalled project is worth mentioning and not worth a sound. Putting it
+      // in the urgent list would mean a nag about something nobody is waiting on.
+      expect(AttentionBridge.urgentTitles([stalled('My app')]), isEmpty);
+      expect(AttentionBridge.urgentTitles([money('Bilal'), due('Invoice')]),
+          hasLength(2));
+    });
+
+    test('nothing urgent means nothing to say', () {
+      expect(AttentionBridge.signature(const []), '');
+      expect(AttentionBridge.signature([stalled('My app')]), '');
+    });
+
+    test('the same situation has the same signature, whatever order', () {
+      // The hourly check re-posts state. If order mattered, every check would
+      // look like a change and the alert would sound every hour for a deadline
+      // that has not moved.
+      expect(AttentionBridge.signature([money('Bilal'), due('Invoice')]),
+          AttentionBridge.signature([due('Invoice'), money('Bilal')]));
+    });
+
+    test('a different situation is a different signature', () {
+      expect(AttentionBridge.signature([money('Bilal')]),
+          isNot(AttentionBridge.signature([money('Bilal'), money('Acme')])));
+    });
+
+    test('a settled client changes the signature, so it stops shouting', () {
+      final before = AttentionBridge.signature([money('Bilal')]);
+      final after = AttentionBridge.signature(const []);
+      expect(before, isNot(after));
+    });
+  });
+
   group('what the app has permission to do', () {
     test('a healthy install has no problems to report', () {
       const health = KoruHealth(notifications: true, batteryExempt: true);

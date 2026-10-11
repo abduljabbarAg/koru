@@ -44,7 +44,11 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
     companion object {
         private const val TAG = "KoruAttention"
         private const val CHANNEL_ID = "koru.attention"
+        private const val URGENT_CHANNEL_ID = "koru.urgent"
         private const val ONGOING_ID = 1
+
+        /** Separate from the ongoing one: different behaviour, different channel. */
+        private const val URGENT_ID = 2
         private const val ALERT_BASE = 100
         private const val METHOD_CHANNEL = "koru/attention"
         private const val PREFS = "koru_attention"
@@ -61,6 +65,17 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
          * sound, no heads-up, and it still shows in the shade.
          */
         private const val IMPORTANCE_LOW = 2
+
+        /**
+         * IMPORTANCE_DEFAULT, written out for the same reason as [IMPORTANCE_LOW].
+         *
+         * This one makes a sound. It is a second channel rather than a louder
+         * setting on the first, because the two kinds of alert need genuinely
+         * different behaviour and a channel is immutable once created: a silent
+         * channel made loud afterwards is not possible, and one channel cannot be
+         * both.
+         */
+        private const val IMPORTANCE_DEFAULT = 3
     }
 
     private var context: Context? = null
@@ -78,6 +93,12 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
     private var topLine: String = ""
     private var count: Int = 0
     private var link: String? = null
+
+    /** Titles of whatever is genuinely urgent, used to decide whether to speak. */
+    private var urgent: List<String> = emptyList()
+
+    /** Whether anything urgent is new since the last time Koru said so. */
+    private var changed: Boolean = true
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         val ctx = context
@@ -121,7 +142,10 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
                 topLine = ""
                 count = 0
                 link = null
+                urgent = emptyList()
+                changed = false
                 persist(ctx)
+                NotificationManagerCompat.from(ctx).cancel(URGENT_ID)
                 result.success(startForeground(ctx))
             }
             "update" -> {
@@ -320,6 +344,10 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
             topLine = json.optString("top", "")
             count = json.optInt("count", 0)
             link = json.optString("link", "").ifEmpty { null }
+            changed = json.optBoolean("changed", true)
+            urgent = json.optJSONArray("urgent")?.let { array ->
+                (0 until array.length()).mapNotNull { array.optString(it) }
+            } ?: emptyList()
             persist(ctx)
         } catch (e: Exception) {
             Log.w(TAG, "ignoring an unreadable attention payload", e)
@@ -372,6 +400,7 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
                 .putString("headline", headline)
                 .putString("top", topLine)
                 .putInt("count", count)
+                .putString("urgent", urgent.joinToString("~"))
                 .apply()
         } catch (e: Exception) {
             Log.w(TAG, "could not persist the attention payload", e)
@@ -392,23 +421,40 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
 
     private fun ensureChannel(ctx: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            // Shown in Android's own settings under Notifications. Named for
-            // what it carries rather than for the app, because a user looking at
-            // this list is trying to work out why they got a notification and
-            // "Koru" alone does not answer that.
-            "Deadlines and balances",
-            // Low: these are facts about work, not messages from a person. The
-            // default heads-up and sound would make an overdue invoice feel like
-            // an emergency and would train the user to swipe Koru away.
-            IMPORTANCE_LOW,
-        ).apply {
-            description = "Deadlines, overdue balances and quiet projects."
-            setShowBadge(true)
-        }
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(channel)
+
+        // Money that is already late, or work due today. Sound, because a silent
+        // deadline is a deadline that gets missed, and the consequence lands on
+        // the user rather than on us.
+        nm.createNotificationChannel(
+            NotificationChannel(
+                URGENT_CHANNEL_ID,
+                "Overdue and due today",
+                IMPORTANCE_DEFAULT,
+            ).apply {
+                description = "Money already late and work due today."
+                enableVibration(true)
+                setShowBadge(true)
+            }
+        )
+
+        // Everything else, and the ongoing status. Silent on purpose: a quiet
+        // project is worth mentioning and not worth a sound, and a status line
+        // that makes a noise every hour would be intolerable.
+        nm.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                // Shown in Android's own settings under Notifications. Named for
+                // what it carries rather than for the app, because a user looking
+                // at this list is trying to work out why they got a notification
+                // and "Koru" alone does not answer that.
+                "Deadlines and balances",
+                IMPORTANCE_LOW,
+            ).apply {
+                description = "Deadlines, overdue balances and quiet projects."
+                setShowBadge(true)
+            }
+        )
     }
 
     /**
@@ -430,6 +476,7 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
             // notification is up before onStartForeground returns.
             NotificationManagerCompat.from(ctx)
                 .notify(ONGOING_ID, notification)
+            postUrgentIfChanged(ctx)
             return true
         } catch (e: Exception) {
             // Android 12+ throws if a foreground service is started from the
@@ -448,6 +495,42 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
         } catch (e: Exception) {
             Log.w(TAG, "could not stop the attention watcher", e)
             false
+        }
+    }
+
+    /**
+     * The alert that makes a sound, posted only when something urgent is new.
+     *
+     * The rule is *sound on change*, not sound on every check. The hourly alarm
+     * re-posts state, and an alert that sounds every hour for a deadline that has
+     * not moved is the thing that trains someone to swipe Koru away without
+     * reading. So it speaks when a new overdue balance or a new due-today item
+     * appears, and is silent when the same ones are still outstanding.
+     *
+     * A distinct id from the ongoing one, because they are different notifications
+     * with different behaviour, and replacing a silent status with a loud alert
+     * would make the status itself noisy.
+     */
+    private fun postUrgentIfChanged(ctx: Context) {
+        if (urgent.isEmpty() || !changed) return
+        val notification = NotificationCompat.Builder(ctx, URGENT_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(if (urgent.size == 1) "Koru: something is due" else "Koru: ${urgent.size} things are due")
+            .setContentText(urgent.take(3).joinToString("\n"))
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(urgent.joinToString("\n"))
+            )
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(openIntent(ctx))
+            .build()
+        try {
+            NotificationManagerCompat.from(ctx).notify(URGENT_ID, notification)
+        } catch (e: SecurityException) {
+            // POST_NOTIFICATIONS refused. The ongoing status still shows if it is
+            // allowed, and nothing here is worth crashing over.
+            Log.w(TAG, "not allowed to post the urgent alert", e)
         }
     }
 

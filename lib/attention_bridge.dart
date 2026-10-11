@@ -17,6 +17,38 @@ class AttentionBridge {
 
   static const _channel = MethodChannel('koru/attention');
 
+  /// The last urgent set this bridge published.
+  ///
+  /// Kept on the bridge rather than in the store because it is about *this
+  /// conversation between Dart and the service*, not about the user's data. It
+  /// starts empty, which means the first publish after an app launch counts as a
+  /// change and says so once, which is right: after a reboot, a deadline that is
+  /// now overdue is worth one nudge.
+  static String lastSignature = '';
+
+  /// Only the things that are genuinely urgent.
+  ///
+  /// A stalled project is not in here. It is worth mentioning and not worth a
+  /// sound, and putting it in the urgent list would mean a nag about something
+  /// nobody is waiting on.
+  static List<String> urgentTitles(List<AttentionItem> items) => [
+        for (final i in items)
+          if (i.kind == AttentionKind.overdueMoney ||
+              i.kind == AttentionKind.dueToday)
+            '${i.title}|${i.detail}',
+      ];
+
+  /// A fingerprint of what is urgent, so "nothing changed" can be detected.
+  ///
+  /// Ordering matters, so this is sorted: the same three overdue clients in a
+  /// different order is the same situation, and treating it as a change would
+  /// make the alert fire on every hourly check.
+  static String signature(List<AttentionItem> items) {
+    final urgent = urgentTitles(items);
+    if (urgent.isEmpty) return '';
+    return (urgent..sort()).join('~');
+  }
+
   /// Whether the system will actually show anything.
   ///
   /// False on Android 13+ until notifications are granted, and false whenever
@@ -41,9 +73,13 @@ class AttentionBridge {
   /// clear the badge rather than leave yesterday's count on the icon.
   Future<bool> publish(List<AttentionItem> items, {KoruDeepLink? link}) async {
     try {
-      final ok = await _channel.invokeMethod<bool>('update', {
-        'payload': _encode(items, link),
-      });
+      final body = _encode(items, link);
+      // Recorded only after a successful publish, so a send that failed does not
+      // mark the change as already announced and then stay silent forever.
+      final ok = await _channel.invokeMethod<bool>('update', {'payload': body});
+      if (ok ?? false) {
+        lastSignature = signature(items);
+      }
       return ok ?? false;
     } on PlatformException {
       return false;
@@ -173,6 +209,11 @@ class AttentionBridge {
         // notification with nowhere to go is worse than one that just opens the
         // app, because it looks broken rather than empty.
         'link': link?.encode(),
+        // What is urgent right now, and only that.
+        'urgent': urgentTitles(items),
+        // How the service should behave this time round.
+        'changed': signature(items) != lastSignature,
+        'signature': signature(items),
       });
 }
 
