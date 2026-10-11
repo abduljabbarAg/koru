@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.7.1
+
+Adding a client now means something, and Koru can answer the question the app
+exists for.
+
+### Fixed
+
+- **Every total on the Business page read zero.** Not a display bug: the client
+  form asked for an amount and made it optional, so the normal outcome was a
+  client with nothing in it. Every figure is agreed minus received, so a client
+  with no agreed amount contributes nothing to owed, nothing to outstanding, and
+  never becomes overdue. The notifications and the widget were working correctly
+  and had nothing to ever say about it.
+- **"What is due today" was answered with "I could not match that".** The
+  sentence contains none of the words the business intent matched on, so it fell
+  through to the fallback and Koru told the user it could not help with its own
+  deadlines. It now answers, split into late money, late work, due today and
+  coming up this week.
+
+### Changed
+
+- **Adding a client is one flow, not two.** Agreed amount is required. Payment
+  terms replace the hand typed due date: choose net 7, net 14, net 30 or on
+  completion, pick when you invoiced, and the due date is worked out and shown
+  back to you. An exact date can still override it.
+- **A deposit is a payment.** It goes into the ledger rather than being
+  subtracted from the amount, because money is computed from the ledger
+  everywhere and a second copy that only affected one screen would eventually
+  disagree with it.
+
 ## 0.7.0
 
 Koru outside the app: on the home screen, and in the shade when it has
