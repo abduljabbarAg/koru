@@ -218,3 +218,175 @@ class Deadline {
     return d.isBefore(DateTime(today.year, today.month, today.day));
   }
 }
+
+/// Who a project is for, which is the distinction that matters here.
+///
+/// Not a filter or a category. A project for a client is work somebody is
+/// paying for; a personal project is work for yourself or your own business.
+/// They behave differently enough that sharing a table without this column
+/// meant every money question had to ask "is this billable?" first, and the
+/// answer was sometimes wrong.
+enum ProjectKind {
+  client,
+  personal;
+
+  static ProjectKind parse(String? v) =>
+      v == 'personal' ? ProjectKind.personal : ProjectKind.client;
+}
+
+/// A piece of work, tracked to completion.
+///
+/// Deliberately not money. A personal project has no invoice, no balance and no
+/// due date, so it has no amount column either. The temptation was to reuse
+/// Client, which already has name, note and a status, and that is what made
+/// "how far along is my own side project" awkward to answer: the only place to
+/// put it was a client record with an amount of zero, which then showed up in
+/// every balance, every prompt and every chase-the-money question.
+class Project {
+  final int? id;
+  final String name;
+  final ProjectKind kind;
+
+  /// The client this is for, when it is billable work. Always null for a
+  /// personal project, and [ProjectKind.personal] ignores it if set.
+  final int? clientId;
+
+  /// What "finished" looks like, in the user's own words.
+  final String? target;
+
+  /// How they intend to get there.
+  final String? plan;
+
+  /// How far along this is, 0 to 1.
+  ///
+  /// Read by the app, written by the model from the notes, and overridable by
+  /// the user at any time. The user has the final word: a number the model
+  /// cannot argue with is worse than no number, because it will be confidently
+  /// wrong and there is no way to say so except by overwriting it.
+  final double progress;
+
+  /// Why progress is where it is, which is what makes the number trustworthy
+  /// and what the character says when you open the project.
+  final String? progressNote;
+
+  final String status;
+  final String created;
+  final String updated;
+
+  const Project({
+    this.id,
+    required this.name,
+    this.kind = ProjectKind.client,
+    this.clientId,
+    this.target,
+    this.plan,
+    this.progress = 0,
+    this.progressNote,
+    this.status = 'active',
+    this.created = '',
+    this.updated = '',
+  });
+
+  bool get isPersonal => kind == ProjectKind.personal;
+
+  Project copyWith({
+    int? id,
+    String? name,
+    ProjectKind? kind,
+    int? clientId,
+    String? target,
+    String? plan,
+    double? progress,
+    String? progressNote,
+    String? status,
+    String? created,
+    String? updated,
+  }) =>
+      Project(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        kind: kind ?? this.kind,
+        clientId: clientId ?? this.clientId,
+        target: target ?? this.target,
+        plan: plan ?? this.plan,
+        progress: progress ?? this.progress,
+        progressNote: progressNote ?? this.progressNote,
+        status: status ?? this.status,
+        created: created ?? this.created,
+        updated: updated ?? this.updated,
+      );
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'name': name,
+        'kind': kind.name,
+        'client_id': clientId,
+        'target': target,
+        'plan': plan,
+        'progress': progress,
+        'progress_note': progressNote,
+        'status': status,
+        'created': created,
+        'updated': updated,
+      };
+
+  Map<String, Object?> toUpdateMap() => {
+        'name': name,
+        'kind': kind.name,
+        'client_id': clientId,
+        'target': target,
+        'plan': plan,
+        'progress': progress,
+        'progress_note': progressNote,
+        'status': status,
+        'updated': updated,
+      };
+
+  factory Project.fromMap(Map<String, Object?> m) => Project(
+        id: m['id'] as int?,
+        name: m['name'] as String? ?? '',
+        kind: ProjectKind.parse(m['kind'] as String?),
+        clientId: m['client_id'] as int?,
+        target: m['target'] as String?,
+        plan: m['plan'] as String?,
+        progress: (m['progress'] as num?)?.toDouble() ?? 0,
+        progressNote: m['progress_note'] as String?,
+        status: m['status'] as String? ?? 'active',
+        created: m['created'] as String? ?? '',
+        updated: m['updated'] as String? ?? '',
+      );
+}
+
+/// One dated observation about a project.
+///
+/// Notes are the raw material for progress, not a comment field. The model reads
+/// them to work out where a project has got to, which is only possible if they
+/// accumulate in order rather than being overwritten by whatever the latest one
+/// happened to say.
+class ProjectNote {
+  final int? id;
+  final int projectId;
+  final String body;
+  final String created;
+
+  const ProjectNote({
+    this.id,
+    required this.projectId,
+    required this.body,
+    this.created = '',
+  });
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'project_id': projectId,
+        'body': body,
+        'created': created,
+      };
+
+  factory ProjectNote.fromMap(Map<String, Object?> m) => ProjectNote(
+        id: m['id'] as int?,
+        projectId: m['project_id'] as int? ?? 0,
+        body: m['body'] as String? ?? '',
+        created: m['created'] as String? ?? '',
+      );
+}

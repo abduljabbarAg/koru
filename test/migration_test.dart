@@ -236,6 +236,37 @@ void main() {
     });
   });
 
+  group('a v4 install upgrading to v5', () {
+    test('opens, and the projects tables are there and usable', () async {
+      final dir = await seedOldDatabase(3);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      // The v4 data survived the hop.
+      expect((await store.clients()).single.name, 'Bilal');
+
+      final id = await store.addProject(const Project(
+        name: 'Redesign my own site',
+        kind: ProjectKind.personal,
+        target: 'Ship it',
+        created: '2026-10-01T00:00:00Z',
+        updated: '2026-10-01T00:00:00Z',
+      ));
+      expect(id, isNotNull);
+
+      final p = (await store.projects()).single;
+      expect(p.name, 'Redesign my own site');
+      expect(p.kind, ProjectKind.personal);
+      expect(p.isPersonal, isTrue);
+      expect(p.target, 'Ship it');
+      expect(p.progress, 0);
+
+      await store.addProjectNote(ProjectNote(
+          projectId: p.id!, body: 'started the wireframes', created: '2026-10-02T00:00:00Z'));
+      expect((await store.projectNotes(p.id!)).single.body, 'started the wireframes');
+    });
+  });
+
   group('a fresh install', () {
     test('already has the retainer column and needs no upgrade', () async {
       final store = await openTestStore();

@@ -119,6 +119,99 @@ void main() {
     });
   });
 
+  group('projects', () {
+    test('a personal project is not money and stays out of the ledger', () async {
+      final id = await store.addProject(const Project(
+        name: 'My own app',
+        kind: ProjectKind.personal,
+        target: 'Ship v1',
+        plan: 'Weekend time only',
+        created: '2026-10-01T00:00:00Z',
+        updated: '2026-10-01T00:00:00Z',
+      ));
+
+      final p = (await store.projects()).single;
+      expect(p.id, id);
+      expect(p.kind, ProjectKind.personal);
+      expect(p.clientId, isNull, reason: 'nothing to bill for');
+
+      // No amount, so it cannot leak into a balance.
+      expect(await store.receivedTotals(), isEmpty);
+      expect(p.toMap().containsKey('amount'), isFalse,
+          reason: 'a project has no money on it by construction');
+    });
+
+    test('a client project can be attached to a client', () async {
+      final client = await store.addClient(const Client(name: 'Acme', amount: 2000));
+      final id = await store.addProject(Project(
+        name: 'Acme rebrand',
+        kind: ProjectKind.client,
+        clientId: client,
+        target: 'Ship the identity',
+        created: '2026-10-01T00:00:00Z',
+        updated: '2026-10-01T00:00:00Z',
+      ));
+
+      final p = (await store.projects(kind: ProjectKind.client)).single;
+      expect(p.id, id);
+      expect(p.clientId, client);
+      expect(await store.projects(kind: ProjectKind.personal), isEmpty);
+    });
+
+    test('progress is stored and can be reasoned about', () async {
+      final id = await store.addProject(const Project(
+        name: 'Brand refresh',
+        target: 'Done',
+        created: '2026-10-01T00:00:00Z',
+        updated: '2026-10-01T00:00:00Z',
+      ));
+      final p = (await store.project(id))!;
+      await store.updateProject(p.copyWith(
+        progress: 0.6,
+        progressNote: 'Logo done, site not started.',
+        updated: '2026-10-05T00:00:00Z',
+      ));
+
+      final after = (await store.project(id))!;
+      expect(after.progress, 0.6);
+      expect(after.progressNote, 'Logo done, site not started.');
+    });
+
+    test('notes come back oldest first, because a sequence is the point', () async {
+      final id = await store.addProject(const Project(
+          name: 'Site', created: '2026-10-01T00:00:00Z', updated: '2026-10-01T00:00:00Z'));
+      for (final body in ['one', 'two', 'three']) {
+        await store.addProjectNote(ProjectNote(
+            projectId: id, body: body, created: '2026-10-02T00:00:00Z'));
+      }
+      expect((await store.projectNotes(id)).map((n) => n.body), ['one', 'two', 'three']);
+    });
+
+    test('deleting a project takes its notes with it', () async {
+      final id = await store.addProject(const Project(
+          name: 'Abandoned', created: '2026-10-01T00:00:00Z', updated: '2026-10-01T00:00:00Z'));
+      await store.addProjectNote(
+          ProjectNote(projectId: id, body: 'note', created: '2026-10-02T00:00:00Z'));
+
+      await store.deleteProject(id);
+
+      expect(await store.projects(), isEmpty);
+      expect(await store.projectNotes(id), isEmpty,
+          reason: 'a note pointing at nothing is worse than no note');
+    });
+
+    test('most recently touched comes first', () async {
+      final old = await store.addProject(const Project(
+          name: 'Older', created: '2026-01-01T00:00:00Z', updated: '2026-01-01T00:00:00Z'));
+      final fresh = await store.addProject(const Project(
+          name: 'Newer', created: '2026-01-01T00:00:00Z', updated: '2026-09-01T00:00:00Z'));
+
+      // Insertion order is oldest first, so this can only pass by sorting.
+      expect((await store.projects()).map((p) => p.id), [fresh, old]);
+      expect((await store.projects()).first.name, 'Newer');
+    });
+  });
+
   group('chat', () {
     test('round trips in insertion order', () async {
       await store.addChat(const ChatRecord(role: 'user', text: 'hi', created: '2026-01-01'));

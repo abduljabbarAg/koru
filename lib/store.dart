@@ -17,7 +17,7 @@ class ProfileStore {
 
   final Database _db;
 
-  static const int schemaVersion = 4;
+  static const int schemaVersion = 5;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -29,11 +29,13 @@ class ProfileStore {
         if (v >= 2) await _migrateToV2(d);
         if (v >= 3) await _migrateToV3(d);
         if (v >= 4) await _migrateToV4(d);
+        if (v >= 5) await _migrateToV5(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
         if (from < 3) await _migrateToV3(d);
         if (from < 4) await _migrateToV4(d);
+        if (from < 5) await _migrateToV5(d);
       },
     );
     return ProfileStore(db);
@@ -79,6 +81,48 @@ class ProfileStore {
         updated TEXT NOT NULL
       )
     ''');
+  }
+
+  /// Projects and their notes.
+  ///
+  /// Added because "project" was doing two incompatible jobs at once. Work for a
+  /// client is money, so it belonged with clients; work for yourself is not, and
+  /// putting it in the same table meant a side project with an amount of zero
+  /// showed up in every balance total, every prompt and every "who owes you"
+  /// question. So kind is explicit and the money lives somewhere else.
+  static Future<void> _migrateToV5(Database d) async {
+    await d.execute('''
+      CREATE TABLE IF NOT EXISTS projects(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'client',
+        client_id INTEGER,
+        target TEXT,
+        plan TEXT,
+        progress REAL DEFAULT 0,
+        progress_note TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+      )
+    ''');
+    await d.execute('''
+      CREATE TABLE IF NOT EXISTS project_notes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        created TEXT NOT NULL
+      )
+    ''');
+    // Notes are read newest last, per project, constantly. Without this the
+    // query behind "where am I with this" is a full scan and a sort.
+    await d.execute(
+        'CREATE INDEX IF NOT EXISTS idx_project_notes_project ON project_notes(project_id, id)');
+    // A project belongs to at most one client. Not enforced as a foreign key
+    // because the app deletes clients rather than cascading, and a cascade that
+    // silently took a user's work with it would be the wrong default.
+    await d.execute(
+        'CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id)');
   }
 
   /// Money received, and dated work. Both are per client so "what is owed and
@@ -358,6 +402,70 @@ class ProfileStore {
 
   Future<void> deleteDeadline(int id) =>
       _db.delete('deadlines', where: 'id = ?', whereArgs: [id]);
+
+  // -- projects --------------------------------------------------------
+
+  Future<int> addProject(Project p) => _db.insert('projects', p.toMap());
+
+  Future<void> updateProject(Project p) async {
+    await _db.update('projects', p.toUpdateMap(),
+        where: 'id = ?', whereArgs: [p.id]);
+  }
+
+  /// Projects, most recently touched first.
+  ///
+  /// Ordered by [Project.updated] rather than by name because the question this
+  /// screen answers is "what am I in the middle of", and the thing you worked on
+  /// yesterday is the answer far more often than the alphabetical first.
+  Future<List<Project>> projects({ProjectKind? kind}) async {
+    final rows = await _db.query(
+      'projects',
+      where: kind == null ? null : 'kind = ?',
+      whereArgs: kind == null ? null : [kind.name],
+      orderBy: 'updated DESC, id DESC',
+    );
+    return rows.map(Project.fromMap).toList();
+  }
+
+  Future<Project?> project(int id) async {
+    final rows = await _db.query('projects', where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? null : Project.fromMap(rows.first);
+  }
+
+  Future<void> deleteProject(int id) async {
+    // The notes go too. They are the only record of what actually happened, so
+    // leaving them behind would mean a note that referred to nothing.
+    await _db.delete('project_notes', where: 'project_id = ?', whereArgs: [id]);
+    await _db.delete('projects', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // -- project notes ----------------------------------------------------
+
+  Future<int> addProjectNote(ProjectNote n) => _db.insert('project_notes', n.toMap());
+
+  Future<void> deleteProjectNote(int id) =>
+      _db.delete('project_notes', where: 'id = ?', whereArgs: [id]);
+
+  /// Every note for a project, oldest first.
+  ///
+  /// Oldest first because this is read by a model to work out how far along
+  /// something is, and a sequence reversed is a sequence misread.
+  Future<List<ProjectNote>> projectNotes(int projectId, {int limit = 200}) async {
+    final rows = await _db.query(
+      'project_notes',
+      where: 'project_id = ?',
+      whereArgs: [projectId],
+      orderBy: 'id ASC',
+      limit: limit,
+    );
+    return rows.map(ProjectNote.fromMap).toList();
+  }
+
+  /// The newest notes across every project, for the model to read at a glance.
+  Future<List<ProjectNote>> recentProjectNotes({int limit = 20}) async {
+    final rows = await _db.query('project_notes', orderBy: 'id DESC', limit: limit);
+    return rows.map(ProjectNote.fromMap).toList().reversed.toList();
+  }
 
   // -- chat ------------------------------------------------------------
 
