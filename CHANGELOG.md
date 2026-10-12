@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.1
+
+The model is told what the app is, and the indicator stops saying "waking up".
+
+### Changed
+
+- **The model now knows what the app is for.** The system prompt said only what
+  it must not do, so with no idea what it was for it refused anything outside the
+  facts, and asked about a client it began an answer, abandoned it mid-sentence
+  and produced "I am Koru, a personal assistant" instead. It now knows the app
+  keeps clients, money, deadlines and projects, that it can record any of them,
+  and the phrasing that does so. Six lines, with a test capping it, because every
+  line is prefill the user waits through.
+- **The waiting indicator names the job.** It opened on "Waking up" for every
+  request and only moved when the engine reported a token, so anything not going
+  through the local model sat on "Waking up" for the whole answer. It now says
+  checking what is due, looking up clients, reading a pasted list, or working out
+  what you meant.
+
+### Fixed
+
+- **Permissions are asked on the splash, before onboarding.** Asked after
+  onboarding finished, a first run ended with no prompt at all. Nothing on that
+  path is awaited, so a system dialog can never hold the start screen open.
+
 ## 0.9.0
 
 The app no longer gets stuck on its own start screen.
