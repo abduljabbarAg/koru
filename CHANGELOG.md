@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.0.1
+
+Cloud had no memory, and cloud looked slow.
+
+### Fixed
+
+- **The cloud model had no conversation at all.** Every request was a system
+  prompt and one question, so a follow up had nothing to refer back to and "what
+  does this mean" was unanswerable. Earlier turns now go out as real messages,
+  with the role name each provider expects, because "koru" is an Anthropic 400
+  rather than a shrug.
+- **Cloud looked slower than the 0.5B on the phone.** It was one request with
+  nothing shown until the whole reply arrived. The latency was never lower; it
+  was just being paid silently. Cloud now streams into the reply as it arrives,
+  and anything already streamed survives a timeout or a dropped connection.
+- **Both prompts led with prohibitions**, and a model reads a list of never do
+  this as a list of things it is unwilling to do. Asked to add a client it would
+  decline. They now lead with what the app does and what it can record. The
+  medical and legal line is kept, as one sentence, with ModelOutputGuard and the
+  routing gate doing the real enforcement.
+
+### Added
+
+- **Models can be added from inside the app.** Settings, Add a model, pick the
+  file. Previously the only way in was being told to open a file manager and type
+  a path out of an error message.
+
 ## 1.0.0
 
 Cloud first. The on-device model is out of the app.
