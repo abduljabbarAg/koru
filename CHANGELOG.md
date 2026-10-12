@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.2
+
+The local model can be chosen, so a sharper one can be brought in.
+
+### Added
+
+- **Bring your own model.** The bundled 0.5B is no longer the best thing this
+  phone can run: a 1.7B ternary model fits in about 600 MB resident and is
+  markedly sharper, at 11.18 perplexity against 21.95 on the same prose. It is
+  also three times slower, so it is offered alongside rather than instead of the
+  fast one, and the picker keeps the bundled model first.
+- **Models are also looked for in the app's external folder**, which is reachable
+  from Downloads without rooting. The private one is not, so without this,
+  bringing your own model would have been impossible in practice.
+
+### Notes
+
+- The bigger model is deliberately not bundled. At 442 MB it would take every
+  install past 900 MB to serve a choice most people make once.
+
 ## 0.9.1
 
 The model is told what the app is, and the indicator stops saying "waking up".
