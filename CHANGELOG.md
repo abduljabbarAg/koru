@@ -1,5 +1,54 @@
 # Changelog
 
+## 1.2.0
+
+Everything on the list, finished.
+
+### Added
+
+- **Projects, with notes.** A Projects tab, client and personal side by side.
+  Each has a target, a plan, progress and a running note. Progress is a slider
+  and the reason for it is a required field, because a number with no reason is
+  the confident guess the rest of this app tries not to make. Adding a note
+  moves the project to the top of the list, so it never lands somewhere
+  invisible.
+- **The model can finally see projects.** They have been in the database since
+  the schema landed and were in nothing it could read. It knew who owed money
+  and nothing about what any of it was for. Now it gets the project, how far
+  along it is, what done looks like and the last thing you said. The built-in
+  assistant answers "what am I working on" from the same records.
+- **Change and delete a client by name.** "bilal now owes 4000", "change the
+  amount on acme to 3000", "delete client bilal". An edit leaves every field the
+  sentence did not mention exactly as it was. A delete keeps the payments: a
+  ledger that paid a client who no longer exists is history, and deleting those
+  rows would quietly change totals already reported.
+- **Deadlines go to your calendar.** One tap hands the event to your own
+  calendar app, filled in, and you press save. It is an intent rather than a
+  direct write because writing to a calendar needs a permission covering every
+  calendar on the device, which is a steep ask to save one date, and it means
+  the event lands in whichever calendar you actually use. Set for midday, since
+  a due date is a day rather than an instant and an instant fires before you are
+  awake.
+- **Constrained decoding in glen.** `GLen_FORCE` makes the model open its reply
+  with a required string, masked into the logits before sampling so it composes
+  with temperature and top-k rather than replacing them. A 0.5B asked for
+  structured output will open a brace and then write prose; that is a vocabulary
+  problem, not a prompt problem.
+- **Koru has a beard and glasses.** Drawn in code, so it scales and blinks
+  properly.
+
+### Fixed
+
+- **Every save is read back before it is reported.** `apply` returning without
+  throwing is not evidence: sqflite can report success for a write a constraint
+  quietly discarded. Now the database is read afterwards, and a partial import
+  says "I added 17 of 20" and names the three that did not go in. The app is
+  held to the same rule as the model: no save is reported that has not been
+  looked at.
+- **Adding a model from the app works.** The import handler was written against
+  the notification channel while the app asked the engine channel, so every
+  attempt failed with nothing useful.
+
 ## 1.1.0
 
 The model claimed it had saved things. It cannot have.
