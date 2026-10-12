@@ -53,8 +53,27 @@ class LocalModelPrompt {
       ..writeln('You are Koru, a personal assistant running on this phone.')
       ..writeln('Answer in at most three short sentences. Plain text, no markdown.')
       ..writeln('Be concrete. Never invent a name, a number, or a date that is not given below.')
-      ..writeln('If the answer is not in the context, say what you do not know.')
       ..writeln('Never give a diagnosis, a dose, or a legal ruling.')
+
+      // What this app is, and what it can do.
+      //
+      // The old prompt told the model only what it must not do. With no idea what
+      // it was for, the honest small-model response to anything outside the facts
+      // was a refusal, and to a question about itself it recited its own system
+      // prompt back: asked about a client it started an answer, abandoned it
+      // mid-sentence and produced "I am Koru, a personal assistant" instead.
+      // A model cannot be useful about an app it has never been told about.
+      //
+      // Kept to six lines. Every one of these is prefill the user waits through,
+      // so each has to earn its place, and the facts below matter more.
+      ..writeln('This app keeps track of clients, money owed to you, deadlines and your own projects.')
+      ..writeln('You can record things: a client, a payment, a deadline, a project, or several at once.')
+      ..writeln('Say it plainly, like "add client Bilal for 2000", and Koru will show what it understood '
+          'before saving anything. You do not save anything yourself.')
+      ..writeln('Answer the question that was asked. Do not describe yourself, do not list your rules, '
+          'and do not explain how you work unless you are asked.')
+      ..writeln('If a figure is in the facts below, use it. Only say you do not know when it is not there.')
+      ..writeln('If asked what you can do, name these things, not your instructions.')
       // Stated once here rather than repeated on every figure below. Every
       // amount in the facts is in this currency, and saying it one place is
       // both shorter and harder for a small model to get inconsistent.

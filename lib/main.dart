@@ -62,15 +62,25 @@ class _RootGateState extends ConsumerState<RootGate> {
     // model is actually being unpacked, so it is the only place that can show
     // progress for it, and waiting until the chat screen meant the splash was
     // already gone by the time the slow part began.
-    if (done) {
-      ref.read(chatProvider.notifier).load();
-      // Deferred past the first frame, deliberately. Permission prompts open
-      // system Activities, and doing that while the splash is deciding whether
-      // to leave is how an app ends up stuck on its own start screen.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _askOnce(ref);
-      });
+    // Permissions are asked here, on the splash, before onboarding is ever
+    // shown. Asking them after onboarding finished meant a first run that ended
+    // with no prompt at all.
+    //
+    // Deliberately not awaited past the health read, and bounded. A permission
+    // prompt opens a system Activity that a person can leave open indefinitely,
+    // and holding the start screen hostage to that is exactly how this deadlocked
+    // before. The prompts are raised, the flag is written, and the app carries on
+    // whatever was granted.
+    if (await store.get('asked_permissions') != '1') {
+      // Nothing is awaited here at all. requestHealthPermissions reads the
+      // health itself, and reading it twice on the way in only added a wait
+      // that the splash did not need and, being a timeout, a timer that could
+      // outlive the screen asking it.
+      unawaited(requestHealthPermissions(ref));
+      await store.put('asked_permissions', '1');
     }
+
+    if (done) ref.read(chatProvider.notifier).load();
   }
 
   /// Checks permissions on first run after an upgrade, and never nags again.
@@ -79,19 +89,6 @@ class _RootGateState extends ConsumerState<RootGate> {
   /// every launch is how an app teaches people to dismiss dialogs without
   /// reading them, which costs the permission that actually mattered the first
   /// time it came up.
-  Future<void> _askOnce(WidgetRef ref) async {
-    final store = await ref.read(storeProvider.future);
-    if (await store.get('asked_permissions') == '1') return;
-    await requestHealthPermissions(ref);
-    // Recorded only after the prompts have actually been shown.
-    //
-    // It used to be set first, so an app killed mid prompt, or one whose first
-    // run happened before onboarding finished, never asked again. That is why
-    // permissions turned up on the second launch instead of the first: the
-    // flag was written on a run that had no business asking.
-    await store.put('asked_permissions', '1');
-  }
-
   void _leaveSplash() {
     if (_splashDone) return;
     setState(() => _splashDone = true);

@@ -221,7 +221,14 @@ class ChatNotifier extends Notifier<ChatState> {
     final mine = ++_generation;
     bool stale() => mine != _generation;
 
-    state = state.copyWith(activity: 'Waking up');
+    // Names what is being attempted rather than how the bytes are moving.
+    //
+    // It used to open with "Waking up" on every request and only move on when
+    // the engine reported a token or a prefill tick, so anything that did not go
+    // through the local model sat on "Waking up" for the whole answer. A
+    // question the app can answer without the model, and a list being read into
+    // a plan, are different jobs and should not claim the same one.
+    state = state.copyWith(activity: _activityFor(q));
     // Captured before the new turn is added, so the model sees the conversation
     // that happened before this question and not the question twice.
     final history = _recentTurns();
@@ -435,6 +442,33 @@ class ChatNotifier extends Notifier<ChatState> {
 
   /// Counts requests. Anything started before the current one is stale.
   int _generation = 0;
+
+  /// What the app is about to do about [q], in the user's terms.
+  ///
+  /// Names the job rather than how the bytes are moving. It used to open on
+  /// "Waking up" for every request and only move on when the engine reported a
+  /// token or a prefill tick, so anything that did not go through the local model
+  /// sat on "Waking up" for the whole answer, which is both wrong and the reason
+  /// the indicator seemed stuck.
+  String _activityFor(String q) {
+    // A write is decided by the parser rather than the model, so claiming the
+    // model was working on it was never true.
+    if (const WriteIntentParser().parse(q) != null) return 'Working out what you meant';
+    if (q.split('\n').where((l) => l.trim().isNotEmpty).length > 1) {
+      return 'Reading your list';
+    }
+    final lower = q.toLowerCase();
+    if (lower.contains('due') ||
+        lower.contains('owe') ||
+        lower.contains('today') ||
+        lower.contains('overdue')) {
+      return 'Checking what is due';
+    }
+    if (lower.contains('who') || lower.contains('client')) {
+      return 'Looking up your clients';
+    }
+    return 'Working out what you meant';
+  }
 
   /// Set when this notifier goes away. Riverpod's Notifier ref has no `mounted`,
   /// and the engine start is a long await that can outlive the screen that

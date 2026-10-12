@@ -98,7 +98,9 @@ void main() {
       );
       expect(prompt, contains('at most three short sentences'));
       expect(prompt, contains('Never give a diagnosis, a dose, or a legal ruling'));
-      expect(prompt, contains('say what you do not know'));
+      expect(prompt, contains('say you do not know when it is not there'),
+          reason: 'still honest about what it cannot see, without defaulting '
+              'to refusal for anything outside the facts');
     });
 
     test('leaves the question to the user message', () {
@@ -110,6 +112,41 @@ void main() {
       // the system prompt has to stay identical turn to turn so glen can reuse
       // the token prefix instead of prefilling the lot again.
       expect(prompt, isNot(contains('what should I charge?')));
+    });
+
+    group('tells the model what the app is for', () {
+      // The prompt used to say only what the model must not do. With no idea what
+      // it was for, asked about a client it began an answer, abandoned it
+      // mid-sentence and produced "I am Koru, a personal assistant" instead.
+      final prompt = LocalModelPrompt.build(
+        packet: packet,
+        facts: const LocalEngineFacts(),
+      );
+
+      test('says what the app keeps track of', () {
+        expect(prompt, contains('clients, money owed to you, deadlines'));
+      });
+
+      test('says it can record things, and how', () {
+        expect(prompt, contains('You can record things'));
+        expect(prompt, contains('add client Bilal for 2000'),
+            reason: 'an example phrase is what makes the rest usable');
+      });
+
+      test('tells it to answer rather than describe itself', () {
+        expect(prompt, contains('Do not describe yourself'));
+      });
+
+      test('still refuses rather than inventing', () {
+        expect(prompt, contains('Never invent a name, a number, or a date'));
+      });
+
+      test('is short enough that the prefill is worth paying', () {
+        // Every line here is time the user waits before the first word. Capped so
+        // a future change cannot quietly triple it.
+        expect(prompt.trim().split('\n').length, lessThan(20),
+            reason: 'prompt line count');
+      });
     });
 
     test('omits the context block when there is nothing to say', () {

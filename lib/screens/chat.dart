@@ -326,6 +326,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           'Reading your records' => KoruActivity.reading,
                           'Writing an answer' => KoruActivity.writing,
                           'Waking up' => KoruActivity.waking,
+                          'Reading your list' => KoruActivity.readingList,
+                          'Checking what is due' => KoruActivity.checking,
+                          'Looking up your clients' => KoruActivity.looking,
                           _ => KoruActivity.thinking,
                         },
                       )

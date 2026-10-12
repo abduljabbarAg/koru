@@ -24,7 +24,16 @@ enum KoruActivity {
   writing('Writing an answer'),
 
   /// Working out what was asked, in a plan or a write.
-  thinking('Working out what you meant');
+  thinking('Working out what you meant'),
+
+  /// Turning a pasted list into a plan.
+  readingList('Reading your list'),
+
+  /// Looking at what is due.
+  checking('Checking what is due'),
+
+  /// Looking through the client list.
+  looking('Looking up your clients');
 
   final String label;
   const KoruActivity(this.label);
