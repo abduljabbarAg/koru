@@ -832,6 +832,58 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
   String? _message;
   bool _ready = false;
 
+  /// Picks a different local model and restarts the engine on it.
+  ///
+  /// The bundled 0.5B is not the best thing this phone can run, but it is the
+  /// fastest, and the choice depends on what you are asking: a sharper model
+  /// three times slower is a good trade for a hard question and a bad one for
+  /// everything. So both are offered and neither is removed.
+  Future<void> _choose(LocalModelFile model) async {
+    final store = await ref.read(storeProvider.future);
+    final isBundled = model.label.startsWith('Qwen2.5');
+    await store.put('model_path', isBundled ? '' : model.path);
+    if (mounted) {
+      setState(() {
+        _message = isBundled
+            ? 'Using the bundled model. It is the fast one.'
+            : 'Switched. It will start on ${model.label} next time.';
+      });
+    }
+    // Invalidate so the engine restarts against the new file.
+    ref.invalidate(availableModelsProvider);
+    ref.invalidate(chosenModelProvider);
+    ref.invalidate(engineProvider);
+  }
+
+  Widget _modelPicker(List<LocalModelFile> models, String? chosen) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Model',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        const SizedBox(height: 4),
+        Text(
+          models.length <= 1
+              ? 'Only the bundled model is here. To add another, put a .gguf '
+                  'file in this app\'s models folder under Android/data.'
+              : 'A bigger model is sharper and slower. Switch when you need it, '
+                  'not for everything.',
+          style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        for (final m in models)
+          RadioListTile<String>(
+            value: m.path,
+            groupValue: chosen ?? '',
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(m.label, style: const TextStyle(fontSize: 13.5)),
+            onChanged: (_) => _choose(m),
+          ),
+      ],
+    );
+  }
+
   Future<void> _start() async {
     setState(() {
       _starting = true;
@@ -922,6 +974,12 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
             'of the package, so expect it to take a minute.',
             style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
           ),
+              const SizedBox(height: 14),
+              _modelPicker(
+                ref.watch(availableModelsProvider).valueOrNull ?? const [],
+                ref.watch(chosenModelProvider).valueOrNull,
+              ),
+
           if (_starting) ...[
             const SizedBox(height: 12),
             ClipRRect(

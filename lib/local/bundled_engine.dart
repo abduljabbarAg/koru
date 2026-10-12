@@ -61,8 +61,34 @@ class BundledEngine {
   /// generous and the timeout is reported rather than swallowed. A process can be
   /// alive and still loading a model, so health is polled instead of trusting the
   /// start call to mean anything.
+  /// Every model glen could be pointed at.
+  ///
+  /// The bundled one is always first. Anything else is a .gguf the person put
+  /// in the app's own folder, which is how a bigger model gets onto a phone that
+  /// shipped with a small one: bundling both would take the install past 900 MB
+  /// to serve a choice most people make once.
+  Future<List<LocalModelFile>> models() async {
+    try {
+      final raw = await _channel.invokeListMethod<dynamic>('models');
+      if (raw == null) return const [];
+      return [
+        for (final item in raw)
+          if (item is Map)
+            LocalModelFile(
+              label: item['label'] as String? ?? 'Model',
+              path: item['path'] as String? ?? '',
+            ),
+      ].where((m) => m.path.isNotEmpty).toList();
+    } on PlatformException {
+      return const [];
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
   Future<BundledStartResult> start({
     int port = defaultPort,
+    String? modelPath,
     Duration timeout = const Duration(seconds: 180),
     Future<bool> Function() isHealthy = _neverHealthy,
     void Function(int percent)? onProgress,
@@ -73,7 +99,11 @@ class BundledEngine {
 
     bool launched;
     try {
-      launched = await _channel.invokeMethod<bool>('start', {'port': port}) ?? false;
+      launched = await _channel.invokeMethod<bool>('start', {
+        'port': port,
+        'modelPath': modelPath,
+      }) ??
+          false;
     } catch (e) {
       return BundledStartResult.failed('Could not launch the bundled engine: $e');
     }
@@ -184,4 +214,13 @@ class BundledEngineStatus {
     }
     return reason ?? 'The bundled engine is not available.';
   }
+}
+
+/// One model glen could be pointed at.
+class LocalModelFile {
+  const LocalModelFile({required this.label, required this.path});
+
+  /// Shown in the picker, with the size already worked out.
+  final String label;
+  final String path;
 }

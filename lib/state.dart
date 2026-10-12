@@ -294,7 +294,11 @@ class ChatNotifier extends Notifier<ChatState> {
       if (healthy) return;
 
       state = state.copyWith(engineProgress: 0);
+      // The model the user chose, if any. Null means the bundled default, which
+      // is the right answer for most people and the fast one.
+      final chosen = await store.get('model_path');
       final result = await engine.start(
+        modelPath: (chosen == null || chosen.isEmpty) ? null : chosen,
         onProgress: (percent) {
           if (_gone) return;
           state = state.copyWith(engineProgress: percent);
@@ -997,6 +1001,22 @@ final healthProvider = FutureProvider<KoruHealth>((ref) async {
 });
 
 final healthBridgeProvider = Provider<HealthBridge>((ref) => const HealthBridge());
+
+/// Models the bundled engine could be pointed at, bundled one first.
+final availableModelsProvider = FutureProvider<List<LocalModelFile>>((ref) async {
+  return ref.watch(bundledEngineProvider).models();
+});
+
+/// The path of the model the user picked, or null for the bundled default.
+///
+/// Empty means the same as absent. Writing an empty string rather than deleting
+/// the key keeps the store's write path uniform, and treating the two the same
+/// here means a half finished switch cannot leave the engine pointed at nothing.
+final chosenModelProvider = FutureProvider<String?>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  final path = await store.get('model_path');
+  return (path == null || path.isEmpty) ? null : path;
+});
 
 /// Asks for the permissions Koru needs, in the order that is least annoying.
 ///

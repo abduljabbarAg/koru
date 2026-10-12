@@ -101,7 +101,17 @@ class MainActivity : FlutterActivity() {
         MethodChannel(messenger, engineChannelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "status" -> result.success(engineStatus())
-                "start" -> result.success(startEngine(call.argument<Int>("port") ?: enginePort))
+                "models" -> result.success(
+                    availableModels().map { (label, file) ->
+                        mapOf("label" to label, "path" to file.absolutePath)
+                    }
+                )
+                "start" -> result.success(
+                    startEngine(
+                        call.argument<Int>("port") ?: enginePort,
+                        call.argument<String>("modelPath"),
+                    )
+                )
                 "stop" -> {
                     stopEngine()
                     result.success(true)
@@ -212,6 +222,46 @@ class MainActivity : FlutterActivity() {
      * materialised into the app's own storage where glen's mmap loader can use
      * it.
      */
+    /**
+     * Where a dropped model can be found.
+     *
+     * The app's private directory is not browsable from a file manager on an
+     * unrooted phone, so a model a person downloaded themselves would be
+     * impossible to place there. The external app directory is reachable from
+     * Downloads without any permission, which is what makes "bring your own
+     * model" possible at all.
+     */
+    private fun modelDirs(): List<File> = listOf(
+        File(filesDir, "models"),
+        // /sdcard/Android/data/<package>/files/models
+        File(getExternalFilesDir(null) ?: filesDir, "models"),
+    )
+
+    /**
+     * Every model glen could be pointed at, bundled first.
+     *
+     * Listed rather than hardcoded because the bundled 0.5B is no longer the
+     * best thing this phone can run: a 1.7B ternary model fits in about 600 MB
+     * resident and is markedly sharper, but it is 442 MB to download and putting
+     * both in the APK would take it past 900 MB for every install to serve a
+     * choice most people make once.
+     */
+    private fun availableModels(): List<Pair<String, File>> {
+        val out = mutableListOf<Pair<String, File>>()
+        modelFile()?.let { out.add("Qwen2.5 0.5B (bundled, fast)" to it) }
+        for (dir in modelDirs()) {
+            val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") } ?: continue
+            for (f in files.sortedBy { it.name }) {
+                if (f.length() < 1_000_000) continue
+                // The bundled one is already listed; do not offer it twice.
+                if (out.any { pair -> pair.second.absolutePath == f.absolutePath }) continue
+                val mb = f.length() / (1024 * 1024)
+                out.add("${f.nameWithoutExtension} (${mb} MB)" to f)
+            }
+        }
+        return out
+    }
+
     private fun modelFile(): File? {
         val target = File(filesDir, "models/qwen2.5-0.5b-instruct-q4_k_m.gguf")
         if (target.exists() && target.length() > 1_000_000) return target
@@ -247,7 +297,7 @@ class MainActivity : FlutterActivity() {
      * allowed to take a while. The Dart side polls /health rather than trusting
      * the return value, because a process can be alive and still be loading.
      */
-    private fun startEngine(requestedPort: Int): Boolean {
+    private fun startEngine(requestedPort: Int, chosenModel: String? = null): Boolean {
         val log = File(filesDir, "glen.log")
 
         // Every failure below writes why into the log. Returning a bare false
@@ -274,7 +324,12 @@ class MainActivity : FlutterActivity() {
                 "--serve",
                 requestedPort.toString(),
             )
-            builder.environment()["Glen_MODEL"] = model.absolutePath
+            // The chosen model if it is one we listed, otherwise the bundled one.
+        // Validated against the list rather than trusted, because this path comes
+        // from Dart and points at a file glen will mmap and execute maths over.
+        val chosen = availableModels().firstOrNull { it.second.absolutePath == chosenModel }?.second
+            ?: model
+        builder.environment()["Glen_MODEL"] = chosen.absolutePath
             // Tools off: the bundled engine must not be able to run shell
             // commands or reach the network on its own.
             builder.environment()["Glen_TOOLS"] = "0"
