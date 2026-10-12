@@ -395,6 +395,22 @@ def quad(x0, y0, cx, cy, x1, y1, steps=24):
     return out
 
 
+def ellipse_pts(cx, cy, rx, ry, steps=40):
+    """Points around an ellipse, first point repeated so `stroke` closes it.
+
+    Used for the spectacle rims. A filled ellipse would have to be punched back
+    out again, and that hole would swallow the eye underneath it; a ring drawn
+    as a stroked loop leaves the face showing through untouched.
+    """
+    pts = [(cx + rx * math.cos(2 * math.pi * i / steps),
+            cy + ry * math.sin(2 * math.pi * i / steps)) for i in range(steps + 1)]
+    out = []
+    for x, y in pts:
+        out.append(x)
+        out.append(y)
+    return out
+
+
 def spiral(cx, cy, r0, growth, start, end, steps=90):
     """Archimedean spiral. This is the koru: the unfurling fern frond that gives
     the product its name."""
@@ -627,12 +643,38 @@ def draw_koru(r, pose, canvas=CELL, scale=CHAR_SCALE):
     r.ellipse(body_cx - 30 * s, eye_y + 13 * s, 9.5 * s, 5.5 * s, CLAY, 0.30)
     r.ellipse(body_cx + 30 * s, eye_y + 13 * s, 9.5 * s, 5.5 * s, CLAY, 0.30)
 
+    # Beard, laid down under the eyes so the spectacles and the eyes sit on top
+    # of it rather than the other way round. It is a soft band along the jaw
+    # rather than a fill: a filled shape would cover the mouth, and a character
+    # whose smile has been swallowed by its own beard reads as a smudge.
+    beard = quad(body_cx - 31 * s, body_cy + 11 * s, body_cx,
+                 body_cy + 41 * s, body_cx + 31 * s, body_cy + 11 * s)
+    r.stroke(beard, [10.5 * s] * (len(beard) // 2), INK, 0.17)
+    r.stroke(beard, [5.0 * s] * (len(beard) // 2), INK, 0.13)
+
     mouth_y = body_cy + 14 * s
     spread = 11 * s * pose.mouth_smile
     depth = 7 * s * pose.mouth_smile
     mouth = quad(body_cx - spread, mouth_y - 1.5 * s, body_cx, mouth_y + depth,
                  body_cx + spread, mouth_y - 1.5 * s)
     r.stroke(mouth, [2.8 * s] * (len(mouth) // 2), INK)
+
+    # Spectacles. Drawn after the eyes so the rims read as sitting on the face,
+    # and as rings rather than lenses so the eye stays visible behind them, which
+    # is the whole point of drawing a character in glasses rather than adding two
+    # dark ovals and hoping.
+    for ex in (eye_l, eye_r):
+        r.stroke(
+            ellipse_pts(ex, eye_y, 11.5 * s, 8.8 * s),
+            [1.9 * s] * ((len(ellipse_pts(ex, eye_y, 11.5 * s, 8.8 * s))) // 2),
+            INK, 0.80,
+        )
+    r.stroke_line(body_cx - 6.0 * s, eye_y - 1.2 * s, body_cx + 6.0 * s,
+                  eye_y - 1.2 * s, 1.9 * s, INK, 0.80)
+    for side in (-1, 1):
+        r.stroke_line(body_cx + side * 28.5 * s, eye_y - 2.4 * s,
+                      body_cx + side * 33.5 * s, eye_y - 4.4 * s,
+                      1.8 * s, INK, 0.72)
 
     if pose.think_dots > 0:
         for i in range(pose.think_dots):
