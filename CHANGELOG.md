@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0
+
+The model claimed it had saved things. It cannot have.
+
+### Fixed
+
+- **"Add an entry" was saved nowhere, and the app said it had been.** The
+  parser knew "add a client" and nothing else, so "add an entry" fell through to
+  the model. The model writes text and has no access to the database, so it
+  answered from the shape of the sentence that it had done it. The chat looked
+  like a receipt and the record was not there. The vocabulary now covers entry,
+  record and contact, and a write that is missing the one thing it needs becomes
+  the question that unblocks it rather than a guess.
+- **A model can no longer claim to have saved anything.** Nothing is saved by a
+  model, ever. Every record is written by the app after you approve a card, so
+  any sentence saying it added, saved or logged something is false by
+  construction. Replaced with what actually happened, and the phrasing that
+  would have worked.
+- **The on-device option admitted it was not running.** Since 1.0.0 the APK
+  ships no engine and no model, so choosing it found nothing to start and
+  answered from your records in a few milliseconds, which reads exactly like a
+  model being fast. Settings now says so.
+
+### Added
+
+- **"add client 2000" asks who, instead of inventing a client called 2000.**
+  Numbers are still not treated as names.
+
 ## 1.0.1
 
 Cloud had no memory, and cloud looked slow.
