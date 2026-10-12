@@ -11,6 +11,67 @@ import 'package:koru/models.dart';
 /// Each provider's exact request shape is asserted here so that cannot be
 /// silent again.
 void main() {
+  group('finding a provider or a model', () {
+    // The list is twenty providers and several models each. Scrolling a dropdown
+    // to find one is the wrong interface, and someone looking for "glm" should
+    // not have to know whether that is Z.ai, Zhipu or a custom endpoint.
+    test('an empty search shows everything', () {
+      expect(CloudSearch.providersMatching('').length, kCloudProviders.length);
+    });
+
+    test('matches a provider by label, case insensitively', () {
+      expect(CloudSearch.providersMatching('atria').map((p) => p.id), contains('atria'));
+      expect(
+          CloudSearch.providersMatching('ANTHROPIC').map((p) => p.id),
+          contains('anthropic'));
+    });
+
+    test('matches a model id without knowing the provider', () {
+      final hits = CloudSearch.modelsMatching('grok');
+      expect(hits.keys.map((p) => p.id), contains('xai'));
+    });
+
+    test('a provider match brings all of its models', () {
+      // Matching the provider is an intention to use it, not to pick one model
+      // out of it, so narrowing the model list would be unhelpful.
+      final matches = CloudSearch.modelsMatching('atria');
+      final atria = matches.entries
+          .firstWhere((e) => e.key.id == 'atria')
+          .value;
+      expect(atria, contains('Atria-Dawn-Preview'));
+    });
+
+    test('nothing matching returns nothing, not everything', () {
+      // The failure this guards against is a filter that silently falls back to
+      // the full list, which looks like the search not working.
+      expect(CloudSearch.providersMatching('zzzznotathing'), isEmpty);
+    });
+  });
+
+  group('providers that had to be added', () {
+    test('Atria is there, with the capitalisation it documents', () {
+      final atria = kCloudProviders.firstWhere((p) => p.id == 'atria');
+      expect(atria.baseUrl, 'https://api.atria-asi.ai/v1');
+      expect(atria.format, CloudWireFormat.openai);
+      // Lowercasing this id is a 400 from an otherwise good model, which is the
+      // kind of mistake that reads as "the provider is broken".
+      expect(atria.models, ['Atria-Dawn-Preview']);
+    });
+
+    test('every provider has an id, a label and a base url', () {
+      for (final p in kCloudProviders) {
+        expect(p.id, isNotEmpty, reason: 'a provider with no id cannot be saved');
+        expect(p.label, isNotEmpty, reason: 'provider ${p.id}');
+        expect(p.baseUrl, startsWith('http'), reason: 'provider ${p.id}');
+      }
+    });
+
+    test('no provider is listed twice', () {
+      final ids = kCloudProviders.map((p) => p.id).toList();
+      expect(ids.toSet().length, ids.length, reason: 'duplicate provider id');
+    });
+  });
+
   group('provider registry', () {
     test('covers the providers people actually have keys for', () {
       final ids = kCloudProviders.map((p) => p.id).toSet();

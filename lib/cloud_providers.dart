@@ -139,6 +139,107 @@ const List<CloudProvider> kCloudProviders = [
     models: ['grok-3-mini', 'grok-3'],
   ),
   CloudProvider(
+    id: 'atria',
+    label: 'Atria',
+    baseUrl: 'https://api.atria-asi.ai/v1',
+    format: CloudWireFormat.openai,
+    keyHint: 'atr_...',
+    keyLabel: 'Atria API key',
+    // Capitalisation is significant. The documented id is Atria-Dawn-Preview,
+    // and lowercasing it gets a 400 from a model that is otherwise excellent.
+    models: ['Atria-Dawn-Preview'],
+    note: 'Shanghai AI Laboratory\'s agentic research model, 256K context, '
+        'text only. Built for long research and engineering runs rather than '
+        'short chat replies.',
+  ),
+  CloudProvider(
+    id: 'cerebras',
+    label: 'Cerebras',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    format: CloudWireFormat.openai,
+    keyHint: 'csk-...',
+    models: ['llama-3.3-70b', 'llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507'],
+    note: 'Very fast inference on their own hardware.',
+  ),
+  CloudProvider(
+    id: 'fireworks',
+    label: 'Fireworks',
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
+    format: CloudWireFormat.openai,
+    keyHint: 'fw_...',
+    models: [
+      'accounts/fireworks/models/llama-v3p3-70b-instruct',
+      'accounts/fireworks/models/qwen3-235b-a22b',
+    ],
+  ),
+  CloudProvider(
+    id: 'nvidia',
+    label: 'NVIDIA NIM',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    format: CloudWireFormat.openai,
+    keyHint: 'nvapi-...',
+    models: [
+      'meta/llama-3.3-70b-instruct',
+      'deepseek-ai/deepseek-r1',
+      'qwen/qwen2.5-coder-32b-instruct',
+    ],
+  ),
+  CloudProvider(
+    id: 'huggingface',
+    label: 'Hugging Face',
+    baseUrl: 'https://router.huggingface.co/v1',
+    format: CloudWireFormat.openai,
+    keyHint: 'hf_...',
+    models: [
+      'deepseek-ai/DeepSeek-V3',
+      'meta-llama/Llama-3.3-70B-Instruct',
+      'Qwen/Qwen2.5-72B-Instruct',
+    ],
+  ),
+  CloudProvider(
+    id: 'moonshot',
+    label: 'Moonshot / Kimi',
+    baseUrl: 'https://api.moonshot.ai/v1',
+    format: CloudWireFormat.openai,
+    keyHint: 'sk-...',
+    models: ['kimi-k2-0905-preview', 'moonshot-v1-128k'],
+    note: 'Long context, good at working through a pile of notes.',
+  ),
+  CloudProvider(
+    id: 'perplexity',
+    label: 'Perplexity',
+    baseUrl: 'https://api.perplexity.ai',
+    format: CloudWireFormat.openai,
+    keyHint: 'pplx-...',
+    models: ['sonar', 'sonar-pro', 'sonar-reasoning'],
+    note: 'Search built in, so it can look things up as well as answer.',
+  ),
+  CloudProvider(
+    id: 'zai',
+    label: 'Z.ai (GLM)',
+    baseUrl: 'https://api.z.ai/api/paas/v4',
+    format: CloudWireFormat.openai,
+    keyHint: '...',
+    models: ['glm-4.6', 'glm-4.5-air'],
+  ),
+  CloudProvider(
+    id: 'minimax',
+    label: 'MiniMax',
+    baseUrl: 'https://api.minimax.ai/v1',
+    format: CloudWireFormat.openai,
+    keyHint: '...',
+    models: ['minimax-M2', 'minimax-m2.5'],
+  ),
+  CloudProvider(
+    id: 'inception',
+    label: 'Inception Mercury',
+    baseUrl: 'https://api.inceptionlabs.ai/v1',
+    format: CloudWireFormat.openai,
+    keyHint: '...',
+    models: ['mercury-coder-small'],
+    note: 'Diffusion language model. Very fast, tuned for code.',
+  ),
+  CloudProvider(
     id: 'custom',
     label: 'Custom / self-hosted',
     baseUrl: 'http://127.0.0.1:8080/v1',
@@ -365,5 +466,47 @@ class CloudAdapter {
     };
     if (detail == null || detail.isEmpty) return reason;
     return '$reason $detail';
+  }
+}
+
+/// Finds providers and models by name.
+///
+/// The list is long enough that scrolling to find a model is the wrong
+/// interface, and a person looking for "glm" should not have to know whether
+/// that is Z.ai, Zhipu or a custom endpoint.
+///
+/// Matches on the provider label, the provider id, and every model id, because
+/// people search for whichever of the three they happen to remember.
+class CloudSearch {
+  const CloudSearch._();
+
+  static List<CloudProvider> providersMatching(String query) =>
+      modelsMatching(query).keys.toList();
+
+  /// Providers with the models that matched, per provider.
+  ///
+  /// A provider whose *name* matched brings all its models, because matching the
+  /// provider is an intention to use it rather than to pick one model from it.
+  static Map<CloudProvider, List<String>> modelsMatching(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) {
+      return {for (final p in kCloudProviders) p: p.models};
+    }
+    final out = <CloudProvider, List<String>>{};
+    for (final provider in kCloudProviders) {
+      final providerMatched =
+          provider.label.toLowerCase().contains(q) ||
+              provider.id.toLowerCase().contains(q) ||
+              (provider.note?.toLowerCase().contains(q) ?? false);
+      if (providerMatched) {
+        out[provider] = provider.models;
+        continue;
+      }
+      final models = provider.models
+          .where((m) => m.toLowerCase().contains(q))
+          .toList();
+      if (models.isNotEmpty) out[provider] = models;
+    }
+    return out;
   }
 }

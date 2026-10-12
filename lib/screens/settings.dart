@@ -381,6 +381,8 @@ class _CloudCard extends ConsumerStatefulWidget {
 
 class _CloudCardState extends ConsumerState<_CloudCard> {
   final _controller = TextEditingController();
+  /// Filter over providers and models at once.
+  final _cloudSearch = TextEditingController();
   final _modelController = TextEditingController();
   bool _revealed = false;
   String? _status;
@@ -404,6 +406,7 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
   void dispose() {
     _controller.dispose();
     _modelController.dispose();
+    _cloudSearch.dispose();
     super.dispose();
   }
 
@@ -483,11 +486,31 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Search, because there are twenty providers and several models
+            // each. Scrolling a dropdown to find a model is the wrong interface,
+            // and someone looking for "glm" should not have to know whether that
+            // is Z.ai, Zhipu or a custom endpoint.
+            TextField(
+              controller: _cloudSearch,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Find a provider or model',
+                hintText: 'atria, glm, grok, claude, qwen...',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: _cloudSearch.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () => setState(() => _cloudSearch.clear()),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               value: _providerId,
               decoration: const InputDecoration(labelText: 'Provider'),
               isExpanded: true,
-              items: kCloudProviders
+              items: (CloudSearch.providersMatching(_cloudSearch.text))
                   .map((p) => DropdownMenuItem(value: p.id, child: Text(p.label)))
                   .toList(),
               onChanged: (v) {

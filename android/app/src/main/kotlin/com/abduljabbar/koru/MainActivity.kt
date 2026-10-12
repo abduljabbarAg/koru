@@ -101,6 +101,12 @@ class MainActivity : FlutterActivity() {
         MethodChannel(messenger, engineChannelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "status" -> result.success(engineStatus())
+                "diagnose" -> result.success(
+                    mapOf(
+                        "alive" to (engine?.isAlive == true),
+                        "log" to engineLog(),
+                    )
+                )
                 "models" -> result.success(
                     availableModels().map { (label, file) ->
                         mapOf("label" to label, "path" to file.absolutePath)

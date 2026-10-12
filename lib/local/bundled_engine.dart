@@ -61,6 +61,21 @@ class BundledEngine {
   /// generous and the timeout is reported rather than swallowed. A process can be
   /// alive and still loading a model, so health is polled instead of trusting the
   /// start call to mean anything.
+  /// Why the engine is not answering, in its own words.
+  Future<EngineDiagnosis> diagnose() async {
+    try {
+      final raw = await _channel.invokeMapMethod<String, dynamic>('diagnose');
+      return EngineDiagnosis(
+        alive: raw?['alive'] == true,
+        log: (raw?['log'] as String? ?? '').trim(),
+      );
+    } on PlatformException {
+      return const EngineDiagnosis(alive: false, log: '');
+    } on MissingPluginException {
+      return const EngineDiagnosis(alive: false, log: '');
+    }
+  }
+
   /// Every model glen could be pointed at.
   ///
   /// The bundled one is always first. Anything else is a .gguf the person put
@@ -130,8 +145,16 @@ class BundledEngine {
         return BundledStartResult.ready('http://127.0.0.1:$port');
       }
     }
+    // A model glen cannot load does not fail at launch, it dies while loading
+    // the file. start() reported success for that, the health poll then timed
+    // out, and the message said only that nothing answered. The reason is in the
+    // engine's own log, so it is fetched and passed on: "missing tensor
+    // blk.0.attn_q.weight" is a diagnosis, "did not answer in 180 seconds" is
+    // not.
+    final why = await diagnose();
     return BundledStartResult.failed(
-      'The bundled engine did not answer within ${timeout.inSeconds} seconds. '
+      '${why.alive ? 'The engine is running but did not answer' : 'The engine stopped'} '
+      'within ${timeout.inSeconds} seconds. $why'
       'It may be out of memory.',
     );
   }
@@ -223,4 +246,22 @@ class LocalModelFile {
   /// Shown in the picker, with the size already worked out.
   final String label;
   final String path;
+}
+
+/// What the engine said about itself when it would not answer.
+class EngineDiagnosis {
+  const EngineDiagnosis({required this.alive, required this.log});
+
+  final bool alive;
+  final String log;
+
+  /// The tail of the log, which is where the reason is.
+  String get tail {
+    if (log.isEmpty) return 'The engine wrote nothing about why.';
+    final lines = log.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    return lines.take(6).join('\n');
+  }
+
+  @override
+  String toString() => tail;
 }
