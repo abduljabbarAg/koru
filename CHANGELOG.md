@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.1
+
+The beard only existed on the fallback path.
+
+### Fixed
+
+- **Koru's beard and glasses now actually show.** They were drawn in the
+  fallback vector portrait, and the sprite atlas is what renders whenever it
+  decodes, which is always. So the release announced a bearded character and
+  shipped the old one. The beard and the spectacles are now drawn by
+  `tool/generate_assets.py`, the same script that already owned every pixel of
+  the atlas, the splash and the crest, and the whole set was regenerated from it
+  rather than patched as binary.
+
 ## 1.2.0
 
 Everything on the list, finished.
