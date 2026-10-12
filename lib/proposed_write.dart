@@ -295,6 +295,11 @@ class WriteResolver {
 
   Future<WriteResolution> resolve(WriteIntent intent, ProfileStore store) async {
     switch (intent) {
+      case IncompleteWriteIntent(:final question):
+        // Not a write to approve: there is nothing to approve yet. The question
+        // is the answer, and it never reaches a model that would rather invent
+        // a result than admit it cannot act.
+        return WriteResolution.problem(question);
       case AddClientIntent():
         return WriteResolution.proposed(
           ProposedClient(name: intent.name, amount: intent.amount, due: intent.due),

@@ -71,7 +71,15 @@ void main() {
     });
 
     test('declines rather than inventing a name from numbers alone', () {
-      expect(parse('add client 2000'), isNull);
+      // Still no client, and still no invented name: a bare number is not
+      // somebody's name. What changed is where it goes. Returning null sent it
+      // to the model, which cannot write anything and answered "I have added
+      // it", so a request with no name now becomes the question that unblocks
+      // it instead.
+      final intent = parse('add client 2000');
+      expect(intent, isNot(isA<AddClientIntent>()));
+      expect(intent, isA<IncompleteWriteIntent>());
+      expect((intent! as IncompleteWriteIntent).question, isNotEmpty);
     });
 
     test('reads a due date', () {

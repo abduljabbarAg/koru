@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/backup.dart';
 import 'package:koru/local/local_model_client.dart';
+import 'package:koru/local/write_intent.dart';
 import 'package:koru/models.dart';
 import 'package:koru/screens/chat.dart';
 import 'package:koru/secrets.dart';
@@ -585,6 +586,38 @@ void main() {
       expect((decoded['payments'] as List).first['amount'], 500);
     });
   });
+  group('asking for an entry in the words people use', () {
+    // "add an entry" matched no write cue. It fell through to the model, which
+    // has no ability to write, and the model reported success anyway. The cue
+    // list is the first half of the fix. The second half is that a cue with no
+    // usable name has to become a question, because "add an entry" carries no
+    // name and there is genuinely nothing to write yet.
+    const p = WriteIntentParser();
+
+    test('a bare entry request is a write that needs a name', () {
+      for (final phrase in [
+        'add an entry',
+        'add a record',
+        'new entry',
+        'add a contact',
+      ]) {
+        final intent = p.parse(phrase);
+        expect(intent, isA<IncompleteWriteIntent>(), reason: phrase);
+      }
+    });
+
+    test('it asks the question that unblocks it', () {
+      final intent = p.parse('add an entry')! as IncompleteWriteIntent;
+      expect(intent.question, contains('Who should I add'));
+      expect(intent.kind, WriteKind.client);
+    });
+
+    test('still produces a real write once a name is there', () {
+      expect(p.parse('add an entry for Bilal'),
+          isA<AddClientIntent>());
+    });
+  });
+
 }
 
 /// Emits one token per event loop turn, the way a real server does.
@@ -671,4 +704,7 @@ class _ThrowingClient extends LocalModelClient {
     double temperature = 0.7,
   }) async =>
       const LocalFailed('Could not reach the local model.');
+
+
+
 }

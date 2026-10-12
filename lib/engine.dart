@@ -269,3 +269,79 @@ class ModelOutputGuard {
     return (code >= 48 && code <= 122) || code == 39;
   }
 }
+
+/// Catches a model claiming it saved something it could not have.
+///
+/// The model is a text generator running on the phone. It cannot write to the
+/// database; it emits words. Everything that gets saved is written by Dart
+/// after the user approves a card. So any sentence saying it added, saved or
+/// created something is false by construction.
+///
+/// It is also the most damaging thing a helper can say, because it is the one
+/// the user cannot check: the chat looks like a receipt, and the record simply
+/// is not there. Found from testing, where "add an entry" matched no write
+/// cue, fell through to the model, and the model cheerfully reported success.
+class WriteClaimGuard {
+  const WriteClaimGuard._();
+
+  /// Claims of having completed a write.
+  ///
+  /// Written without apostrophes on purpose. [claimsWrite] folds punctuation to
+  /// spaces before matching, so a needle containing one could never match the
+  /// folded text: the answer "I've added Bilal" folds to "i ve added bilal" and
+  /// an "i've added" needle sits there forever matching nothing. Both sides go
+  /// through the same fold instead.
+  static const _claims = <String>[
+    'ive added',
+    'i have added',
+    'i added',
+    'ive created',
+    'i have created',
+    'ive saved',
+    'i have saved',
+    'ive recorded',
+    'i have recorded',
+    'ive logged',
+    'i have logged',
+    'added successfully',
+    'saved successfully',
+    'all set',
+  ];
+
+  /// Folds case and punctuation the same way on both sides of the comparison.
+  ///
+  /// Apostrophes are deleted rather than spaced out, because they join a word:
+  /// "I've" is one word, so folding it to "i ve" leaves the needle "ive added"
+  /// unable to match the single most common way a model claims a write. Every
+  /// other run of non-alphanumerics becomes a single space, since it separates.
+  static String fold(String text) => text
+      .toLowerCase()
+      .replaceAll("'", '')
+      .replaceAll('\u2019', '')
+      .replaceAll(RegExp('[^a-z0-9]+'), ' ')
+      .trim();
+
+  /// True when [answer] is claiming a write it could not have made.
+  ///
+  /// Only consulted when no write was proposed. If a card was shown and the user
+  /// approved it, a model saying "added" afterwards is correct and the guard
+  /// must not fire.
+  /// Word-boundary match, so "all set" does not fire inside "install".
+  static bool _contains(String text, String needle) =>
+      RegExp('\\b${RegExp.escape(needle)}\\b').hasMatch(text);
+
+  static bool claimsWrite(String answer) {
+    final q = fold(answer);
+    return _claims.any((c) => _contains(q, fold(c)));
+  }
+
+  /// What to say instead.
+  ///
+  /// Names the phrasing that would have worked, because the useful reply to "I
+  /// cannot do that" is "say it like this".
+  static const nothingWasSaved =
+      'I have not saved anything. I cannot save things myself, Koru records '
+      'them when you ask in plain English and shows you what it understood '
+      'first. Try "add client Bilal for 2000", or paste a list with one '
+      'client per line.';
+}

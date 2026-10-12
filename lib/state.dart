@@ -447,6 +447,17 @@ class ChatNotifier extends Notifier<ChatState> {
   /// Counts requests. Anything started before the current one is stale.
   int _generation = 0;
 
+  /// Replaces a reply that claims it saved something with one that did not.
+  ///
+  /// Only reached when no write was proposed, because a write that went through
+  /// a card really was saved and the model is right to say so. A model that says
+  /// "I've added Bilal" when nothing was added is worse than useless: the chat
+  /// looks like a receipt and the record is simply not there.
+  String _honestAboutWrites(String text) {
+    if (!WriteClaimGuard.claimsWrite(text)) return text;
+    return WriteClaimGuard.nothingWasSaved;
+  }
+
   /// What the app is about to do about [q], in the user's terms.
   ///
   /// Names the job rather than how the bytes are moving. It used to open on
@@ -904,7 +915,8 @@ class ChatNotifier extends Notifier<ChatState> {
         // finished message must be that same text rather than a second copy.
         return Msg(
           MsgRole.koru,
-          buffer.isNotEmpty ? buffer.toString().trim() : text,
+          _honestAboutWrites(
+              buffer.isNotEmpty ? buffer.toString().trim() : text),
           why: routing.reason,
           local: false,
           engine: KoruEngine.cloud,
@@ -914,9 +926,9 @@ class ChatNotifier extends Notifier<ChatState> {
         // weaker answer as the stronger one the user asked for.
         final fallback = await _askBuiltIn(q, routing, store);
         return fallback.copyWith(
-          text: '${fallback.text}\n\n(I answered that from your own records '
-              'because no ${selection.provider.label} key is set. Add one in '
-              'Settings.)',
+          text: '${_honestAboutWrites(fallback.text)}\n\n(I answered that '
+              'from your own records because no ${selection.provider.label} '
+              'key is set. Add one in Settings.)',
         );
       case CloudFailure(:final reason):
         return Msg(
@@ -1031,6 +1043,19 @@ final healthBridgeProvider = Provider<HealthBridge>((ref) => const HealthBridge(
 /// Models the bundled engine could be pointed at, bundled one first.
 final availableModelsProvider = FutureProvider<List<LocalModelFile>>((ref) async {
   return ref.watch(bundledEngineProvider).models();
+});
+
+/// Whether the on-device engine could actually run.
+///
+/// Since 1.0.0 the binary and the 0.5B model are out of the APK, so selecting
+/// the on-device engine on a fresh install found nothing to start and silently
+/// fell back to the built-in assistant. That fallback answers in milliseconds,
+/// which is exactly why "the local model is so much faster than cloud" looked
+/// true: no model was running. The setting has to say so instead.
+final localEnginePresentProvider = FutureProvider<bool>((ref) async {
+  if (!await ref.watch(bundledEngineProvider).available) return false;
+  final models = await ref.watch(availableModelsProvider.future);
+  return models.isNotEmpty;
 });
 
 /// The path of the model the user picked, or null for the bundled default.

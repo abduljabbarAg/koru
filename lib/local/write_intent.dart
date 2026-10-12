@@ -82,6 +82,44 @@ class AddDeadlineIntent extends WriteIntent {
 String _plain(double v) =>
     v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
+/// A write that was asked for but is missing the one thing it needs.
+///
+/// "add an entry" is an instruction to record something. It carries no name, so
+/// there is nothing to write yet, but it is emphatically not a question for the
+/// model. Falling through is what let the model answer "I have added it": it had
+/// a sentence it could not act on and no way to say so, so it invented a
+/// result. Answering here instead means the user gets the one question that
+/// unblocks them.
+class IncompleteWriteIntent extends WriteIntent {
+  const IncompleteWriteIntent({required this.kind, required this.askedFor});
+
+  /// What they were trying to add: a client, a payment or a deadline.
+  final WriteKind kind;
+
+  /// The part they gave, kept so the follow up can quote it back.
+  final String askedFor;
+
+  /// What to ask, since the answer is not a question.
+  String get question => switch (kind) {
+        WriteKind.client =>
+          'Who should I add? Give me a name, like "add client Bilal for 2000".',
+        WriteKind.payment =>
+          'Which client paid, and how much? Like "Bilal paid 500".',
+        WriteKind.deadline =>
+          'What is the deadline for? Like "Bilal due Friday".',
+      };
+
+  /// Never reaches a card, but the getter is part of the sealed contract.
+  @override
+  String get summary => question;
+
+  @override
+  String toString() => 'IncompleteWriteIntent(${kind.name}, "$askedFor")';
+}
+
+/// The three kinds of write the parser recognises.
+enum WriteKind { client, payment, deadline }
+
 /// Turns a sentence into a [WriteIntent], or null when it is not asking for one.
 ///
 /// Pure and synchronous, so the whole grammar is testable without a database, a
@@ -137,6 +175,20 @@ class WriteIntentParser {
     'new customer',
     'add a new customer',
     'add new customer',
+    // "entry", "record" and "contact" are how people actually say this. Without
+    // them, "add an entry" matched nothing, fell through to the model, and the
+    // model then said it had done it. It cannot have: it emits text and nothing
+    // else.
+    'new entry',
+    'add an entry',
+    'add entry',
+    'create an entry',
+    'create entry',
+    'add a record',
+    'new record',
+    'add a contact',
+    'new contact',
+    'log an entry',
   ];
 
   static const _paymentCues = [
@@ -391,10 +443,15 @@ class WriteIntentParser {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
-  AddClientIntent? _client(String clean, String lower) {
+  WriteIntent? _client(String clean, String lower) {
     if (!_hasCue(lower, _clientCues)) return null;
     final name = _tailAfterCue(clean, lower, _clientCues);
-    if (name == null || name.length < 2 || _number.hasMatch(name)) return null;
+    if (name == null || name.length < 2 || _number.hasMatch(name)) {
+      // The cue is there and the name is not. That is an instruction to record
+      // something that cannot be recorded yet, so it becomes a question rather
+      // than falling through to a model that would invent a result.
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
     return AddClientIntent(
       name: name,
       amount: _amountIn(lower),

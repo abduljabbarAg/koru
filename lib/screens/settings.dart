@@ -77,6 +77,7 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 22),
           const SectionLabel('Engine'),
           const _EnginePicker(),
+          const _EngineAbsentNotice(),
           const SizedBox(height: 22),
           const SectionLabel('What leaves this phone'),
           Card(
@@ -690,6 +691,30 @@ class _EnginePicker extends ConsumerWidget {
 
 /// Points Koru at a model server running on this phone, and says plainly what
 /// it is and is not good for.
+/// Says so when the on-device engine cannot run.
+///
+/// Since 1.0.0 the APK ships no engine and no model. Choosing the on-device
+/// engine then found nothing to start, fell back to the built-in assistant and
+/// answered in a few milliseconds, which reads exactly like a model being fast.
+class _EngineAbsentNotice extends ConsumerWidget {
+  const _EngineAbsentNotice();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final present = ref.watch(localEnginePresentProvider).valueOrNull;
+    if (present != false) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'No model on this phone, so the on-device option will answer from your '
+        'own records instead. That is quick, but it is not a model. Add a .gguf '
+        'below to run a real one.',
+        style: TextStyle(color: Theme.of(context).colorScheme.error),
+      ),
+    );
+  }
+}
+
 class _LocalModelCard extends ConsumerStatefulWidget {
   const _LocalModelCard();
 
