@@ -18,12 +18,22 @@ class ContextPacket {
   final String goals;
   final String focus;
 
+  /// Projects, described without money and without a client's name.
+  ///
+  /// Sent to cloud deliberately, because a model that knows only who owes
+  /// money cannot answer "what am I working on" at all. Names of people are
+  /// kept out, since this leaves the phone, while the shape of the work goes
+  /// in: that is what makes a cloud answer about the user's actual projects
+  /// possible rather than generic.
+  final List<String> projects;
+
   const ContextPacket({
     required this.nickname,
     required this.lifeStage,
     required this.business,
     required this.goals,
     required this.focus,
+    this.projects = const [],
   });
 
   /// A neutral stand-in for the user in anything that leaves the phone.
@@ -48,9 +58,19 @@ class ContextPacket {
       if (business.isNotEmpty) 'work: $business',
       if (goals.isNotEmpty) 'goals: $goals',
       if (focus.isNotEmpty) 'asking about: $focus',
+      for (final line in _projectLines) line,
     ];
     return _sentence('About this user.', parts);
   }
+
+  /// One line per project, budgeted.
+  ///
+  /// A handful, because the whole packet is capped and a long project list
+  /// spends the budget the questions need.
+  List<String> get _projectLines => [
+        for (final p in projects.take(4)) 'working on: $p',
+        if (projects.length > 4) 'and ${projects.length - 4} more project(s)',
+      ];
 
   /// Joins a preamble and its parts without leaving a dangling separator when
   /// there is nothing to say.
@@ -63,6 +83,7 @@ class ContextPacket {
         'business': business,
         'goals': goals,
         'focus': focus,
+        'projects': projects,
       };
 
   factory ContextPacket.fromJson(Map<String, dynamic> j) => ContextPacket(
@@ -71,6 +92,7 @@ class ContextPacket {
         business: j['business'] as String? ?? '',
         goals: j['goals'] as String? ?? '',
         focus: j['focus'] as String? ?? '',
+        projects: (j['projects'] as List?)?.cast<String>() ?? const [],
       );
 
   String encode() => jsonEncode(toJson());

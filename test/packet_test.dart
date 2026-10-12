@@ -331,4 +331,64 @@ void main() {
       expect(CloudModel.extractReply('{"choices":[{"message":{"content":"   "}}]}'), '   ');
     });
   });
+
+  group('projects reach the cloud without reaching for a name', () {
+    test('a personal project is described and sent', () {
+      const packet = ContextPacket(
+        nickname: 'kami',
+        lifeStage: '',
+        business: '',
+        goals: '',
+        focus: '',
+        projects: ['personal project (Learn Arabic, 30% along)'],
+      );
+      final cloud = packet.renderForCloud();
+      expect(cloud, contains('Learn Arabic'));
+      expect(cloud, contains('30% along'));
+      expect(cloud, isNot(contains('kami')),
+          reason: 'the nickname never leaves the phone');
+    });
+
+    test('a client project is described by its work, not its owner', () {
+      const packet = ContextPacket(
+        nickname: 'kami',
+        lifeStage: '',
+        business: '',
+        goals: '',
+        focus: '',
+        projects: ['a client project (the shop is open, 40% along)'],
+      );
+      final cloud = packet.renderForCloud();
+      expect(cloud, contains('the shop is open'));
+      expect(cloud, isNot(contains('kami')));
+    });
+
+    test('a long project list is capped so it cannot eat the budget', () {
+      final packet = ContextPacket(
+        nickname: '',
+        lifeStage: '',
+        business: '',
+        goals: '',
+        focus: '',
+        projects: List<String>.generate(20, (i) => 'personal project (P$i)'),
+      );
+      final cloud = packet.renderForCloud();
+      expect(cloud, contains('and 16 more project(s)'));
+      expect(cloud, isNot(contains('P5')));
+    });
+
+    test('projects survive a round trip through storage', () {
+      const packet = ContextPacket(
+        nickname: 'kami',
+        lifeStage: 'freelancer',
+        business: '',
+        goals: '',
+        focus: '',
+        projects: ['personal project (Build, 50% along)'],
+      );
+      final back = ContextPacket.fromJson(packet.toJson());
+      expect(back.projects, packet.projects);
+    });
+  });
+
 }

@@ -1,159 +1,102 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koru/local/write_intent.dart';
 import 'package:koru/models.dart';
 import 'package:koru/proposed_write.dart';
-import 'package:koru/store.dart';
 
 import 'test_store.dart';
 
-/// Resolving is the step between "I understood the sentence" and "this touches
-/// a real record", so it is tested against a real database rather than mocks.
+/// Read the database back after writing.
+///
+/// apply() returning without throwing is not evidence of anything: sqflite
+/// reports success for a write a constraint or a trigger quietly discarded. The
+/// whole point of verify() is that the app checks rather than assumes, and these
+/// tests are what make the check meaningful.
 void main() {
-  late ProfileStore store;
+  group('verify reads the write back instead of trusting apply', () {
+    test('a client that really saved reports nothing wrong', () async {
+      final store = await openTestStore();
+      const write = ProposedClient(name: 'Bilal', amount: 2000);
 
-  setUpAll(initTestDatabase);
+      await write.apply(store);
+      expect(await write.verify(store), isNull);
 
-  setUp(() async {
-    store = await openTestStore();
-  });
-
-  const parser = WriteIntentParser();
-  const resolver = WriteResolver();
-
-  Future<WriteResolution> resolve(String sentence) =>
-      resolver.resolve(parser.parse(sentence)!, store);
-
-  Future<Client> addClient(String name, {double? amount, String status = 'delivered'}) async {
-    final id = await store.addClient(Client(
-      name: name,
-      amount: amount,
-      status: status,
-      created: '2026-01-01',
-    ));
-    return Client(id: id, name: name, amount: amount, status: status);
-  }
-
-  group('a payment for a client on file', () {
-    test('resolves to a write pointing at the real client', () async {
-      final bilal = await addClient('Bilal', amount: 2000);
-      final resolution = await resolve('Bilal paid 500');
-
-      expect(resolution.isWrite, isTrue);
-      final write = resolution.write! as ProposedPayment;
-      expect(write.client.id, bilal.id);
-      expect(write.amount, 500);
-      expect(resolution.problem, isNull);
+      final clients = await store.clients();
+      expect(clients.single.name, 'Bilal');
+      expect(clients.single.amount, 2000);
     });
 
-    test('applying it appends to the ledger and leaves a part payment unsettled',
-        () async {
-      final bilal = await addClient('Bilal', amount: 2000);
-      await (await resolve('Bilal paid 500')).write!.apply(store);
+    test('an edit is confirmed against the stored row, not the intent', () async {
+      final store = await openTestStore();
+      await store.addClient(const Client(name: 'Bilal', amount: 2000, status: 'active'));
+      final client = (await store.clients()).single;
 
-      expect((await store.payments()).single.amount, 500);
-      expect(await store.balanceFor(bilal), 1500);
-      // Still owed, so the client must not have been marked settled.
-      expect((await store.clients()).single.status, isNot('paid'));
+      final write = ProposedEditClient(client: client, amount: 3000);
+      await write.apply(store);
+
+      expect(await write.verify(store), isNull);
+      expect((await store.clients()).single.amount, 3000);
     });
 
-    test('applying enough to clear the balance settles the client', () async {
-      final bilal = await addClient('Bilal', amount: 2000);
-      await (await resolve('Bilal paid 2000')).write!.apply(store);
+    test('an edit leaves the fields it never mentioned alone', () async {
+      final store = await openTestStore();
+      await store.addClient(const Client(
+        name: 'Bilal',
+        amount: 2000,
+        due: '2026-05-01',
+        status: 'active',
+      ));
+      final client = (await store.clients()).single;
 
-      expect(await store.balanceFor(bilal), 0);
-      expect((await store.clients()).single.status, 'paid');
+      final write = ProposedEditClient(client: client, amount: 3000);
+      await write.apply(store);
+
+      final after = (await store.clients()).single;
+      expect(after.amount, 3000);
+      expect(after.due, '2026-05-01', reason: 'the sentence did not mention it');
+      expect(after.status, 'active');
     });
 
-    test('a name that is a prefix resolves to the one client', () async {
-      await addClient('Bilal', amount: 100);
-      final resolution = await resolve('Bilal paid 10');
-      expect((resolution.write! as ProposedPayment).client.name, 'Bilal');
-    });
-  });
+    test('a delete is confirmed by the client being gone', () async {
+      final store = await openTestStore();
+      await store.addClient(const Client(name: 'Bilal', amount: 2000));
+      final client = (await store.clients()).single;
 
-  group('a payment for a client who is not on file', () {
-    test('is refused with a sentence saying so', () async {
-      final resolution = await resolve('Nobody paid 500');
-      expect(resolution.isWrite, isFalse);
-      expect(resolution.problem, contains('Nobody'));
+      final write = ProposedDeleteClient(client: client);
+      await write.apply(store);
+
+      expect(await write.verify(store), isNull);
+      expect((await store.clients()), isEmpty);
     });
 
-    test('is refused rather than invented', () async {
-      await resolve('Ghost paid 500');
-      expect(await store.payments(), isEmpty);
-      expect(await store.clients(), isEmpty);
+    test('a payment is confirmed in the ledger', () async {
+      final store = await openTestStore();
+      final id = await store.addClient(const Client(name: 'Bilal', amount: 2000));
+      final client = (await store.clients()).singleWhere((c) => c.id == id);
+
+      final write = ProposedPayment(client: client, amount: 500);
+      await write.apply(store);
+
+      expect(await write.verify(store), isNull);
+      final paid = await store.payments();
+      expect(paid.map((p) => p.amount), contains(500));
     });
   });
 
-  group('an ambiguous client name', () {
-    test('is reported rather than picked', () async {
-      await addClient('North Studio', amount: 100);
-      await addClient('South Studio', amount: 200);
-
-      // "Studio" contains both and is a prefix of neither, so there is no way to
-      // choose and the resolver says so instead of taking the first.
-      final vague = await resolve('Studio paid 10');
-      expect(vague.isWrite, isFalse);
-      expect(vague.problem, contains('North Studio'));
-      expect(vague.problem, contains('South Studio'));
-      expect(await store.payments(), isEmpty);
+  group('the summaries say what will happen', () {
+    test('a delete says the payments are kept', () async {
+      const write = ProposedDeleteClient(
+        client: Client(id: 1, name: 'Bilal', amount: 2000),
+      );
+      expect(write.summary, contains('Bilal'));
+      expect(write.summary.toLowerCase(), contains('payments'));
     });
 
-    test('an exact name wins even when another contains it', () async {
-      await addClient('Bilal', amount: 100);
-      await addClient('Bilal Studio', amount: 200);
-
-      final exact = await resolve('Bilal paid 10');
-      expect((exact.write! as ProposedPayment).client.name, 'Bilal');
-    });
-
-    test('a prefix still resolves when it identifies one client', () async {
-      await addClient('Bilal', amount: 100);
-      await addClient('Sara', amount: 200);
-      expect((await resolve('Bil paid 10')).write, isA<ProposedPayment>());
-    });
-  });
-
-  group('adding a client', () {
-    test('applies with whatever the sentence said', () async {
-      await (await resolve('add client Sara for 1500')).write!.apply(store);
-      final created = (await store.clients()).single;
-      expect(created.name, 'Sara');
-      expect(created.amount, 1500);
-    });
-
-    test('a client with no amount becomes a lead, not an active job', () async {
-      await (await resolve('add client Prospective Ltd')).write!.apply(store);
-      expect((await store.clients()).single.status, 'lead');
-    });
-  });
-
-  group('adding a deadline', () {
-    test('applies the title and the date', () async {
-      await (await resolve('add a deadline to send the invoice on 2026-05-04')).write!
-          .apply(store);
-      final d = (await store.deadlines()).single;
-      expect(d.title, 'send the invoice');
-      expect(d.due, '2026-05-04');
-    });
-
-    test('falls back to today rather than inventing a date', () async {
-      await (await resolve('add a deadline to file taxes')).write!.apply(store);
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      expect((await store.deadlines()).single.due, today);
-    });
-  });
-
-  group('nothing is written without an approve', () {
-    test('resolving alone touches nothing', () async {
-      await addClient('Bilal', amount: 2000);
-      await resolve('Bilal paid 500');
-      await resolve('add client Sara');
-      await resolve('add a deadline to send the invoice');
-
-      expect(await store.payments(), isEmpty);
-      expect(await store.clients(), hasLength(1));
-      expect(await store.deadlines(), isEmpty);
+    test('an edit names the client and the new value', () {
+      const write = ProposedEditClient(
+        client: Client(id: 1, name: 'Bilal', amount: 2000),
+        amount: 3000,
+      );
+      expect(write.summary, contains('Bilal'));
+      expect(write.summary, contains('3000'));
     });
   });
 }

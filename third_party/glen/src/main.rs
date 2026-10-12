@@ -1153,8 +1153,25 @@ fn feed(m: &Model, ids: &[u32], pos: &mut usize, caches: &mut [Cache], tpb: &mut
         let mut resp = String::new();
         let mut calls = 0usize;
         let mut stop = false;
+        // Anything in GLen_FORCE has to open the reply. Set by the caller when it
+        // needs the answer in a shape it can parse rather than merely read.
+        let mut constraint = tools::Constraint::forced(
+            match std::env::var("GLen_FORCE") {
+                Ok(t) if !t.is_empty() => tok::encode(bpe, &t),
+                _ => vec![],
+            },
+        );
         while !stop && gen < max_new + 64 && pos < max_pos - 4 {
-            let nx = tools::sample(&mut rng, cur, &hist, &samp);
+            // While the prefix is being forced the mask owns a copy of the
+            // logits. Once it is spent the mask is dropped and sampling reads
+            // the forward pass's own buffer, which is reused every token and so
+            // must not be written to.
+            let masked = constraint.mask(cur);
+            let nx = match masked {
+                Some(_) => constraint.next().unwrap(),
+                None => tools::sample(&mut rng, cur, &hist, &samp),
+            };
+            constraint.accept(nx);
             if nx == bpe.eos {
                 break;
             }

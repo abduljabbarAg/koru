@@ -140,6 +140,16 @@ class LocalEngineFacts {
   /// Open deadlines, soonest first.
   final List<Deadline> deadlines;
 
+  /// Client and personal projects, with the latest note for each.
+  ///
+  /// Projects existed in the database from the start and were never in this, so
+  /// the model could not answer a single question about the work someone was
+  /// actually doing. It knew who owed money and nothing about what any of it
+  /// was for.
+  final List<Project> projects;
+
+  final Map<int, String> projectNotes;
+
   const LocalEngineFacts({
     this.nickname = '',
     this.goals = '',
@@ -147,9 +157,12 @@ class LocalEngineFacts {
     this.clients = const [],
     this.received = const {},
     this.deadlines = const [],
+    this.projects = const [],
+    this.projectNotes = const {},
   });
 
-  bool get isEmpty => clients.isEmpty && deadlines.isEmpty;
+  bool get isEmpty =>
+      clients.isEmpty && deadlines.isEmpty && projects.isEmpty;
 
   double balanceOf(Client c) =>
       c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
@@ -185,6 +198,26 @@ class LocalEngineFacts {
         lines.add('and ${owing.length - 4} more client(s) with a balance');
       }
       if (overdue > 0) lines.add('$overdue client(s) are past their due date');
+    }
+
+    if (projects.isNotEmpty) {
+      // One line per project, newest note folded in. This is prefill the user
+      // waits through, so a project with no note still gets named: "Bilal site,
+      // no update" is information, and omitting it makes the model believe the
+      // project does not exist.
+      for (final pr in projects.take(6)) {
+        final note = projectNotes[pr.id]?.trim();
+        final progress = (pr.progress * 100).round();
+        final bits = <String>['$progress% along'];
+        if (pr.target != null && pr.target!.isNotEmpty) {
+          bits.add('done when ${pr.target}');
+        }
+        if (note != null && note.isNotEmpty) bits.add('latest: $note');
+        lines.add('${pr.name} (${pr.kind == ProjectKind.client ? 'client' : 'personal'}): ${bits.join(', ')}');
+      }
+      if (projects.length > 6) {
+        lines.add('and ${projects.length - 6} more project(s)');
+      }
     }
 
     if (deadlines.isNotEmpty) {

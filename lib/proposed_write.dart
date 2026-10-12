@@ -16,6 +16,19 @@ sealed class ProposedWrite {
   String get summary;
 
   Future<void> apply(ProfileStore store);
+
+  /// Reads the database back and says what is actually there.
+  ///
+  /// Returns null when the write landed, and a sentence explaining what
+  /// happened when it did not. Run after every apply rather than only in tests,
+  /// because apply() returning without throwing is not evidence: sqflite can
+  /// report success for a write a constraint or a trigger quietly discarded,
+  /// and a confirmation the user cannot check is exactly the failure this app
+  /// has been fighting.
+  ///
+  /// The app is held to the same rule as the model. The model must never claim a
+  /// save it cannot make; the app must never report one it has not looked at.
+  Future<String?> verify(ProfileStore store);
 }
 
 class ProposedClient extends ProposedWrite {
@@ -91,6 +104,17 @@ class ProposedClient extends ProposedWrite {
   static String _dateOf(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final match = (await store.clients())
+        .where((c) => c.name.toLowerCase() == name.toLowerCase())
+        .toList();
+    if (match.isEmpty) {
+      return 'I said I added $name and it is not in your clients. '
+          'Nothing was saved, so please try again.';
+    }
+    return null;
+  }
 }
 
 class ProposedPayment extends ProposedWrite {
@@ -134,6 +158,21 @@ class ProposedPayment extends ProposedWrite {
       await store.setClientStatus(client.id!, 'paid');
     }
   }
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = client.id;
+    if (id == null) {
+      return 'That payment has no client attached, so I cannot confirm it.';
+    }
+    final match = (await store.payments()).where((x) =>
+        x.clientId == id &&
+        (amount == null || (x.amount - amount!).abs() < 0.005));
+    if (match.isEmpty) {
+      return 'I said I recorded that payment and it is not in your ledger. '
+          'Nothing was saved, so please try again.';
+    }
+    return null;
+  }
 }
 
 class ProposedDeadline extends ProposedWrite {
@@ -154,6 +193,17 @@ class ProposedDeadline extends ProposedWrite {
         title: title,
         due: due ?? DateTime.now().toIso8601String().substring(0, 10),
       ));
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final found = (await store.deadlines())
+        .where((d) => d.title.toLowerCase() == title.toLowerCase())
+        .toList();
+    if (found.isEmpty) {
+      return 'I said I added that deadline and it is not in your list. '
+          'Nothing was saved, so please try again.';
+    }
+    return null;
+  }
 }
 
 /// A list of writes, shown to the user as numbered steps and applied together.
@@ -192,6 +242,29 @@ class ProposedPlan extends ProposedWrite {
       }
     });
   }
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    // Every step has to be there. An import that lands most of a list looks
+    // exactly like a successful one until the missing row is noticed.
+    // Only the step types that name a client can be checked by name. Anything
+    // else in a plan has its own verify, so a plan step of another kind is
+    // checked by that step rather than guessed at here.
+    final names = (await store.clients()).map((c) => c.name.toLowerCase()).toSet();
+    final missing = <String>[];
+    for (final step in steps.whereType<ProposedClient>()) {
+      if (!names.contains(step.name.toLowerCase())) missing.add(step.name);
+    }
+    if (missing.isNotEmpty) {
+      return 'I added ${steps.length - missing.length} of ${steps.length}. '
+          'These did not go in: ${missing.take(5).join(', ')}'
+          '${missing.length > 5 ? ' and ${missing.length - 5} more' : ''}.';
+    }
+    if (problems.isEmpty) return null;
+    return 'I added ${steps.length} client(s). '
+        'These lines were not usable: '
+        '${problems.take(3).map((p) => '"${p.text}"').join(', ')}.'
+        '${problems.length > 3 ? ' And ${problems.length - 3} more.' : ''}';
+  }
 }
 
 /// A proposed import, tied to the text it came from.
@@ -200,6 +273,100 @@ class ProposedPlan extends ProposedWrite {
 /// doubling everyone's balance. It is stored rather than checked against the
 /// client names, because a second paste of a corrected list is a legitimate
 /// thing to want and a name match would refuse it.
+/// A change to a client already on file.
+class ProposedEditClient extends ProposedWrite {
+  const ProposedEditClient({
+    required this.client,
+    this.amount,
+    this.due,
+    this.status,
+  });
+
+  /// Resolved from the real records, never from typed text.
+  final Client client;
+  final double? amount;
+  final String? due;
+  final String? status;
+
+  @override
+  String get summary {
+    final parts = <String>[];
+    if (amount != null) parts.add('amount to ${_plain(amount!)}');
+    if (due != null) parts.add('due $due');
+    if (status != null) parts.add('status to $status');
+    return 'Change ${client.name}: ${parts.join(', ')}';
+  }
+
+  @override
+  Future<void> apply(ProfileStore store) async {
+    // Read, change, write, rather than patching the row. That is what keeps a
+    // field the sentence never mentioned exactly as it was: it named two things
+    // and the other four stay untouched.
+    await store.updateClient(client.copyWith(
+      amount: amount ?? client.amount,
+      due: due ?? client.due,
+      status: status ?? client.status,
+    ));
+  }
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = client.id;
+    if (id == null) return 'That client has no id, so I cannot confirm anything.';
+    final rows = (await store.clients()).where((c) => c.id == id).toList();
+    if (rows.isEmpty) {
+      return '${client.name} is not in your clients any more, so there was '
+          'nothing to change. Nothing was saved.';
+    }
+    final c = rows.single;
+    // Only the fields that were meant to change. Comparing the whole object
+    // would report a failure for exactly the behaviour that was asked for,
+    // since the untouched fields are meant to differ from the intent.
+    if (amount != null && (c.amount ?? 0) != amount) {
+      return '${client.name} still says ${_plain(c.amount ?? 0)}, not '
+          '${_plain(amount!)}. The change did not save.';
+    }
+    if (due != null && c.due != due) {
+      return '${client.name} still has a due date of ${c.due ?? 'none'}, not '
+          '$due. The change did not save.';
+    }
+    if (status != null && c.status != status) {
+      return '${client.name} is still ${c.status}, not $status. '
+          'The change did not save.';
+    }
+    return null;
+  }
+}
+
+/// Removes a client.
+///
+/// The payments are left alone. A ledger that paid a client who no longer exists
+/// is history, and deleting those rows would quietly change totals that have
+/// already been reported. The client goes; the money they paid stays.
+class ProposedDeleteClient extends ProposedWrite {
+  const ProposedDeleteClient({required this.client});
+
+  final Client client;
+
+  @override
+  String get summary =>
+      'Delete ${client.name}, keeping the payments already recorded';
+
+  @override
+  Future<void> apply(ProfileStore store) => store.deleteClient(client.id!);
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = client.id;
+    if (id == null) return 'That client has no id, so I cannot confirm anything.';
+    if ((await store.clients()).any((c) => c.id == id)) {
+      return 'I said I deleted ${client.name} and it is still in your clients. '
+          'Nothing changed.';
+    }
+    return null;
+  }
+}
+
 class ProposedImport extends ProposedPlan {
   ProposedImport({
     required super.steps,
@@ -324,6 +491,46 @@ class WriteResolver {
         return WriteResolution.proposed(
           ProposedPayment(client: match.single, amount: intent.amount, note: intent.note),
         );
+
+      case EditClientIntent():
+        final editMatch = _match(await store.clients(), intent.clientName);
+        if (editMatch.isEmpty) {
+          return WriteResolution.problem(
+            'I do not have a client called ${intent.clientName}. '
+            'Say "add client ${intent.clientName}" and I will.',
+          );
+        }
+        if (editMatch.length > 1) {
+          return WriteResolution.problem(
+            'More than one client matches ${intent.clientName}: '
+            '${editMatch.map((c) => c.name).join(' and ')}. Tell me which one.',
+          );
+        }
+        return WriteResolution.proposed(
+          ProposedEditClient(
+            client: editMatch.single,
+            amount: intent.amount,
+            due: intent.due,
+            status: intent.status,
+          ),
+        );
+
+      case DeleteClientIntent():
+        final delMatch = _match(await store.clients(), intent.clientName);
+        if (delMatch.isEmpty) {
+          return WriteResolution.problem(
+            'I do not have a client called ${intent.clientName}, so there is '
+            'nothing to delete.',
+          );
+        }
+        if (delMatch.length > 1) {
+          return WriteResolution.problem(
+            'More than one client matches ${intent.clientName}: '
+            '${delMatch.map((c) => c.name).join(' and ')}. Tell me which one, '
+            'because I am not going to guess which one you meant to lose.',
+          );
+        }
+        return WriteResolution.proposed(ProposedDeleteClient(client: delMatch.single));
 
       case AddDeadlineIntent():
         return WriteResolution.proposed(

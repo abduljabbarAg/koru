@@ -55,6 +55,29 @@ class AttentionBridge {
   /// the user has turned them off in settings. Both look identical from inside
   /// the app otherwise, and the honest thing to do about that is say so rather
   /// than appear to be working.
+  /// Opens the person's own calendar with [title] prefilled on [when].
+  ///
+  /// An intent, not a write. Reading or writing a calendar directly needs a
+  /// permission covering every calendar on the device, and that is a steep ask
+  /// to save one due date. This hands the event to the calendar app already
+  /// filled in, so the person sees it and presses save, and the event lands in
+  /// whichever calendar they actually use.
+  ///
+  /// Returns false when the device has no calendar app that can be asked.
+  Future<bool> addToCalendar(String title, DateTime when) async {
+    try {
+      return await _channel.invokeMethod<bool>('calendarIntent', {
+            'title': title,
+            'startMillis': when.millisecondsSinceEpoch,
+          }) ??
+          false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<bool> canPost() async {
     try {
       return await _channel.invokeMethod<bool>('canPost') ?? false;

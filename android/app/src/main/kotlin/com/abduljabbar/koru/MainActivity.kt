@@ -1,6 +1,7 @@
 package com.abduljabbar.koru
 
 import android.content.Context
+import android.util.Log
 import android.content.Intent
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -117,6 +118,9 @@ class MainActivity : FlutterActivity() {
                         call.argument<Int>("port") ?: enginePort,
                         call.argument<String>("modelPath"),
                     )
+                )
+                "importModel" -> result.success(
+                    importModel(call.argument<String>("path").orEmpty())
                 )
                 "stop" -> {
                     stopEngine()
@@ -497,5 +501,41 @@ class MainActivity : FlutterActivity() {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv))
         return String(cipher.doFinal(payload), Charsets.UTF_8)
+    
+}
+    /**
+     * Copies a .gguf the person picked into the app's own models folder.
+     *
+     * Dropping a file into Android/data by hand works but nobody does it, and
+     * telling somebody to edit a path in a file manager is not something an app
+     * can honestly ask of them. So the picker hands us a path and we do the copy.
+     *
+     * Copies rather than moves: the source is usually in Downloads, and taking
+     * their file away to make a model available is a surprise.
+     */
+    private fun importModel(source: String): Map<String, Any?> {
+        val from = File(source)
+        if (!from.exists()) return mapOf("ok" to false, "error" to "That file is not there any more.")
+        if (!from.name.endsWith(".gguf")) {
+            return mapOf("ok" to false, "error" to "A model file has to end in .gguf.")
+        }
+        if (from.length() < 1_000_000) {
+            return mapOf("ok" to false, "error" to "That file is too small to be a model.")
+        }
+        return try {
+            val dir = File(getExternalFilesDir(null) ?: filesDir, "models")
+            dir.mkdirs()
+            val to = File(dir, from.name)
+            // 64 MB buffer, because a model is a few hundred megabytes and
+            // byte-by-byte would take minutes.
+            from.inputStream().use { input ->
+                to.outputStream().use { output -> input.copyTo(output, 1 shl 26) }
+            }
+            mapOf("ok" to true, "label" to "${from.nameWithoutExtension} (${from.length() / (1024 * 1024)} MB)")
+        } catch (e: Exception) {
+            Log.w("Koru", "could not import the model", e)
+            mapOf("ok" to false, "error" to "Could not copy that file: $e")
+        }
     }
+
 }

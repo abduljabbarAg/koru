@@ -204,6 +204,8 @@ class ChatNotifier extends Notifier<ChatState> {
         clients: await store.clients(),
         received: await store.receivedTotals(),
         deadlines: await store.deadlines(),
+        projects: await store.projects(),
+        projectNotes: await _latestNotePerProject(store),
       );
 
   Future<void> ask(String question) async {
@@ -691,15 +693,22 @@ class ChatNotifier extends Notifier<ChatState> {
       await write.rememberImport(store);
     }
 
+    // Read it back. apply() returning without throwing is not proof, and this
+    // app has already been bitten by a reply claiming a save that did not
+    // happen. The app holds itself to the same rule as the model: no save is
+    // reported that has not been looked at afterwards.
+    final problem = await write.verify(store);
+
     final messages = [...state.messages];
     final at = messages.lastIndexWhere((m) => m.proposed != null);
     if (at < 0) return;
-    // Says how many, not "saved". Twenty rows going in silently is the thing a
-    // user cannot check afterwards, and the count is the one fact they want.
     messages[at] = Msg(
       MsgRole.koru,
-      'Added ${write.summary}. You can undo this from Clients.',
-      why: 'You approved this.',
+      problem ?? 'Added ${write.summary}. You can undo this from Clients.',
+      // Saying why, when the write did not land, is the difference between a
+      // bug report and a user who thinks their records are fine.
+      why: problem == null ? 'You approved this, and I checked it saved.'
+          : 'You approved this, and I checked. It did not save as described.',
       local: true,
     );
     state = state.copyWith(messages: messages);
@@ -950,6 +959,23 @@ class ChatNotifier extends Notifier<ChatState> {
         received: await store.receivedTotals(),
         deadlines: await store.deadlines(),
       );
+}
+
+/// The most recent note per project, keyed by project id.
+///
+/// N+1 by nature: the notes table is per project and there is no single query
+/// that answers "latest for each". Projects are few and this runs once per
+/// reply, so the round trips are cheaper than keeping a denormalised copy in
+/// sync with every note write.
+Future<Map<int, String>> _latestNotePerProject(ProfileStore store) async {
+  final out = <int, String>{};
+  for (final p in await store.projects()) {
+    final id = p.id;
+    if (id == null) continue;
+    final notes = await store.projectNotes(id, limit: 1);
+    if (notes.isNotEmpty) out[id] = notes.first.body;
+  }
+  return out;
 }
 
 final chatProvider = NotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);

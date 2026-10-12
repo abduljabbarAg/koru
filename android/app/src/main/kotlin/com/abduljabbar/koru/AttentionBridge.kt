@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.CalendarContract
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
@@ -109,6 +111,9 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
         }
         when (call.method) {
             "canPost" -> result.success(canPost(ctx))
+            "calendarIntent" -> result.success(
+                openCalendar(ctx, call.argument<String>("title") ?: "", call.argument<Long>("startMillis"))
+            )
             "start" -> {
                 applyPayload(ctx, call.argument<String>("payload"))
                 result.success(startForeground(ctx))
@@ -327,40 +332,6 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
         }
     }
 
-    /**
-     * Copies a .gguf the person picked into the app's own models folder.
-     *
-     * Dropping a file into Android/data by hand works but nobody does it, and
-     * telling somebody to edit a path in a file manager is not something an app
-     * can honestly ask of them. So the picker hands us a path and we do the copy.
-     *
-     * Copies rather than moves: the source is usually in Downloads, and taking
-     * their file away to make a model available is a surprise.
-     */
-    private fun importModel(ctx: Context, source: String): Map<String, Any?> {
-        val from = File(source)
-        if (!from.exists()) return mapOf("ok" to false, "error" to "That file is not there any more.")
-        if (!from.name.endsWith(".gguf")) {
-            return mapOf("ok" to false, "error" to "A model file has to end in .gguf.")
-        }
-        if (from.length() < 1_000_000) {
-            return mapOf("ok" to false, "error" to "That file is too small to be a model.")
-        }
-        return try {
-            val dir = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "models")
-            dir.mkdirs()
-            val to = File(dir, from.name)
-            // 64 MB buffer, because a model is a few hundred megabytes and
-            // byte-by-byte would take minutes.
-            from.inputStream().use { input ->
-                to.outputStream().use { output -> input.copyTo(output, 1 shl 26) }
-            }
-            mapOf("ok" to true, "label" to "${from.nameWithoutExtension} (${from.length() / (1024 * 1024)} MB)")
-        } catch (e: Exception) {
-            Log.w(TAG, "could not import the model", e)
-            mapOf("ok" to false, "error" to "Could not copy that file: $e")
-        }
-    }
 
     // -- payload ---------------------------------------------------------
 
@@ -608,5 +579,39 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    
+}
+    /**
+     * Opens the user's own calendar with the event prefilled.
+     *
+     * Deliberately an intent rather than a direct CalendarContract insert.
+     * Writing to a calendar needs a permission that reaches every calendar on
+     * the device, and asking for it to save one invoice date is a bad trade.
+     * ACTION_INSERT needs nothing: the calendar app opens, already filled in,
+     * and the person presses save. It also means the event lands in whichever
+     * calendar they actually use, which no permission-free write could know.
+     */
+    private fun openCalendar(ctx: Context, title: String, startMillis: Long?): Boolean {
+        return try {
+            val start = startMillis ?: (System.currentTimeMillis() + 3_600_000L)
+            val intent = Intent(Intent.ACTION_INSERT).apply {
+                data = Uri.parse("content://com.android.calendar/events")
+                putExtra(CalendarContract.Events.TITLE, title)
+                putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, start)
+                // An hour, because a due date is a day not an instant and an
+                // instant would land the event whenever the tap happened to be.
+                putExtra(CalendarContract.EXTRA_EVENT_END_TIME, start + 3_600_000L)
+            }
+            if (intent.resolveActivity(ctx.packageManager) != null) {
+                ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "could not open the calendar", e)
+            false
+        }
     }
+
 }

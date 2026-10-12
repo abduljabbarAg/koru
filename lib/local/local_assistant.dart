@@ -38,6 +38,8 @@ class LocalAssistant {
         return LocalAnswer(_due(facts), usedData: facts.hasRecords);
       case _Intent.business:
         return LocalAnswer(_business(facts), usedData: facts.clients.isNotEmpty);
+      case _Intent.project:
+        return LocalAnswer(_projects(facts), usedData: facts.projects.isNotEmpty);
       case _Intent.goals:
         return LocalAnswer(_goals(facts), usedData: facts.goals.isNotEmpty);
       case _Intent.identity:
@@ -53,6 +55,30 @@ class LocalAssistant {
     }
   }
 
+  /// Projects, described from the records rather than from the name.
+  String _projects(LocalFacts f) {
+    if (f.projects.isEmpty) {
+      return 'You have not added any projects yet. Add one from the Projects '
+          'tab, and it will show up here with its progress and your last note.';
+    }
+    final out = <String>[];
+    for (final pr in f.projects.take(6)) {
+      final pct = (pr.progress * 100).round();
+      final kind = pr.isPersonal ? 'Personal' : 'Client work';
+      final note = f.projectNotes[pr.id]?.trim();
+      final bits = <String>['$pct% along'];
+      if (pr.target != null && pr.target!.isNotEmpty) {
+        bits.add('done when ${pr.target}');
+      }
+      if (note != null && note.isNotEmpty) bits.add('latest: $note');
+      out.add('${pr.name} ($kind, ${bits.join(', ')})');
+    }
+    if (f.projects.length > 6) {
+      out.add('and ${f.projects.length - 6} more.');
+    }
+    return 'Here is what you are working on.\n${out.join('\n')}';
+  }
+
   _Intent _classify(String q) {
     bool has(List<String> words) => words.any(q.contains);
 
@@ -61,6 +87,19 @@ class LocalAssistant {
     }
     if (has(const ['who are you', 'what are you', 'your name', 'about you'])) {
       return _Intent.identity;
+    }
+    if (has(const [
+      'what am i working on',
+      'what am i doing',
+      'my project',
+      'my projects',
+      'which project',
+      'how is the project',
+      'how far along',
+      'progress on',
+      'tell me about the project',
+    ])) {
+      return _Intent.project;
     }
     if (has(const [
       'what can you do',
@@ -302,7 +341,17 @@ class LocalAssistant {
   }
 }
 
-enum _Intent { greeting, identity, capabilities, status, due, business, goals, unknown }
+enum _Intent {
+  greeting,
+  identity,
+  capabilities,
+  status,
+  due,
+  business,
+  project,
+  goals,
+  unknown,
+}
 
 /// Case folds a question without importing the routing layer, so this file can
 /// be unit tested on its own.
@@ -336,6 +385,8 @@ class LocalFacts {
     this.clients = const [],
     this.received = const {},
     this.deadlines = const [],
+    this.projects = const [],
+    this.projectNotes = const {},
     DateTime? today,
   }) : today = today ?? DateTime.now();
 
@@ -350,11 +401,23 @@ class LocalFacts {
   /// balances the screen shows rather than summing invoice amounts.
   final Map<int, double> received;
   final List<Deadline> deadlines;
+
+  /// Projects and their latest note.
+  ///
+  /// Added for the same reason as in [LocalEngineFacts]: the assistant could
+  /// answer "who owes me" and could not answer "what am I working on", which is
+  /// the other half of the question people actually ask.
+  final List<Project> projects;
+  final Map<int, String> projectNotes;
+
   final DateTime today;
 
   bool get hasProfile => nickname.isNotEmpty || lifeStage.isNotEmpty || goals.isNotEmpty;
   bool get hasRecords =>
-      clients.isNotEmpty || deadlines.isNotEmpty || received.isNotEmpty;
+      clients.isNotEmpty ||
+      deadlines.isNotEmpty ||
+      received.isNotEmpty ||
+      projects.isNotEmpty;
 
   double balanceOf(Client c) =>
       c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);

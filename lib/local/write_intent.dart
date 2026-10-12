@@ -23,7 +23,7 @@
 ///
 /// Resolved by which cue appears earliest, not by trying one kind at a time and
 /// taking the first that matches.
-enum _Kind { deadline, payment, client, none }
+enum _Kind { deadline, payment, client, edit, delete, none }
 
 /// What the user appears to have asked to record.
 sealed class WriteIntent {
@@ -81,6 +81,49 @@ class AddDeadlineIntent extends WriteIntent {
 
 String _plain(double v) =>
     v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+/// A change to a client already on file.
+///
+/// Every field is optional and null means "leave it alone", which is what makes
+/// "bilal now owes 3000" safe: the name and amount change and nothing else does.
+/// A null cannot mean "clear it" on purpose. Clearing a field is rare enough and
+/// destructive enough that it should be a deliberate action in the app rather
+/// than something a sentence can do by accident.
+class EditClientIntent extends WriteIntent {
+  const EditClientIntent({
+    required this.clientName,
+    this.amount,
+    this.due,
+    this.status,
+  });
+
+  /// Who to change, as typed. Resolved against the real clients later.
+  final String clientName;
+  final double? amount;
+  final String? due;
+  final String? status;
+
+  bool get changesAnything => amount != null || due != null || status != null;
+
+  @override
+  String get summary {
+    final parts = <String>[];
+    if (amount != null) parts.add('amount ${amount!.toStringAsFixed(0)}');
+    if (due != null) parts.add('due $due');
+    if (status != null) parts.add('status $status');
+    return 'Change ${parts.isEmpty ? 'nothing' : parts.join(', ')}';
+  }
+}
+
+/// Removes a client and everything recorded against them.
+class DeleteClientIntent extends WriteIntent {
+  const DeleteClientIntent({required this.clientName});
+
+  final String clientName;
+
+  @override
+  String get summary => 'Delete $clientName';
+}
 
 /// A write that was asked for but is missing the one thing it needs.
 ///
@@ -191,6 +234,35 @@ class WriteIntentParser {
     'log an entry',
   ];
 
+  /// Edits and deletes are separate kinds rather than variants of adding,
+  /// because "change the amount on bilal" must never be read as adding a second
+  /// client, and a delete must never be something a loosened parser produces.
+  static const _editCues = [
+    'change client',
+    'change the client',
+    'change the amount on',
+    'update client',
+    'update the client',
+    'edit client',
+    'edit the client',
+    'set client',
+    'client now owes',
+    'client now pays',
+    'client is now',
+    'client is worth',
+    'now owes',
+    'now pays',
+    'raise the amount',
+    'lower the amount',
+  ];
+
+  static const _deleteCues = [
+    'delete client',
+    'delete the client',
+    'remove client',
+    'remove the client',
+  ];
+
   static const _paymentCues = [
     'mark as paid',
     'mark paid',
@@ -271,6 +343,10 @@ class WriteIntentParser {
         return _payment(clean, lower);
       case _Kind.client:
         return _client(clean, lower);
+      case _Kind.edit:
+        return _edit(clean, lower);
+      case _Kind.delete:
+        return _delete(clean, lower);
       case _Kind.none:
         // No write cue anywhere. A sentence that merely mentions "client" is a
         // question for the model, not an instruction, and guessing here is how
@@ -283,6 +359,8 @@ class WriteIntentParser {
     final d = _earliestCue(lower, _deadlineCues);
     final p = _earliestCue(lower, _paymentCues);
     final c = _earliestCue(lower, _clientCues);
+    final e = _earliestCue(lower, _editCues);
+    final x = _earliestCue(lower, _deleteCues);
     // The "X paid N" shape has no cue phrase at all, it is its own pattern, so
     // it is detected separately and only when no explicit cue beat it.
     final paidAt = lower.indexOf(' paid');
@@ -298,6 +376,12 @@ class WriteIntentParser {
     offer(_Kind.deadline, d?.$1);
     offer(_Kind.payment, p?.$1);
     offer(_Kind.client, c?.$1);
+    // An edit or delete must never win on position alone. "delete bilal, then
+    // add a client called Bilal" carries both, and quietly treating the second
+    // half as an add while the first half was meant as a delete is how a record
+    // gets lost. They are only taken when nothing else claimed the sentence.
+    offer(_Kind.delete, x?.$1);
+    offer(_Kind.edit, e?.$1);
     if (best == _Kind.none && paidAt >= 0) best = _Kind.payment;
     return best;
   }
@@ -457,6 +541,100 @@ class WriteIntentParser {
       amount: _amountIn(lower),
       due: _dateIn(lower),
     );
+  }
+
+  /// "change the amount on bilal to 3000", "bilal now owes 4000".
+  ///
+  /// Refuses when no field is actually named. "change bilal" says what it wants
+  /// to touch but not what to change it to, and answering it with a card would
+  /// train the user to approve cards without reading them.
+  WriteIntent? _edit(String clean, String lower) {
+    if (!_hasCue(lower, _editCues)) return null;
+
+    // The name is what sits before the cue for "now owes", and after it for
+    // "change the amount on", so both shapes are read and the longer match wins.
+    final amount = _amountIn(lower);
+    final due = _dateIn(lower);
+    final status = _statusIn(lower);
+
+    final name = _editTarget(clean, lower);
+    if (name == null) {
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
+    if (amount == null && due == null && status == null) {
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
+    return EditClientIntent(
+      clientName: name,
+      amount: amount,
+      due: due,
+      status: status,
+    );
+  }
+
+  /// The client an edit is about, read from either word order.
+  String? _editTarget(String clean, String lower) {
+    final found = _earliestCue(lower, _editCues);
+    if (found == null) return null;
+    // After the cue: "change the amount on bilal".
+    final after = clean.substring(found.$1 + found.$2.length).trim();
+    // Before it: "bilal now owes 4000".
+    final before = clean.substring(0, found.$1).trim();
+
+    for (final lead in const [' to ', ' from ']) {
+      // "change ... to" introduces the new value, not the name, so it ends the
+      // name rather than being part of it.
+      final at = after.toLowerCase().indexOf(lead);
+      if (at > 0) {
+        final head = after.substring(0, at);
+        final cut = _trimName(head, head.toLowerCase());
+        if (cut != null && cut.length >= 2) return cut;
+      }
+    }
+    // A tail of "4000" is the new amount, not the client's name. "bilal now
+    // owes 4000" has its name before the cue and its value after it, so a tail
+    // with no letters in it is never a name.
+    final tail = _trimName(after, after.toLowerCase());
+    if (tail != null && tail.length >= 2 && _hasLetter(tail)) return tail;
+
+    final head = _trimName(before, before.toLowerCase());
+    if (head != null && head.length >= 2 && _hasLetter(head)) return head;
+    return null;
+  }
+
+  /// True when [s] contains at least one letter.
+  ///
+  /// Deliberately not a number check: "4000" is not a name, and neither is
+  /// "1,200" or "20%". A name is words.
+  static bool _hasLetter(String s) => RegExp('[a-z]').hasMatch(s.toLowerCase());
+
+  String? _statusIn(String lower) {
+    for (final pair in const <(String, String)>[
+      ('mark as active', 'active'),
+      ('mark as paid', 'paid'),
+      ('mark as lead', 'lead'),
+      ('status active', 'active'),
+      ('status paid', 'paid'),
+      ('status lead', 'lead'),
+      ('set to active', 'active'),
+      ('set to paid', 'paid'),
+    ]) {
+      if (lower.contains(pair.$1)) return pair.$2;
+    }
+    return null;
+  }
+
+  /// "delete bilal", "remove client bilal".
+  WriteIntent? _delete(String clean, String lower) {
+    if (!_hasCue(lower, _deleteCues)) return null;
+    final found = _earliestCue(lower, _deleteCues);
+    if (found == null) return null;
+    final rest = clean.substring(found.$1 + found.$2.length).trim();
+    final name = _trimName(rest, rest.toLowerCase());
+    if (name == null || name.length < 2 || _number.hasMatch(name)) {
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
+    return DeleteClientIntent(clientName: name);
   }
 
   RecordPaymentIntent? _payment(String clean, String lower) {

@@ -247,4 +247,53 @@ void main() {
     });
   });
 
+
+  group('editing a client', () {
+    const p = WriteIntentParser();
+
+    test('a verb with a new amount is an edit', () {
+      final e = p.parse('change the amount on bilal to 3000') as EditClientIntent;
+      expect(e.clientName, 'bilal');
+      expect(e.amount, 3000);
+    });
+
+    test('the name can come before the cue instead', () {
+      final e = p.parse('bilal now owes 4000') as EditClientIntent;
+      expect(e.clientName, 'bilal');
+      expect(e.amount, 4000);
+    });
+
+    test('an edit naming no field asks rather than proposing', () {
+      // "change bilal" on its own is left alone on purpose: it is ordinary
+      // English and reads as much like changing the subject. The cue has to be
+      // there, and then the missing field is the thing to ask about.
+      expect(p.parse('change client bilal'), isA<IncompleteWriteIntent>());
+    });
+
+    test('an edit does not disturb the fields it did not mention', () {
+      final e = p.parse('bilal now owes 4000') as EditClientIntent;
+      expect(e.due, isNull);
+      expect(e.status, isNull);
+    });
+  });
+
+  group('deleting a client', () {
+    const p = WriteIntentParser();
+
+    test('the name is taken from after the cue', () {
+      final d = p.parse('delete client bilal') as DeleteClientIntent;
+      expect(d.clientName, 'bilal');
+    });
+
+    test('a delete with no name asks rather than deleting everything', () {
+      expect(p.parse('delete client'), isA<IncompleteWriteIntent>());
+    });
+
+    test('a delete is not read as adding a second client', () {
+      // The failure this guards: both cues sit in one list and the looser one
+      // wins, so "delete bilal" quietly creates a client called bilal instead.
+      expect(p.parse('delete client bilal'), isNot(isA<AddClientIntent>()));
+    });
+  });
+
 }

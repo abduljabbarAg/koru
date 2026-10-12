@@ -261,7 +261,29 @@ class ProfileStore {
       // help_focus was written during onboarding and then never read by anything,
       // which left ContextPacket.focus permanently empty.
       focus: m['help_focus'] ?? '',
+      projects: await _packetProjects(),
     );
+  }
+
+  /// Projects as the cloud sees them: what the work is, never who it is for.
+  ///
+  /// A client project is named by its target rather than its owner, because the
+  /// owner is a person and this string leaves the phone. Money is left out too,
+  /// since the packet is about shape not amounts.
+  Future<List<String>> _packetProjects() async {
+    final out = <String>[];
+    for (final pr in await projects()) {
+      if (pr.kind == ProjectKind.client) {
+        final target = pr.target?.trim();
+        final what = target != null && target.isNotEmpty ? target : 'client work';
+        out.add('a client project ($what, '
+            '${(pr.progress * 100).round()}% along)');
+      } else {
+        out.add('personal project (${pr.name}, '
+            '${(pr.progress * 100).round()}% along)');
+      }
+    }
+    return out;
   }
 
   Future<bool> get onboarded async => (await get('onboarded')) == '1';

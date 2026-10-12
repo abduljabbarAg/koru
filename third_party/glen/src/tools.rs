@@ -38,6 +38,64 @@ impl Samp {
     }
 }
 
+/// A decoder that may not say anything.
+///
+/// A 0.5B model asked for structured output will happily open a brace and then
+/// write prose. That is not a prompt problem, it is a vocabulary problem: the
+/// tokens for "prose" are always available, so nothing pushes back. This masks
+/// the logits down to the tokens that spell a required prefix, so the structure
+/// is guaranteed rather than requested.
+///
+/// The mask is applied to the logits before sampling, which means it composes
+/// with temperature, top-k and top-p rather than replacing them. Once the forced
+/// text is spent the constraint ends and the model is free again, so this
+/// constrains the opening of an answer and never the whole of it.
+#[derive(Clone, Default)]
+pub struct Constraint {
+    /// The tokens that must come next, in order.
+    forced: Vec<u32>,
+    /// How many have already been emitted.
+    taken: usize,
+}
+
+impl Constraint {
+    /// Forces [ids] at the start of the next reply.
+    pub fn forced(ids: Vec<u32>) -> Self {
+        Constraint { forced: ids, taken: 0 }
+    }
+
+    /// True while tokens are still being forced.
+    pub fn active(&self) -> bool {
+        self.taken < self.forced.len()
+    }
+
+    /// The token that must come next, if any.
+    pub fn next(&self) -> Option<u32> {
+        self.forced.get(self.taken).copied()
+    }
+
+    /// Records that [id] was emitted.
+    pub fn accept(&mut self, id: u32) {
+        self.taken += 1;
+        let _ = id;
+    }
+
+    /// Sets every logit except [keep] to negative infinity.
+    ///
+    /// A copy rather than a mutation of the caller's slice: the logits belong to
+    /// the forward pass and are reused for the next token, so overwriting them
+    /// would constrain every future step as well.
+    pub fn mask(&self, logits: &[f32]) -> Option<Vec<f32>> {
+        let keep = self.next()?;
+        let mut out = vec![f32::NEG_INFINITY; logits.len()];
+        let i = keep as usize;
+        if i < out.len() {
+            out[i] = logits[i];
+        }
+        Some(out)
+    }
+}
+
 /// Sample next token id. temp<=0 → greedy argmax. hist = recent output ids (repeat penalty window).
 pub fn sample(rng: &mut Rng, logits: &[f32], hist: &[u32], s: &Samp) -> u32 {
     let n = logits.len();

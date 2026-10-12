@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../attention_bridge.dart';
 import '../currency.dart';
 import '../guide.dart';
 import '../models.dart';
@@ -476,6 +477,35 @@ class BusinessScreen extends ConsumerWidget {
     if (context.mounted) toast(context, 'Deadline added');
   }
 
+  /// Hands a deadline to the calendar app.
+  ///
+  /// Midday rather than midnight, and that is the whole trick. A due date is a
+  /// day rather than an instant, and an event created at 00:00 fires before
+  /// anybody is awake; noon is inside the day it belongs to on every calendar
+  /// app, including the ones that show a day view.
+  Future<void> _toCalendar(
+    BuildContext context,
+    WidgetRef ref,
+    Deadline d,
+    Client? client,
+  ) async {
+    final date = DateTime.tryParse(d.due);
+    if (date == null) {
+      toast(context, 'That deadline has no date to send.');
+      return;
+    }
+    final when = DateTime(date.year, date.month, date.day, 12);
+    final title = client == null ? d.title : '${d.title} — ${client.name}';
+    final ok = await const AttentionBridge().addToCalendar(title, when);
+    if (!context.mounted) return;
+    toast(
+      context,
+      ok
+          ? 'Check your calendar and press save.'
+          : 'No calendar app on this phone could be opened.',
+    );
+  }
+
   Future<void> _completeDeadline(WidgetRef ref, Deadline d) async {
     final store = await ref.read(storeProvider.future);
     await store.setDeadlineDone(d.id!, true);
@@ -846,6 +876,11 @@ Row(
                 ],
               ),
             ),
+          ),
+          IconButton(
+            tooltip: 'Put ${d.title} in the calendar',
+            icon: const Icon(Icons.event_outlined, size: 18, color: KoruColors.inkFaint),
+            onPressed: () => _toCalendar(context, ref, d, client),
           ),
           IconButton(
             tooltip: 'Delete ${d.title}',
