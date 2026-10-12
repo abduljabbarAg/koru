@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.0
+
+Cloud first. The on-device model is out of the app.
+
+### Changed
+
+- **The local engine and its model are no longer bundled.** 486 MB on top of a
+  16 MB app, on every install, for a model that was not earning its place. Cloud
+  is now the default engine, and a local model can still be dropped into the
+  app's models folder if you want one. One line in the build puts it back.
+- **Twenty cloud providers, searchable.** Atria, Cerebras, Fireworks, NVIDIA NIM,
+  Hugging Face, Moonshot, Perplexity, Z.ai, MiniMax and Inception join the ones
+  already there. Search matches provider label, provider id and every model id at
+  once, so looking for "glm" finds it without knowing whether that is Z.ai,
+  Zhipu or a custom endpoint. A search matching nothing returns nothing, rather
+  than quietly falling back to the full list.
+- **Atria Dawn Preview**, Shanghai AI Laboratory's agentic model, served OpenAI
+  compatible. Its model id is capitalisation sensitive.
+
 ## 0.9.2
 
 The local model can be chosen, so a sharper one can be brought in.
