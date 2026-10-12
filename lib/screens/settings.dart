@@ -878,12 +878,39 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
     ref.invalidate(engineProvider);
   }
 
+  /// Picks a .gguf out of the phone's own storage and brings it in.
+  Future<void> _importModel() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+      withData: false,
+    );
+    final path = picked?.files.single.path;
+    if (path == null) return;
+    final problem = await ref.read(bundledEngineProvider).importModel(path);
+    ref.invalidate(availableModelsProvider);
+    if (!mounted) return;
+    setState(() {
+      _message = problem ?? 'Model added. Pick it below to use it.';
+    });
+  }
+
   Widget _modelPicker(List<LocalModelFile> models, String? chosen) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Model',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Model',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+            TextButton.icon(
+              onPressed: _importModel,
+              icon: const Icon(Icons.upload_file_rounded, size: 16),
+              label: const Text('Add a model'),
+            ),
+          ],
+        ),
         const SizedBox(height: 4),
         Text(
           models.length <= 1

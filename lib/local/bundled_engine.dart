@@ -101,6 +101,26 @@ class BundledEngine {
     }
   }
 
+  /// Copies a model the person picked from their own storage into the app.
+  ///
+  /// So that adding a model is a tap rather than a file manager and a path
+  /// typed from an error message.
+  Future<String?> importModel(String sourcePath) async {
+    try {
+      final raw = await _channel.invokeMapMethod<String, dynamic>(
+        'importModel',
+        {'path': sourcePath},
+      );
+      if (raw == null) return 'Could not import that file.';
+      if (raw['ok'] != true) return raw['error'] as String? ?? 'Could not import that file.';
+      return null;
+    } on PlatformException {
+      return 'Could not import that file.';
+    } on MissingPluginException {
+      return 'This build has no model support.';
+    }
+  }
+
   Future<BundledStartResult> start({
     int port = defaultPort,
     String? modelPath,

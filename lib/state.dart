@@ -655,7 +655,7 @@ class ChatNotifier extends Notifier<ChatState> {
       case KoruEngine.onDevice:
         return _askOnDevice(q, routing, store, history, isStale);
       case KoruEngine.cloud:
-        return _askCloud(q, routing, store);
+        return _askCloud(q, routing, store, history, isStale);
     }
   }
 
@@ -862,9 +862,21 @@ class ChatNotifier extends Notifier<ChatState> {
     state = state.copyWith(messages: messages);
   }
 
-  Future<Msg> _askCloud(String q, RoutingDecision routing, ProfileStore store) async {
+  Future<Msg> _askCloud(
+    String q,
+    RoutingDecision routing,
+    ProfileStore store,
+    List<ChatTurn> history,
+    bool Function() isStale,
+  ) async {
     final selection = await ref.read(cloudSelectionProvider.future);
     final key = await ref.read(cloudKeyProvider(selection.provider.id).future);
+    // Streams into the pending bubble, exactly as the local engine does.
+    //
+    // Cloud used to be one request with no tokens until the whole reply had
+    // arrived, which made a frontier model look slower than the small one on
+    // this phone. It was never slower; the wait was just invisible.
+    final buffer = StringBuffer();
     final result = await ref.read(cloudModelProvider).ask(
           packet: await store.packet(),
           question: q,
@@ -872,13 +884,27 @@ class ChatNotifier extends Notifier<ChatState> {
           provider: selection.provider,
           model: selection.model,
           apiKey: key,
+          history: [
+            for (final t in history)
+              (
+                role: t.role == ChatRole.user ? 'user' : 'assistant',
+                content: t.text,
+              ),
+          ],
+          onToken: (delta) {
+            if (isStale()) return;
+            buffer.write(delta);
+            _updatePending(buffer.toString());
+          },
         );
 
     switch (result) {
       case CloudReply(:final text):
+        // Anything already streamed is what the bubble is showing, so the
+        // finished message must be that same text rather than a second copy.
         return Msg(
           MsgRole.koru,
-          text,
+          buffer.isNotEmpty ? buffer.toString().trim() : text,
           why: routing.reason,
           local: false,
           engine: KoruEngine.cloud,

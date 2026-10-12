@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import org.json.JSONObject
 
 /**
@@ -323,6 +324,41 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
         } catch (e: Exception) {
             Log.w(TAG, "no app settings screen", e)
             false
+        }
+    }
+
+    /**
+     * Copies a .gguf the person picked into the app's own models folder.
+     *
+     * Dropping a file into Android/data by hand works but nobody does it, and
+     * telling somebody to edit a path in a file manager is not something an app
+     * can honestly ask of them. So the picker hands us a path and we do the copy.
+     *
+     * Copies rather than moves: the source is usually in Downloads, and taking
+     * their file away to make a model available is a surprise.
+     */
+    private fun importModel(ctx: Context, source: String): Map<String, Any?> {
+        val from = File(source)
+        if (!from.exists()) return mapOf("ok" to false, "error" to "That file is not there any more.")
+        if (!from.name.endsWith(".gguf")) {
+            return mapOf("ok" to false, "error" to "A model file has to end in .gguf.")
+        }
+        if (from.length() < 1_000_000) {
+            return mapOf("ok" to false, "error" to "That file is too small to be a model.")
+        }
+        return try {
+            val dir = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "models")
+            dir.mkdirs()
+            val to = File(dir, from.name)
+            // 64 MB buffer, because a model is a few hundred megabytes and
+            // byte-by-byte would take minutes.
+            from.inputStream().use { input ->
+                to.outputStream().use { output -> input.copyTo(output, 1 shl 26) }
+            }
+            mapOf("ok" to true, "label" to "${from.nameWithoutExtension} (${from.length() / (1024 * 1024)} MB)")
+        } catch (e: Exception) {
+            Log.w(TAG, "could not import the model", e)
+            mapOf("ok" to false, "error" to "Could not copy that file: $e")
         }
     }
 

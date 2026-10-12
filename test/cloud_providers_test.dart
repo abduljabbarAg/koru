@@ -11,6 +11,81 @@ import 'package:koru/models.dart';
 /// Each provider's exact request shape is asserted here so that cannot be
 /// silent again.
 void main() {
+  group('what actually goes to the provider', () {
+    CloudProvider at(String id) => kCloudProviders.firstWhere((p) => p.id == id);
+
+    test('earlier turns are sent as real messages', () {
+      // Cloud used to send the system prompt and one question and nothing else,
+      // so the model had no memory of the conversation at all and every follow
+      // up was asked from nothing. This is the bug behind "the cloud model does
+      // not have context for chat".
+      final request = CloudAdapter.build(
+        provider: at('openai'),
+        model: 'gpt-4o',
+        apiKey: 'k',
+        system: 'sys',
+        question: 'and the total?',
+        history: const [
+          (role: 'user', content: 'who owes me money?'),
+          (role: 'assistant', content: 'Bilal owes 1500.'),
+        ],
+      );
+      final body = jsonDecode(request.body) as Map;
+      final messages = (body['messages'] as List).cast<Map>();
+      expect(messages.length, 4, reason: 'system, two turns, and the question');
+      expect(messages[1]['content'], 'who owes me money?');
+      expect(messages[2]['role'], 'assistant');
+      expect(messages.last['content'], 'and the total?');
+    });
+
+    test('no history still sends a single question', () {
+      final request = CloudAdapter.build(
+        provider: at('openai'),
+        model: 'gpt-4o',
+        apiKey: 'k',
+        system: 'sys',
+        question: 'hello',
+      );
+      final messages =
+          ((jsonDecode(request.body) as Map)['messages'] as List).cast<Map>();
+      expect(messages.length, 2);
+    });
+
+    test('anthropic gets the role name it expects', () {
+      // "koru" is an Anthropic 400, not a shrug.
+      final turns = CloudAdapter.turns(at('anthropic'), const [
+        (role: 'user', content: 'hi'),
+        (role: 'assistant', content: 'hello'),
+      ]);
+      expect(turns.map((t) => t['role']), ['user', 'assistant']);
+    });
+
+    test('streaming is asked for only when streaming', () {
+      CloudRequest build({required bool stream}) => CloudAdapter.build(
+            provider: at('openai'),
+            model: 'gpt-4o',
+            apiKey: 'k',
+            system: 'sys',
+            question: 'hi',
+            stream: stream,
+          );
+      expect((jsonDecode(build(stream: true).body) as Map)['stream'], isTrue);
+      expect((jsonDecode(build(stream: false).body) as Map).containsKey('stream'),
+          isFalse);
+    });
+
+    test('a streamed chunk is read in either of the shapes used', () {
+      const openai =
+          '{"choices":[{"delta":{"content":"hello"}}]}';
+      const flattened = '{"choices":[{"text":"hello"}]}';
+      expect(CloudAdapter.parseDelta(CloudWireFormat.openai, openai), 'hello');
+      expect(CloudAdapter.parseDelta(CloudWireFormat.openai, flattened), 'hello');
+      // Noise that is not content must not become text.
+      expect(CloudAdapter.parseDelta(CloudWireFormat.openai, '[DONE]'), isNull);
+      expect(CloudAdapter.parseDelta(CloudWireFormat.openai, 'not json'), isNull);
+    });
+  });
+
   group('finding a provider or a model', () {
     // The list is twenty providers and several models each. Scrolling a dropdown
     // to find one is the wrong interface, and someone looking for "glm" should

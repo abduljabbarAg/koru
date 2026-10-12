@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -45,6 +46,12 @@ class CloudModel {
   /// take this long.
   static const _timeout = Duration(seconds: 60);
 
+  /// Asks the cloud, streaming tokens as they arrive.
+  ///
+  /// [onToken] is called for each piece. Cloud used to be a single http.post
+  /// followed by a parse, so the screen sat empty for the entire generation and
+  /// a frontier model looked slower than the 0.5B running on the phone. The
+  /// latency was never lower; it was just being paid silently instead of visibly.
   Future<CloudResult> ask({
     required ContextPacket packet,
     required String question,
@@ -52,20 +59,108 @@ class CloudModel {
     required CloudProvider provider,
     required String model,
     required String apiKey,
+    List<({String role, String content})> history = const [],
+    void Function(String delta)? onToken,
   }) async {
     if (apiKey.trim().isEmpty && provider.keyHint.isNotEmpty) {
       return const CloudUnavailable();
     }
 
     final prompt = PromptBuilder.build(packet: packet, question: question, routing: routing);
+    final streaming = onToken != null && provider.format == CloudWireFormat.openai;
     final request = CloudAdapter.build(
       provider: provider,
       model: model,
       apiKey: apiKey.trim(),
       system: prompt,
       question: question,
+      history: history,
+      stream: streaming,
     );
 
+    // Everything except OpenAI's wire format is still one round trip. Streaming
+    // is not silently pretended into: if the endpoint cannot stream, it does not.
+    if (!streaming) {
+      return _askOnce(request, provider, routing);
+    }
+
+    // Declared outside the try. A local declared inside a try block is not in
+    // scope in its own catch clauses, which is exactly where the partial answer
+    // is needed.
+    final buffer = StringBuffer();
+
+    try {
+      final streamed = http.Request('POST', request.uri)
+        ..headers.addAll(request.headers)
+        ..body = request.body;
+      // Through a Client rather than the top level, because only a Client can
+      // hand back a response with an unread body attached.
+      final client = http.Client();
+      final resp = await client.send(streamed).timeout(_timeout);
+      if (resp.statusCode != 200) {
+        final body = await resp.stream.bytesToString();
+        return CloudFailure(
+          CloudAdapter.explain(provider, resp.statusCode, body),
+          detail: body.length > 400 ? '${body.substring(0, 400)}...' : body,
+        );
+      }
+
+      final done = Completer<void>();
+      resp.stream.transform(utf8.decoder).transform(const LineSplitter()).listen(
+            (line) {
+              if (done.isCompleted) return;
+              final trimmed = line.trim();
+              if (trimmed.isEmpty) return;
+              if (trimmed.startsWith(':')) return;
+              if (!trimmed.startsWith('data:')) return;
+              final data = trimmed.substring(5).trim();
+              if (data == '[DONE]') {
+                if (!done.isCompleted) done.complete();
+                return;
+              }
+              final delta = CloudAdapter.parseDelta(provider.format, data);
+              if (delta == null || delta.isEmpty) return;
+              buffer.write(delta);
+              onToken(delta);
+            },
+            onDone: () {
+              if (!done.isCompleted) done.complete();
+            },
+            onError: (_) {
+              if (!done.isCompleted) done.complete();
+            },
+            cancelOnError: true,
+          );
+      // The socket is finished with once the stream ends, returned here rather
+      // than leaking a client per request.
+      unawaited(done.future.then((_) => client.close()));
+      await done.future.timeout(_timeout, onTimeout: () {});
+
+      final text = buffer.toString().trim();
+      if (text.isEmpty) {
+        return const CloudFailure(
+          'The reply came back in a shape I did not recognise. '
+          'Check the model name in Settings.',
+        );
+      }
+      return CloudReply(text);
+    } on TimeoutException {
+      // Anything already streamed is better than nothing. A partial answer with
+      // a note beats an error after the user has watched it type.
+      if (buffer.isNotEmpty) return CloudReply(buffer.toString().trim());
+      return const CloudFailure('The model took too long to answer.');
+    } catch (e) {
+      if (buffer.isNotEmpty) return CloudReply(buffer.toString().trim());
+      return CloudFailure('Could not reach ${provider.label}.', detail: '$e');
+    }
+  }
+
+  /// The non streaming path, for endpoints that do not stream.
+  Future<CloudResult> _askOnce(
+    CloudRequest request,
+    CloudProvider provider,
+    RoutingDecision routing,
+  ) async {
     try {
       final resp = await http
           .post(request.uri, headers: request.headers, body: request.body)

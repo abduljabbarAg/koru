@@ -165,11 +165,25 @@ void main() {
         ),
       );
       expect(prompt, isNot(contains('kami')));
-      expect(prompt, contains('never guess or invent a real name'));
+      expect(prompt, contains('Never guess a real name'));
     });
 
-    test('the prompt tells a sensitive model to stop short of a ruling', () {
-      final prompt = PromptBuilder.build(
+    test('the prompt does not change shape for a sensitive question', () {
+      // It used to append a sensitive topic instruction here. That was dead
+      // code: when RoutingDecision says a question needs a person, _respond
+      // answers with a handoff card and never calls a model at all, so no prompt
+      // was ever built. The extra paragraph was a rule no model could trip over
+      // because no model saw it.
+      final plain = PromptBuilder.build(
+        packet: packet,
+        question: 'hello',
+        routing: const RoutingDecision(
+          useCloud: true,
+          needsHuman: false,
+          reason: 'ordinary question',
+        ),
+      );
+      final sensitive = PromptBuilder.build(
         packet: packet,
         question: 'is this a diagnosis?',
         routing: const RoutingDecision(
@@ -178,7 +192,7 @@ void main() {
           reason: 'deserves a person',
         ),
       );
-      expect(prompt, contains('Do not give a diagnosis'));
+      expect(sensitive.split('Question:').first, plain.split('Question:').first);
     });
 
     test('the budget is measured against the cloud rendering', () {

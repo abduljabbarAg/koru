@@ -297,12 +297,31 @@ class CloudAdapter {
     }
   }
 
+  /// One earlier turn, on its way to the provider.
+  static List<Map<String, String>> turns(CloudProvider provider,
+      List<({String role, String content})> history) {
+    return [
+      for (final t in history)
+        {
+          'role': switch (provider.format) {
+            // Anthropic and Gemini name the assistant differently. Sending
+            // "koru" to an Anthropic endpoint is a 400, not a shrug.
+            CloudWireFormat.anthropic => t.role == 'user' ? 'user' : 'assistant',
+            _ => t.role,
+          },
+          'content': t.content,
+        }
+    ];
+  }
+
   static CloudRequest build({
     required CloudProvider provider,
     required String model,
     required String apiKey,
     required String system,
     required String question,
+    List<({String role, String content})> history = const [],
+    bool stream = false,
     int maxTokens = 600,
   }) {
     final uri = endpoint(provider, model, apiKey);
@@ -322,9 +341,14 @@ class CloudAdapter {
             'model': model,
             'messages': [
               {'role': 'system', 'content': system},
+              // Earlier turns as real messages. The conversation used to be a
+              // single question every time, so the model had no memory of any
+              // kind and every follow up was asked from nothing.
+              ...turns(provider, history),
               {'role': 'user', 'content': question},
             ],
             'max_tokens': maxTokens,
+            if (stream) 'stream': true,
           }),
           providerId: provider.id,
           model: model,
@@ -379,6 +403,30 @@ class CloudAdapter {
   }
 
   /// Pulls the assistant text out of a provider's reply, or null.
+  /// One streamed chunk.
+  ///
+  /// Handles the two shapes in the wild for the same content type: OpenAI's
+  /// {"choices":[{"delta":{"content":"x"}}]} and the flattened
+  /// {"choices":[{"text":"x"}]} some gateways emit. Silently returning null for
+  /// the second shape looks exactly like a model that refuses to speak.
+  static String? parseDelta(CloudWireFormat format, String data) {
+    if (format != CloudWireFormat.openai) return null;
+    try {
+      final json = jsonDecode(data);
+      if (json is! Map) return null;
+      final choices = json['choices'];
+      if (choices is! List || choices.isEmpty) return null;
+      final first = choices.first;
+      if (first is! Map) return null;
+      final delta = first['delta'];
+      if (delta is Map && delta['content'] is String) return delta['content'] as String;
+      if (first['text'] is String) return first['text'] as String;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static String? parseText(CloudWireFormat format, String body) {
     Object? decoded;
     try {

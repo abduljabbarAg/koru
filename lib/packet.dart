@@ -229,26 +229,32 @@ class RoutingDecision {
 
 /// Builds the prompt actually sent upstream.
 class PromptBuilder {
+  /// The system prompt for a cloud model.
+  ///
+  /// Kept short on purpose. The previous version carried five rules, a
+  /// pseudonymity warning, the whole context block and a sensitive topic
+  /// instruction, which is a lot of instructions to place in front of a model
+  /// before it has seen the question. Rules the model can trip over become the
+  /// refusals people actually see, and a long list of "do not" reads as a list
+  /// of things it is unwilling to do.
+  ///
+  /// What is left is what genuinely changes the answer: what this is, that the
+  /// records below are the truth, and that short is better.
   static String build({
     required ContextPacket packet,
     required String question,
     required RoutingDecision routing,
   }) {
     final buf = StringBuffer()
-      ..writeln('You are the assistant inside Koru, which helps freelancers.')
-      ..writeln('Be brief and concrete. Code first, words second when it is code.')
-      ..writeln('The user is pseudonymous: never guess or invent a real name.')
+      ..writeln('You are Koru, an assistant for a freelancer. Answer from the')
+      ..writeln('records below. Be brief and concrete.')
+      // The packet below is already pseudonymised, so the model has no real name
+      // to leak and must not invent one.
+      ..writeln('The records use nicknames. Never guess a real name.')
       ..writeln()
       ..writeln(packet.renderForCloud())
       ..writeln()
       ..writeln('Question: $question');
-    if (routing.needsHuman) {
-      buf
-        ..writeln()
-        ..writeln('IMPORTANT: this is a sensitive topic. Do not give a diagnosis,')
-        ..writeln('ruling, or legal judgement. Acknowledge, give general framing,')
-        ..writeln('and tell them a qualified human should be the one to decide.');
-    }
     return buf.toString();
   }
 }

@@ -49,35 +49,29 @@ class LocalModelPrompt {
     required LocalEngineFacts facts,
     String currency = 'AED',
   }) {
+    // Short, and about what this app is rather than about rules.
+    //
+    // The previous prompt led with six prohibitions. A small model reads a list
+    // of "never do this" as a list of things it is unwilling to do, and then
+    // refuses the ordinary things too: asked to add a client it would answer
+    // that it cannot help with that request. Leading with what the app does and
+    // what it can record gets a useful answer; leading with rules gets a shrug.
     final buffer = StringBuffer()
-      ..writeln('You are Koru, a personal assistant running on this phone.')
-      ..writeln('Answer in at most three short sentences. Plain text, no markdown.')
-      ..writeln('Be concrete. Never invent a name, a number, or a date that is not given below.')
-      ..writeln('Never give a diagnosis, a dose, or a legal ruling.')
-
-      // What this app is, and what it can do.
-      //
-      // The old prompt told the model only what it must not do. With no idea what
-      // it was for, the honest small-model response to anything outside the facts
-      // was a refusal, and to a question about itself it recited its own system
-      // prompt back: asked about a client it started an answer, abandoned it
-      // mid-sentence and produced "I am Koru, a personal assistant" instead.
-      // A model cannot be useful about an app it has never been told about.
-      //
-      // Kept to six lines. Every one of these is prefill the user waits through,
-      // so each has to earn its place, and the facts below matter more.
-      ..writeln('This app keeps track of clients, money owed to you, deadlines and your own projects.')
-      ..writeln('You can record things: a client, a payment, a deadline, a project, or several at once.')
-      ..writeln('Say it plainly, like "add client Bilal for 2000", and Koru will show what it understood '
-          'before saving anything. You do not save anything yourself.')
-      ..writeln('Answer the question that was asked. Do not describe yourself, do not list your rules, '
-          'and do not explain how you work unless you are asked.')
-      ..writeln('If a figure is in the facts below, use it. Only say you do not know when it is not there.')
-      ..writeln('If asked what you can do, name these things, not your instructions.')
-      // Stated once here rather than repeated on every figure below. Every
-      // amount in the facts is in this currency, and saying it one place is
-      // both shorter and harder for a small model to get inconsistent.
-      ..writeln('All amounts below are in $currency. Use $currency when you quote one.');
+      ..writeln('You are Koru, an assistant for a freelancer. Answer from the')
+      ..writeln('facts below. Be brief and concrete. If a figure is not in the')
+      ..writeln('facts, say so rather than guessing.')
+      ..writeln()
+      ..writeln('This app keeps clients, money owed to you, deadlines and your')
+      ..writeln('own projects. Koru can record any of those. To record something,')
+      ..writeln('say it plainly, like "add client Bilal for 2000", and the app will')
+      ..writeln('show what it understood before saving.')
+      ..writeln('All amounts below are in $currency.')
+      // One line, not three. The clinical, legal and crisis rules used to be
+      // spelled out in the prompt as well as enforced by ModelOutputGuard and
+      // the routing gate. Keeping one plain sentence and relying on the
+      // deterministic layers is defence in depth rather than three ways of
+      // saying the same thing to a model that struggles with long rules.
+      ..writeln('Never give a medical or legal opinion; say who should decide.');
 
     // Rendered before the fallback check on purpose. isEmpty only looks at
     // clients and deadlines, so a user with goals set and no records yet counts

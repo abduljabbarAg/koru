@@ -96,9 +96,11 @@ void main() {
         packet: packet,
         facts: const LocalEngineFacts(),
       );
-      expect(prompt, contains('at most three short sentences'));
-      expect(prompt, contains('Never give a diagnosis, a dose, or a legal ruling'));
-      expect(prompt, contains('say you do not know when it is not there'),
+      expect(prompt, contains('Be brief and concrete'));
+      // Kept as one plain sentence rather than three rules, with
+      // ModelOutputGuard and the routing gate doing the actual enforcement.
+      expect(prompt, contains('Never give a medical or legal opinion'));
+      expect(prompt, contains('say so rather than guessing'),
           reason: 'still honest about what it cannot see, without defaulting '
               'to refusal for anything outside the facts');
     });
@@ -128,17 +130,25 @@ void main() {
       });
 
       test('says it can record things, and how', () {
-        expect(prompt, contains('You can record things'));
+        expect(prompt, contains('can record any of those'));
         expect(prompt, contains('add client Bilal for 2000'),
             reason: 'an example phrase is what makes the rest usable');
       });
 
-      test('tells it to answer rather than describe itself', () {
-        expect(prompt, contains('Do not describe yourself'));
+      test('leads with what the app does, not with what it must not do', () {
+        // The first thing the model reads decides what it thinks it is for.
+        final firstSentence = prompt.split('\n').first;
+        expect(firstSentence, contains('assistant for a freelancer'));
+        expect(firstSentence, isNot(contains('Never')));
+        expect(firstSentence, isNot(contains('do not')));
       });
 
       test('still refuses rather than inventing', () {
-        expect(prompt, contains('Never invent a name, a number, or a date'));
+        // Honesty about what is missing, without a wall of prohibitions in front
+      // of the question. A model handed a list of never do this declines the
+      // ordinary things too, which is how asking it to add a client produced
+      // "I cannot help with that request".
+      expect(prompt, contains('say so rather than guessing'));
       });
 
       test('is short enough that the prefill is worth paying', () {
