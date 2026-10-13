@@ -59,6 +59,10 @@ class Msg {
   final bool pending;
   final bool local;
 
+  /// When this message was written, for the timestamp under the bubble. Null
+  /// on the opening greeting, which has no moment.
+  final DateTime? time;
+
   /// Which engine produced this message. Null on the opening greeting and on
   /// anything the user typed.
   final KoruEngine? engine;
@@ -78,6 +82,7 @@ class Msg {
     this.why,
     this.pending = false,
     this.local = false,
+    this.time,
     this.engine,
     this.handoff,
     this.tokensPerSecond,
@@ -90,10 +95,25 @@ class Msg {
         why: why,
         pending: pending ?? this.pending,
         local: local,
+        time: time,
         engine: engine,
         handoff: handoff,
         tokensPerSecond: tokensPerSecond,
         proposed: proposed ?? this.proposed,
+      );
+
+  /// The same message, stamped with when it arrived.
+  Msg stampedAt(DateTime t) => Msg(
+        role,
+        text,
+        why: why,
+        pending: pending,
+        local: local,
+        time: t,
+        engine: engine,
+        handoff: handoff,
+        tokensPerSecond: tokensPerSecond,
+        proposed: proposed,
       );
 
   AnswerSource get source {
@@ -180,9 +200,13 @@ class ChatNotifier extends Notifier<ChatState> {
     }
     final messages = <Msg>[
       const Msg(MsgRole.koru, _greeting, local: true),
-      ...records.map((r) => r.role == 'user'
-          ? Msg(MsgRole.user, r.text)
-          : Msg(MsgRole.koru, r.text, why: r.why, local: !r.needsHuman)),
+      ...records.map((r) {
+        final at = DateTime.tryParse(r.created);
+        return r.role == 'user'
+            ? Msg(MsgRole.user, r.text, time: at)
+            : Msg(MsgRole.koru, r.text, why: r.why, local: !r.needsHuman,
+                time: at);
+      }),
     ];
     state = state.copyWith(messages: messages, loaded: true);
   }
@@ -241,7 +265,7 @@ class ChatNotifier extends Notifier<ChatState> {
       busy: true,
       messages: [
         ...state.messages,
-        Msg(MsgRole.user, q),
+        Msg(MsgRole.user, q, time: DateTime.now()),
         const Msg(MsgRole.koru, '', pending: true),
       ],
     );
@@ -261,7 +285,7 @@ class ChatNotifier extends Notifier<ChatState> {
     if (stale()) return;
 
     final messages = [...state.messages];
-    messages[messages.length - 1] = reply;
+    messages[messages.length - 1] = reply.stampedAt(DateTime.now());
     state = state.copyWith(busy: false, messages: messages);
 
     await store.addChat(ChatRecord(

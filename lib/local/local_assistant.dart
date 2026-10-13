@@ -30,6 +30,11 @@ class LocalAssistant {
     required LocalFacts facts,
   }) {
     final q = RoutingDecisionNormaliser.fold(question);
+    // Arithmetic is matched against the raw words rather than the folded ones:
+    // folding turns "2000 plus 500"'s operators into spaces and "15% of 2000"
+    // into "15 of 2000", and a sum with its signs taken out is not a sum.
+    final raw = question.toLowerCase();
+    if (_looksLikeMath(raw)) return LocalAnswer(_math(raw), usedData: false);
     final intent = _classify(q, facts);
 
     switch (intent) {
@@ -57,8 +62,6 @@ class LocalAssistant {
         return LocalAnswer(_calendar(facts), usedData: facts.hasRecords);
       case _Intent.dateInfo:
         return LocalAnswer(_dateInfo(facts, q), usedData: false);
-      case _Intent.math:
-        return LocalAnswer(_math(q), usedData: false);
       case _Intent.business:
         return LocalAnswer(_business(facts), usedData: facts.clients.isNotEmpty);
       case _Intent.counts:
@@ -215,10 +218,6 @@ class LocalAssistant {
       return _Intent.capabilities;
     }
 
-    // Arithmetic, before anything record-shaped: "what is 15% of 2000" mentions
-    // no record at all, and half of freelance arithmetic is percentages.
-    if (_looksLikeMath(q)) return _Intent.math;
-
     // The date and the clock, asked the way people actually ask.
     if (has(const [
       'what day is it', 'what day is today', 'what is the date',
@@ -315,29 +314,36 @@ class LocalAssistant {
   /// True when [q] is asking for a sum rather than mentioning numbers.
   ///
   /// The expression has to be the whole question once the asking words are
-  /// taken off. "What is 15% of 2000" qualifies; " Bilal paid 500 for the
+  /// taken off. "What is 15% of 2000" qualifies; "Bilal paid 500 for the
   /// logo" does not, and must never be evaluated as arithmetic.
+  ///
+  /// [q] arrives lower case and un-folded: this is matched against the raw
+  /// words, because folding takes the operators out.
   bool _looksLikeMath(String q) {
     if (!RegExp(r'\d').hasMatch(q)) return false;
     // Percentages are unambiguous: nobody writes "% of" in prose.
     if (RegExp(r'\d\s*%').hasMatch(q)) return true;
-    final stripped = q
-        .replaceAll(RegExp(
-            r'^\s*(?:What is|What.s|Whats|Calculate|Compute|How much is|'
-            r'Solve|Work out|Equals|=)\s*'),
-            '')
-        .replaceAll(RegExp(r'\s*\?\s*$'), '')
-        .replaceAll('plus', '+')
-        .replaceAll('minus', '-')
-        .replaceAll('multiplied by', '*')
-        .replaceAll('divided by', '/')
-        .replaceAll('times', '*')
-        .replaceAll(',', '')
-        .trim();
+    final stripped = _stripAsk(q);
     // Only an expression is left, and it carries an operator.
     return RegExp(r'^[\d\s()+\-*/.]+$').hasMatch(stripped) &&
         RegExp(r'[+\-*/]').hasMatch(stripped);
   }
+
+  /// Removes the asking words from the front of a lower-case question, leaving
+  /// whatever was asked about.
+  String _stripAsk(String raw) => raw
+      .replaceAll(RegExp(
+          r'^\s*(?:what is|what.s|whats|calculate|compute|how much is|'
+          r'solve|work out|equals|=)\s*'),
+          '')
+      .replaceAll(RegExp(r'\s*\?\s*$'), '')
+      .replaceAll('plus', '+')
+      .replaceAll('minus', '-')
+      .replaceAll('multiplied by', '*')
+      .replaceAll('divided by', '/')
+      .replaceAll('times', '*')
+      .replaceAll(',', '')
+      .trim();
 
   String _math(String q) {
     final percent = RegExp(r'(\d+(?:\.\d+)?)\s*%\s*of\s*(\d[\d,]*(?:\.\d+)?)');
@@ -348,19 +354,7 @@ class LocalAssistant {
       return '${_num(pct / 100 * of)} is $pct% of ${_num(of)}.';
     }
 
-    final raw = q
-        .replaceAll(RegExp(
-            r'^\s*(?:What is|What.s|Whats|Calculate|Compute|How much is|'
-            r'Solve|Work out|Equals|=)\s*'),
-            '')
-        .replaceAll(RegExp(r'\s*\?\s*$'), '')
-        .replaceAll('plus', '+')
-        .replaceAll('minus', '-')
-        .replaceAll('multiplied by', '*')
-        .replaceAll('divided by', '/')
-        .replaceAll('times', '*')
-        .replaceAll(',', '')
-        .trim();
+    final raw = _stripAsk(q);
     final value = _evaluate(raw);
     if (value == null) {
       return 'I could not read that as a sum. I handle things like "what is '
@@ -888,7 +882,6 @@ enum _Intent {
   clientLookup,
   calendar,
   dateInfo,
-  math,
   business,
   counts,
   project,

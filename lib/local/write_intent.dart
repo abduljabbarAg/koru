@@ -818,14 +818,19 @@ class WriteIntentParser {
 
     var rest = clean.substring(found.$1 + found.$2.length).trim();
     if (rest.isEmpty) return null;
+    // The cue usually swallows the noun: "schedule a call with Bilal" leaves
+    // "with Bilal" as the title, which reads like a fragment. The noun goes
+    // back on, so the card says "call with Bilal".
+    final cueNoun = _eventNoun(found.$2);
 
     final time = _timeIn(rest.toLowerCase());
 
     // Whatever the date phrase was, it belongs to the date, not the title.
     // Weekdays are cut too, since _dateIn already read them from the whole
     // sentence and a title of "call with Bilal on Friday" is the parser failing
-    // to separate the two.
-    final restLower = rest.toLowerCase();
+    // to separate the two. Each pattern is matched against the current string
+    // rather than a copy taken before the first cut: reusing indices measured
+    // against a longer earlier string puts the later cuts mid-word.
     for (final pattern in <RegExp>[
       RegExp(r'\s+(on|by|due|before)\s'),
       _inDays,
@@ -836,7 +841,7 @@ class WriteIntentParser {
       _isoDate,
       _timeRe,
     ]) {
-      final m = pattern.firstMatch(restLower);
+      final m = pattern.firstMatch(rest.toLowerCase());
       if (m != null && m.start > 0) {
         rest = '${rest.substring(0, m.start)} ${rest.substring(m.end)}';
         rest = rest.replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -860,7 +865,7 @@ class WriteIntentParser {
       rest = rest.substring(0, place.start).trim();
     }
 
-    final title = rest.trim();
+    final title = _restoreNoun(rest.trim(), cueNoun);
     if (title.isEmpty || title.length < 2) return null;
     // No date at all: today is what "schedule a call" almost always means, and
     // the card shows the date before anything is saved, so a wrong guess is
@@ -901,6 +906,25 @@ class WriteIntentParser {
     final t = s.trim();
     if (t.isEmpty) return t;
     return t[0].toUpperCase() + t.substring(1);
+  }
+
+  /// The noun an event cue ended on, if it ended on one.
+  String? _eventNoun(String cue) {
+    for (final noun in const ['call', 'meeting', 'appointment', 'session', 'table']) {
+      if (cue.trim().endsWith(noun)) return noun;
+    }
+    return null;
+  }
+
+  /// Puts that noun back in front of a title that starts with the object
+  /// left over: "with Bilal" becomes "call with Bilal".
+  String _restoreNoun(String title, String? noun) {
+    if (noun == null) return title;
+    final lower = title.toLowerCase();
+    for (final lead in const ['with ', 'for ', 'to ']) {
+      if (lower.startsWith(lead)) return '$noun $title';
+    }
+    return title;
   }
 
   /// Slices the case preserved [clean] using a match found in [lower].

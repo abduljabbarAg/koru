@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Calendar entries.** Say "schedule a call with Bilal tomorrow at 3pm at the
+  studio" in Talk and Koru shows what it understood, as it does for every
+  write, and saves it when you approve. Entries have a date, a time, a place
+  and can be deleted from the Business screen, where a new Calendar section
+  shows the next seven days. Deadlines and entries are separate on purpose: a
+  deadline has to be finished by a date, an entry happens at a time.
+- **Copy to your phone calendar.** An opt-in switch in Settings, and a
+  per-entry button on the Business screen. The copy is one way, the in-app
+  calendar is the source of truth, and nothing is marked synced that has not
+  actually landed.
+- **A much wider on-device assistant.** It answers "how are you", "thanks",
+  "what day is it", "what is 15% of 2000", "how much does Bilal owe" and
+  "who should I chase" without a model, and it lists your calendar merged with
+  what is due. The small talk varies per question and stays deterministic: the
+  same question always gives the same answer, and no question reaches a model
+  to do it.
+- **Chat follows the answer.** The thread stays with the stream while tokens
+  arrive and lands on the new turn when you send, instead of sitting still
+  until the reply finishes. Replies carry their time and can be long-pressed
+  to copy.
+
+### Fixed
+
+- **"Delete everything" now deletes everything.** Projects, project notes and
+  the new calendar table were left behind, which is the one thing an app that
+  promises local-only storage must not do.
+- **The local model can see your projects.** They were in its facts list and
+  never rendered into its brief, so it knew who owed money and nothing about
+  what any of it was for.
+- A `ValueNotifier` was allocated per chat bubble per rebuild and never
+  disposed, and the handoff card lost its dismissed state every time the
+  screen redrew.
+
 ## 1.2.1
 
 The beard only existed on the fallback path.

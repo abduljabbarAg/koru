@@ -354,6 +354,9 @@ class CalendarEvent {
   }
 
   /// Human label: "3:00 pm" or "All day".
+  ///
+  /// Minutes are always shown. "3 pm" is a rounding, and a calendar is the one
+  /// place where a rounded number reads as a wrong one.
   String get timeLabel {
     final t = time;
     if (t == null || t.isEmpty) return 'All day';
@@ -363,8 +366,7 @@ class CalendarEvent {
     final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
     final meridiem = hour >= 12 ? 'pm' : 'am';
     final twelve = hour % 12 == 0 ? 12 : hour % 12;
-    final minuteText = minute == 0 ? '' : ':${minute.toString().padLeft(2, '0')}';
-    return '$twelve$minuteText $meridiem';
+    return '$twelve:${minute.toString().padLeft(2, '0')} $meridiem';
   }
 }
 

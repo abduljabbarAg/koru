@@ -531,6 +531,7 @@ class BusinessScreen extends ConsumerWidget {
     final received = ref.watch(receivedTotalsProvider).valueOrNull ?? const <int, double>{};
     final payments = ref.watch(paymentsProvider).valueOrNull ?? const <Payment>[];
     final deadlines = ref.watch(openDeadlinesProvider).valueOrNull ?? const <Deadline>[];
+    final events = ref.watch(eventsProvider).valueOrNull ?? const <CalendarEvent>[];
     final capacity = ref.watch(capacityProvider).valueOrNull ?? defaultCapacity;
     final currency = ref.watch(currencyProvider).valueOrNull ?? defaultCurrency;
     final today = DateTime.now();
@@ -656,6 +657,28 @@ Row(
                 )
               else
                 ...deadlines.map((d) => _deadlineRow(context, ref, d, today, byId[d.clientId])),
+              const SizedBox(height: 18),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Expanded(child: SectionLabel('Calendar')),
+                  TextButton.icon(
+                    onPressed: () => _addEventHint(context),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 15),
+                    label: const Text('Ask Koru'),
+                  ),
+                ],
+              ),
+              if (events.isEmpty)
+                const EmptyHint(
+                  icon: Icons.event_rounded,
+                  title: 'Nothing on the calendar',
+                  body: 'Say "schedule a call with Bilal tomorrow at 3pm" in '
+                      'Talk and it lands here, with an option to mirror it to '
+                      'your phone calendar.',
+                )
+              else
+                ...events.take(6).map((e) => _eventRow(context, ref, e)),
               const SizedBox(height: 18),
               if (payments.isNotEmpty) ...[
                 const SectionLabel('Recent payments'),
@@ -891,6 +914,143 @@ Row(
       ),
     );
   }
+
+  /// One calendar entry. A time on the left, the thing itself in the middle,
+  /// and whether the phone's calendar has a copy on the right.
+  Widget _eventRow(BuildContext context, WidgetRef ref, CalendarEvent e) {
+    final starts = e.startsAt;
+    final dayLabel = starts == null
+        ? e.date
+        : '${_weekdayShort(starts.weekday)} ${starts.day} ${_monthShort(starts.month)}';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: KoruColors.surface,
+        borderRadius: BorderRadius.circular(KoruRadius.card),
+        border: Border.all(color: KoruColors.line),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 62,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(dayLabel,
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: KoruColors.ink)),
+                Text(e.timeLabel,
+                    style:
+                        const TextStyle(fontSize: 12, color: KoruColors.inkFaint)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.title,
+                    style: const TextStyle(
+                        fontSize: 14.5, fontWeight: FontWeight.w500)),
+                if (e.location != null)
+                  Text(e.location!,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: KoruColors.inkFaint)),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: e.synced
+                ? 'Already in your phone calendar'
+                : 'Copy to your phone calendar',
+            icon: Icon(
+              e.synced ? Icons.check_rounded : Icons.event_outlined,
+              size: 18,
+              color: e.synced ? KoruColors.leaf : KoruColors.inkFaint,
+            ),
+            onPressed: e.synced ? null : () => _syncEvent(context, ref, e),
+          ),
+          IconButton(
+            tooltip: 'Delete ${e.title}',
+            icon: const Icon(Icons.close_rounded,
+                size: 18, color: KoruColors.inkFaint),
+            onPressed: () => _deleteEvent(ref, e),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Points at the chat rather than opening a half-featured form: the parser
+  /// already understands "schedule a call tomorrow at 3pm", and a second way to
+  /// say it is a second thing to keep correct.
+  void _addEventHint(BuildContext context) {
+    toast(context, 'In Talk, say "schedule a call with Bilal tomorrow at 3pm" '
+        'and approve the card.');
+  }
+
+  /// Copies one entry to the phone's own calendar, through the same bridge the
+  /// chat uses, so an entry created in either place can be mirrored.
+  Future<void> _syncEvent(
+      BuildContext context, WidgetRef ref, CalendarEvent e) async {
+    final starts = e.startsAt;
+    if (starts == null) {
+      toast(context, 'That entry has no date to send.');
+      return;
+    }
+    final ok = await ref.read(calendarBridgeProvider).addEvent(
+          title: e.title,
+          start: starts,
+          end: starts.add(const Duration(hours: 1)),
+          location: e.location,
+        );
+    if (!context.mounted) return;
+    if (ok) {
+      final store = await ref.read(storeProvider.future);
+      await store.updateEvent(
+          CalendarEvent.fromMap({...e.toMap(), 'synced': 1}));
+      ref.invalidate(eventsProvider);
+      toast(context, 'Copied to your phone calendar.');
+    } else {
+      toast(context, 'Your phone calendar could not be written to. Check the '
+          'calendar permission in Settings.');
+    }
+  }
+
+  Future<void> _deleteEvent(WidgetRef ref, CalendarEvent e) async {
+    final store = await ref.read(storeProvider.future);
+    await store.deleteEvent(e.id!);
+    ref.invalidate(eventsProvider);
+  }
+
+  static String _weekdayShort(int weekday) => switch (weekday) {
+        1 => 'Mon',
+        2 => 'Tue',
+        3 => 'Wed',
+        4 => 'Thu',
+        5 => 'Fri',
+        6 => 'Sat',
+        _ => 'Sun',
+      };
+
+  static String _monthShort(int month) => switch (month) {
+        1 => 'Jan',
+        2 => 'Feb',
+        3 => 'Mar',
+        4 => 'Apr',
+        5 => 'May',
+        6 => 'Jun',
+        7 => 'Jul',
+        8 => 'Aug',
+        9 => 'Sep',
+        10 => 'Oct',
+        11 => 'Nov',
+        _ => 'Dec',
+      };
 
   Widget _paymentRow(WidgetRef ref, Payment p, Client? client, Currency currency) {
     return Container(
