@@ -10,6 +10,11 @@
     <!-- Android 14+ refuses a foreground service without a declared type. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- Mirroring a calendar entry to the phone's own calendar. Asked for at
+         the moment the user approves an entry, never at startup, and the app
+         works fully without it: the in-app calendar needs no permission. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
     <application
         android:label="Koru"
         android:name="${applicationName}"

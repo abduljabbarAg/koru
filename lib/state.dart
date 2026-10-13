@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'attention.dart';
 import 'attention_bridge.dart';
+import 'calendar_bridge.dart';
 import 'cloud.dart';
 import 'cloud_providers.dart';
 import 'currency.dart';
@@ -206,6 +207,7 @@ class ChatNotifier extends Notifier<ChatState> {
         deadlines: await store.deadlines(),
         projects: await store.projects(),
         projectNotes: await _latestNotePerProject(store),
+        events: await store.events(),
       );
 
   Future<void> ask(String question) async {
@@ -469,8 +471,13 @@ class ChatNotifier extends Notifier<ChatState> {
   /// the indicator seemed stuck.
   String _activityFor(String q) {
     // A write is decided by the parser rather than the model, so claiming the
-    // model was working on it was never true.
-    if (const WriteIntentParser().parse(q) != null) return 'Working out what you meant';
+    // model was working on it was never true. Each kind gets its own name,
+    // because "working out what you meant" over a calendar entry is a pause
+    // with no explanation.
+    final intent = const WriteIntentParser().parse(q);
+    if (intent is AddEventIntent) return 'Checking your calendar';
+    if (intent is AddDeadlineIntent) return 'Checking what is due';
+    if (intent != null) return 'Working out what you meant';
     if (q.split('\n').where((l) => l.trim().isNotEmpty).length > 1) {
       return 'Reading your list';
     }
@@ -684,6 +691,7 @@ class ChatNotifier extends Notifier<ChatState> {
       ..invalidate(paymentsProvider)
       ..invalidate(receivedTotalsProvider)
       ..invalidate(openDeadlinesProvider)
+      ..invalidate(eventsProvider)
       ..invalidate(guideFactsProvider);
 
     // An import is remembered only once it has actually landed. Recording it
@@ -699,12 +707,21 @@ class ChatNotifier extends Notifier<ChatState> {
     // reported that has not been looked at afterwards.
     final problem = await write.verify(store);
 
+    // A calendar entry can also go into the phone's own calendar. Opt-in from
+    // Settings, and a failure there is a missing mirror rather than a failed
+    // save: the in-app copy already landed and is verified above.
+    var syncNote = '';
+    if (problem == null && write is ProposedEvent) {
+      syncNote = await _mirrorToPhoneCalendar(store, write);
+    }
+
     final messages = [...state.messages];
     final at = messages.lastIndexWhere((m) => m.proposed != null);
     if (at < 0) return;
     messages[at] = Msg(
       MsgRole.koru,
-      problem ?? 'Added ${write.summary}. You can undo this from Clients.',
+      '${problem ?? 'Added ${write.summary}. You can undo this from Clients.'}'
+      '$syncNote',
       // Saying why, when the write did not land, is the difference between a
       // bug report and a user who thinks their records are fine.
       why: problem == null ? 'You approved this, and I checked it saved.'
@@ -712,6 +729,41 @@ class ChatNotifier extends Notifier<ChatState> {
       local: true,
     );
     state = state.copyWith(messages: messages);
+  }
+
+  /// Copies an approved entry to the phone's calendar, if the user turned that
+  /// on. Returns a sentence about the outcome, or empty when nothing was
+  /// attempted.
+  Future<String> _mirrorToPhoneCalendar(
+    ProfileStore store,
+    ProposedEvent event,
+  ) async {
+    if (await store.get('calendar_sync') != '1') return '';
+    final startsAt = event.startsAt;
+    if (startsAt == null) return '';
+
+    final ok = await ref.read(calendarBridgeProvider).addEvent(
+          title: event.title,
+          start: startsAt,
+          end: startsAt.add(const Duration(hours: 1)),
+          location: event.location,
+        );
+
+    // Marked synced only when it really is, for the same reason the write above
+    // is verified: a flag claiming a copy that does not exist is exactly the
+    // kind of quiet lie this app is built to avoid.
+    if (ok) {
+      final rows = (await store.events())
+          .where((e) => e.title == event.title && e.date == event.date)
+          .toList();
+      for (final row in rows) {
+        await store.updateEvent(
+            CalendarEvent.fromMap({...row.toMap(), 'synced': 1}));
+      }
+      return ' I also put it in your phone calendar.';
+    }
+    return ' I could not put it in your phone calendar, so add it there '
+        'yourself if you want it on your home screen.';
   }
 
   /// Drops an unapproved card without doing anything.
@@ -958,6 +1010,9 @@ class ChatNotifier extends Notifier<ChatState> {
         clients: await store.clients(),
         received: await store.receivedTotals(),
         deadlines: await store.deadlines(),
+        projects: await store.projects(),
+        projectNotes: await _latestNotePerProject(store),
+        events: await store.events(),
       );
 }
 
@@ -1129,6 +1184,21 @@ final openDeadlinesProvider = FutureProvider<List<Deadline>>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return store.deadlines();
 });
+
+/// Calendar entries, from today forward.
+///
+/// Anchored at today rather than "everything on file" so the provider cannot
+/// grow without bound as the calendar fills up: screens that need a different
+/// window can pass their own, but the shared one answers "what is coming".
+final eventsProvider = FutureProvider<List<CalendarEvent>>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  final today = DateTime.now();
+  return store.events(from: DateTime(today.year, today.month, today.day));
+});
+
+/// Writing to the phone's own calendar. Kept behind a provider so a test can
+/// replace it and no test ever touches a real calendar.
+final calendarBridgeProvider = Provider<CalendarBridge>((ref) => const CalendarBridge());
 
 /// How many clients this person is willing to carry at once.
 ///

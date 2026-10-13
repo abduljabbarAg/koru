@@ -206,6 +206,66 @@ class ProposedDeadline extends ProposedWrite {
   }
 }
 
+/// A calendar entry, waiting for approval like every other write.
+///
+/// The [date] is never null by the time it gets here: the parser defaults it to
+/// today and the card shows the date, so "schedule a call" lands on today's
+/// calendar with the user having seen that it would.
+class ProposedEvent extends ProposedWrite {
+  const ProposedEvent({
+    required this.title,
+    required this.date,
+    this.time,
+    this.location,
+  });
+
+  final String title;
+  final String date;
+  final String? time;
+  final String? location;
+
+  @override
+  String get summary {
+    final at = time == null ? date : '$date at $time';
+    final place = location == null ? '' : ', at $location';
+    return 'Add "$title" to your calendar, $at$place';
+  }
+
+  /// The moment this entry starts, for handing to the phone's calendar.
+  DateTime? get startsAt {
+    final d = DateTime.tryParse(date);
+    if (d == null) return null;
+    final t = time;
+    if (t == null || t.isEmpty) return DateTime(d.year, d.month, d.day);
+    final parts = t.split(':');
+    final hour = int.tryParse(parts.isNotEmpty ? parts.first : '') ?? 0;
+    final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+    return DateTime(d.year, d.month, d.day, hour, minute);
+  }
+
+  @override
+  Future<void> apply(ProfileStore store) => store.addEvent(CalendarEvent(
+        title: title,
+        date: date,
+        time: time,
+        location: location,
+        created: DateTime.now().toIso8601String(),
+      ));
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final found = (await store.events())
+        .where((e) =>
+            e.title.toLowerCase() == title.toLowerCase() && e.date == date)
+        .toList();
+    if (found.isEmpty) {
+      return 'I said I added that calendar entry and it is not in your '
+          'calendar. Nothing was saved, so please try again.';
+    }
+    return null;
+  }
+}
+
 /// A list of writes, shown to the user as numbered steps and applied together.
 ///
 /// The shape a multi step task needs, and the one Gemini-style interfaces get
@@ -536,6 +596,14 @@ class WriteResolver {
         return WriteResolution.proposed(
           ProposedDeadline(title: intent.title, due: intent.due),
         );
+
+      case AddEventIntent():
+        return WriteResolution.proposed(ProposedEvent(
+          title: intent.title,
+          date: intent.date ?? DateTime.now().toIso8601String().substring(0, 10),
+          time: intent.time,
+          location: intent.location,
+        ));
     }
   }
 

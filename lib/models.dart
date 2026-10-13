@@ -250,6 +250,124 @@ class Payment {
       );
 }
 
+/// A calendar entry: something with a place in time, as opposed to a deadline,
+/// which only has to be finished by a date.
+///
+/// The distinction is real and worth its own table. A deadline is "hand the
+/// site over by Friday" and can be done at any hour before it; a calendar entry
+/// is "call with Bilal at 3pm" and happens at 3pm or it does not happen. Times
+/// would have been squeezed into the deadlines table as a second meaning of the
+/// same column, and "what is on my calendar today" cannot be answered from a
+/// list of due dates.
+class CalendarEvent {
+  final int? id;
+
+  /// ISO date, required. A calendar entry with no date is a task.
+  final String date;
+
+  /// "HH:mm", or null for an all-day entry.
+  final String? time;
+
+  final String title;
+  final String? location;
+  final String? note;
+
+  /// Optionally attached, the same way deadlines are.
+  final int? clientId;
+
+  /// Duration in minutes, null means the default.
+  final int? durationMin;
+
+  /// True once this entry has been handed to the phone's calendar, so a second
+  /// sync cannot create a duplicate. The in-app copy is always the truth; this
+  /// only says whether the phone's copy exists.
+  final bool synced;
+
+  final String created;
+
+  const CalendarEvent({
+    this.id,
+    required this.date,
+    this.time,
+    required this.title,
+    this.location,
+    this.note,
+    this.clientId,
+    this.durationMin,
+    this.synced = false,
+    this.created = '',
+  });
+
+  bool get allDay => time == null || time!.isEmpty;
+
+  Map<String, Object?> toMap() => {
+        if (id != null) 'id': id,
+        'date': date,
+        if (time != null) 'time': time,
+        'title': title,
+        if (location != null) 'location': location,
+        if (note != null) 'note': note,
+        if (clientId != null) 'client_id': clientId,
+        if (durationMin != null) 'duration_min': durationMin,
+        'synced': synced ? 1 : 0,
+        'created': created,
+      };
+
+  Map<String, Object?> toUpdateMap() => {
+        'date': date,
+        'time': time,
+        'title': title,
+        'location': location,
+        'note': note,
+        'client_id': clientId,
+        'duration_min': durationMin,
+        'synced': synced ? 1 : 0,
+        'created': created,
+      };
+
+  factory CalendarEvent.fromMap(Map<String, Object?> m) => CalendarEvent(
+        id: m['id'] as int?,
+        date: m['date'] as String? ?? '',
+        time: m['time'] as String?,
+        title: m['title'] as String? ?? '',
+        location: m['location'] as String?,
+        note: m['note'] as String?,
+        clientId: m['client_id'] as int?,
+        durationMin: m['duration_min'] as int?,
+        synced: (m['synced'] as int? ?? 0) == 1,
+        created: m['created'] as String? ?? '',
+      );
+
+  /// Start moment, for sorting and for handing to the phone calendar.
+  ///
+  /// All-day entries sort before timed ones on the same day, because "sometime
+  /// today" should not come above "9am".
+  DateTime? get startsAt {
+    final d = DateTime.tryParse(date);
+    if (d == null) return null;
+    final t = time;
+    if (t == null || t.isEmpty) return DateTime(d.year, d.month, d.day);
+    final parts = t.split(':');
+    final hour = int.tryParse(parts.isNotEmpty ? parts.first : '') ?? 0;
+    final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+    return DateTime(d.year, d.month, d.day, hour, minute);
+  }
+
+  /// Human label: "3:00 pm" or "All day".
+  String get timeLabel {
+    final t = time;
+    if (t == null || t.isEmpty) return 'All day';
+    final parts = t.split(':');
+    var hour = int.tryParse(parts.isNotEmpty ? parts.first : '');
+    if (hour == null) return t;
+    final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+    final meridiem = hour >= 12 ? 'pm' : 'am';
+    final twelve = hour % 12 == 0 ? 12 : hour % 12;
+    final minuteText = minute == 0 ? '' : ':${minute.toString().padLeft(2, '0')}';
+    return '$twelve$minuteText $meridiem';
+  }
+}
+
 /// A dated thing that has to happen, optionally attached to a client.
 class Deadline {
   final int? id;

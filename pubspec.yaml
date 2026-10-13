@@ -18,6 +18,9 @@ dependencies:
   share_plus: ^7.2.2
   # Only used to let the user pick a backup file back in.
   file_picker: ^8.0.0
+  device_calendar: ^4.3.3
+  flutter_timezone: ^5.1.1
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:

@@ -140,6 +140,12 @@ class LocalEngineFacts {
   /// Open deadlines, soonest first.
   final List<Deadline> deadlines;
 
+  /// Calendar entries, today forward.
+  ///
+  /// Without these the model could answer "what is due" and not "what am I
+  /// doing tomorrow", which is the same loop seen from the other side.
+  final List<CalendarEvent> events;
+
   /// Client and personal projects, with the latest note for each.
   ///
   /// Projects existed in the database from the start and were never in this, so
@@ -157,12 +163,16 @@ class LocalEngineFacts {
     this.clients = const [],
     this.received = const {},
     this.deadlines = const [],
+    this.events = const [],
     this.projects = const [],
     this.projectNotes = const {},
   });
 
   bool get isEmpty =>
-      clients.isEmpty && deadlines.isEmpty && projects.isEmpty;
+      clients.isEmpty &&
+      deadlines.isEmpty &&
+      projects.isEmpty &&
+      events.isEmpty;
 
   double balanceOf(Client c) =>
       c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
@@ -225,6 +235,17 @@ class LocalEngineFacts {
       lines.add('Deadlines coming up: $items');
       if (deadlines.length > 4) {
         lines.add('and ${deadlines.length - 4} more after those');
+      }
+    }
+
+    if (events.isNotEmpty) {
+      final items = events
+          .take(4)
+          .map((e) => '${e.title} (${e.date}${e.time == null ? '' : ' ${e.time}'})')
+          .join('; ');
+      lines.add('On the calendar: $items');
+      if (events.length > 4) {
+        lines.add('and ${events.length - 4} more calendar entries');
       }
     }
 

@@ -23,7 +23,7 @@
 ///
 /// Resolved by which cue appears earliest, not by trying one kind at a time and
 /// taking the first that matches.
-enum _Kind { deadline, payment, client, edit, delete, none }
+enum _Kind { deadline, event, payment, client, edit, delete, none }
 
 /// What the user appears to have asked to record.
 sealed class WriteIntent {
@@ -77,6 +77,41 @@ class AddDeadlineIntent extends WriteIntent {
   @override
   String get summary =>
       due == null ? 'Add a deadline: $title' : 'Add "$title", due $due';
+}
+
+/// A calendar entry: a moment in time, not just a date.
+///
+/// Separate from a deadline because the shapes are different. "Hand over the
+/// site by Friday" is a deadline; "call with Bilal at 3pm" is an event, and
+/// squeezing times into the deadlines table would have made both answers worse.
+class AddEventIntent extends WriteIntent {
+  const AddEventIntent({
+    required this.title,
+    required this.date,
+    this.time,
+    this.location,
+  });
+
+  final String title;
+
+  /// ISO date, or null when the sentence had no date at all. The card still
+  /// works: it proposes today, which is what "schedule a call with Bilal" with
+  /// no date almost always means.
+  final String? date;
+
+  /// "HH:mm" when the sentence carried a time, null for an all-day entry.
+  final String? time;
+
+  final String? location;
+
+  @override
+  String get summary {
+    final parts = <String>['Add "$title" to your calendar'];
+    final t = time;
+    parts.add(t == null ? (date ?? 'today') : '$date at $t');
+    if (location != null) parts.add('at $location');
+    return parts.join(', ');
+  }
 }
 
 String _plain(double v) =>
@@ -288,6 +323,54 @@ class WriteIntentParser {
     'add task',
   ];
 
+  /// Calendar cues. Kept after the deadline cues in the list only for
+  /// readability: [parse] takes whichever cue appears earliest in the sentence,
+  /// so list order decides nothing except ties at the same position.
+  static const _eventCues = [
+    'add to my calendar',
+    'put in my calendar',
+    'put it in my calendar',
+    'in my calendar',
+    'calendar entry',
+    'calendar reminder',
+    'add a calendar entry',
+    'add calendar entry',
+    'add an event',
+    'add a calendar reminder',
+    'add event',
+    'new calendar entry',
+    'schedule a meeting',
+    'schedule a call',
+    'schedule an appointment',
+    'schedule a',
+    'schedule an',
+    'schedule a session',
+    'schedule meeting',
+    'schedule call',
+    'schedule appointment',
+    'schedule the',
+    'set up a meeting',
+    'set up a call',
+    'set up an appointment',
+    'set up a session',
+    'book a meeting',
+    'book a call',
+    'book an appointment',
+    'book a session',
+    'book a table',
+    'book the',
+    'book a',
+    'make an appointment',
+    'add an appointment',
+    'add a meeting',
+    'add a call',
+    'add meeting',
+    'fix a meeting',
+    'fix a call',
+    'organise a meeting',
+    'organize a meeting',
+  ];
+
   /// Words that make a sentence a question rather than an instruction.
   static const _interrogatives = [
     'how much', 'how many', 'how long', 'what', 'when', 'where', 'who ',
@@ -298,6 +381,16 @@ class WriteIntentParser {
   static final _number = RegExp(r'(\d[\d,]*(?:\.\d+)?)');
   static final _isoDate = RegExp(r'\b(\d{4}-\d{2}-\d{2})\b');
   static final _inDays = RegExp(r'\bin (\d+) days?\b');
+
+  /// A clock time, in either 12-hour or 24-hour form.
+  ///
+  /// A bare number is never a time: "meeting with 3 clients" must not become a
+  /// 3am appointment. It has to be "at 3pm", "at 3:30 pm", "at 15:00" or the
+  /// same without "at", and the am/pm or the colon is what says so.
+  static final _timeRe = RegExp(
+    r'\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b'
+    r'|\bat\s+(\d{1,2}):(\d{2})\b',
+  );
 
   static const _weekdays = <String, int>{
     'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
@@ -339,6 +432,8 @@ class WriteIntentParser {
     switch (kind) {
       case _Kind.deadline:
         return _deadline(clean, lower);
+      case _Kind.event:
+        return _event(clean, lower);
       case _Kind.payment:
         return _payment(clean, lower);
       case _Kind.client:
@@ -357,6 +452,7 @@ class WriteIntentParser {
 
   _Kind _kindFor(String lower) {
     final d = _earliestCue(lower, _deadlineCues);
+    final v = _earliestCue(lower, _eventCues);
     final p = _earliestCue(lower, _paymentCues);
     final c = _earliestCue(lower, _clientCues);
     final e = _earliestCue(lower, _editCues);
@@ -374,6 +470,7 @@ class WriteIntentParser {
     }
 
     offer(_Kind.deadline, d?.$1);
+    offer(_Kind.event, v?.$1);
     offer(_Kind.payment, p?.$1);
     offer(_Kind.client, c?.$1);
     // An edit or delete must never win on position alone. "delete bilal, then
@@ -708,6 +805,102 @@ class WriteIntentParser {
     // "for the invoice" than a name, and the confirmation card offers the real
     // list anyway, so a wrong guess here would only create something to undo.
     return AddDeadlineIntent(title: title, due: _dateIn(lower));
+  }
+
+  /// "schedule a call with Bilal tomorrow at 3pm at the studio".
+  ///
+  /// Reads the time, then the location, then what is left becomes the title, in
+  /// that order, because both of the extra pieces can only be recognised once
+  /// the piece before them has been taken out of the sentence.
+  AddEventIntent? _event(String clean, String lower) {
+    final found = _earliestCue(lower, _eventCues);
+    if (found == null) return null;
+
+    var rest = clean.substring(found.$1 + found.$2.length).trim();
+    if (rest.isEmpty) return null;
+
+    final time = _timeIn(rest.toLowerCase());
+
+    // Whatever the date phrase was, it belongs to the date, not the title.
+    // Weekdays are cut too, since _dateIn already read them from the whole
+    // sentence and a title of "call with Bilal on Friday" is the parser failing
+    // to separate the two.
+    final restLower = rest.toLowerCase();
+    for (final pattern in <RegExp>[
+      RegExp(r'\s+(on|by|due|before)\s'),
+      _inDays,
+      RegExp(r'\s+(today|tomorrow)\b'),
+      RegExp(r'\s+(next|this)\s+(week|month|monday|tuesday|wednesday|'
+          r'thursday|friday|saturday|sunday|weekend)\b'),
+      for (final day in _weekdays.keys) RegExp('\\s+$day\\b'),
+      _isoDate,
+      _timeRe,
+    ]) {
+      final m = pattern.firstMatch(restLower);
+      if (m != null && m.start > 0) {
+        rest = '${rest.substring(0, m.start)} ${rest.substring(m.end)}';
+        rest = rest.replaceAll(RegExp(r'\s+'), ' ').trim();
+      } else if (m != null && m.start == 0) {
+        rest = rest.substring(m.end).trim();
+      }
+    }
+
+    // A location is "at the studio" where "at" is followed by words rather
+    // than by a clock, and only at the very end: "call with Bilal at Acme" is
+    // far more often about the client than about a venue, and the ones that
+    // are about a venue are easy to retype.
+    String? location;
+    final place = RegExp(r'\s+(?:at|in)\s+((?:the\s+)?[a-z][a-z\s]{0,24})$')
+        .firstMatch(rest.toLowerCase());
+    if (place != null && !_number.hasMatch(place.group(1)!)) {
+      // Indices from the lower-case match line up with the original because
+      // both strings came from the same slice and folding only changes case.
+      final start = rest.toLowerCase().indexOf(place.group(1)!, place.start);
+      location = _titleCase(rest.substring(start));
+      rest = rest.substring(0, place.start).trim();
+    }
+
+    final title = rest.trim();
+    if (title.isEmpty || title.length < 2) return null;
+    // No date at all: today is what "schedule a call" almost always means, and
+    // the card shows the date before anything is saved, so a wrong guess is
+    // visible rather than silent.
+    return AddEventIntent(
+      title: title,
+      date: _dateIn(lower) ?? _iso(DateTime.now()),
+      time: time,
+      location: location,
+    );
+  }
+
+  /// The clock time in [lower] as "HH:mm", or null when it carries none.
+  String? _timeIn(String lower) {
+    final m = _timeRe.firstMatch(lower);
+    if (m == null) return null;
+    int? hour;
+    int minute = 0;
+    if (m.group(1) != null) {
+      hour = int.tryParse(m.group(1)!);
+      minute = int.tryParse(m.group(2) ?? '0') ?? 0;
+      final meridiem = m.group(3);
+      if (hour == null || hour > 12 || hour < 1) return null;
+      if (meridiem == 'pm' && hour != 12) hour += 12;
+      if (meridiem == 'am' && hour == 12) hour = 0;
+    } else {
+      hour = int.tryParse(m.group(4) ?? '');
+      minute = int.tryParse(m.group(5) ?? '') ?? 0;
+      if (hour == null || hour > 23 || minute > 59) return null;
+    }
+    return '${hour.toString().padLeft(2, '0')}:'
+        '${minute.toString().padLeft(2, '0')}';
+  }
+
+  /// "the studio" -> "The studio", so a location on the card reads as a phrase
+  /// rather than a fragment left over from a sentence.
+  String _titleCase(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return t;
+    return t[0].toUpperCase() + t.substring(1);
   }
 
   /// Slices the case preserved [clean] using a match found in [lower].

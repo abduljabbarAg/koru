@@ -31,7 +31,7 @@ class ProfileStore {
   /// than no test, so [transaction] and [close] refuse clearly instead.
   final Database? _root;
 
-  static const int schemaVersion = 6;
+  static const int schemaVersion = 7;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -45,6 +45,7 @@ class ProfileStore {
         if (v >= 4) await _migrateToV4(d);
         if (v >= 5) await _migrateToV5(d);
         if (v >= 6) await _migrateToV6(d);
+        if (v >= 7) await _migrateToV7(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
@@ -52,6 +53,7 @@ class ProfileStore {
         if (from < 4) await _migrateToV4(d);
         if (from < 5) await _migrateToV5(d);
         if (from < 6) await _migrateToV6(d);
+        if (from < 7) await _migrateToV7(d);
       },
     );
     return ProfileStore(db);
@@ -118,6 +120,31 @@ class ProfileStore {
     for (final column in ['deposit', 'terms_days', 'invoiced_on']) {
       await d.execute('ALTER TABLE business ADD COLUMN $column');
     }
+  }
+
+  /// Calendar entries.
+  ///
+  /// A separate table from deadlines on purpose: deadlines answer "what has to
+  /// be finished by when", this answers "what is on my calendar", and the two
+  /// questions have different shapes (a time, a duration, a place).
+  static Future<void> _migrateToV7(Database d) async {
+    await d.execute('''
+      CREATE TABLE IF NOT EXISTS events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        time TEXT,
+        title TEXT NOT NULL,
+        location TEXT,
+        note TEXT,
+        client_id INTEGER,
+        duration_min INTEGER,
+        synced INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL
+      )
+    ''');
+    // Calendar screens ask for one day or one week at a time, constantly.
+    await d.execute(
+        'CREATE INDEX IF NOT EXISTS idx_events_date ON events(date, time)');
   }
 
   /// Projects and their notes.
@@ -305,6 +332,9 @@ class ProfileStore {
       'chat',
       'payments',
       'deadlines',
+      'projects',
+      'project_notes',
+      'events',
     ]) {
       await _db.delete(table);
     }
@@ -473,6 +503,48 @@ class ProfileStore {
 
   Future<void> deleteDeadline(int id) =>
       _db.delete('deadlines', where: 'id = ?', whereArgs: [id]);
+
+  // -- calendar events -------------------------------------------------
+
+  /// Events from [from] (inclusive) to [to] (inclusive), soonest first.
+  ///
+  /// Both ends optional so "everything on file" and "this week" are the same
+  /// query. All-day entries sort before timed ones on the same day by the
+  /// secondary order on time, with NULL first, which SQLite does for free.
+  Future<List<CalendarEvent>> events({DateTime? from, DateTime? to}) async {
+    final where = <String>[];
+    final args = <Object?>[];
+    if (from != null) {
+      where.add('date >= ?');
+      args.add(_isoDate(from));
+    }
+    if (to != null) {
+      where.add('date <= ?');
+      args.add(_isoDate(to));
+    }
+    final rows = await _db.query(
+      'events',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'date ASC, time ASC, id ASC',
+    );
+    return rows.map(CalendarEvent.fromMap).toList();
+  }
+
+  Future<int> addEvent(CalendarEvent e) => _db.insert('events', e.toMap());
+
+  Future<void> updateEvent(CalendarEvent e) async {
+    await _db.update('events', e.toUpdateMap(),
+        where: 'id = ?', whereArgs: [e.id]);
+  }
+
+  Future<void> deleteEvent(int id) =>
+      _db.delete('events', where: 'id = ?', whereArgs: [id]);
+
+  static String _isoDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   // -- projects --------------------------------------------------------
 

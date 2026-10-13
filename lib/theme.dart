@@ -57,7 +57,7 @@ ThemeData buildKoruTheme() {
         statusBarIconBrightness: Brightness.dark,
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: KoruColors.surface,
       elevation: 0,
       margin: EdgeInsets.zero,
