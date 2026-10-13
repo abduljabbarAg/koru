@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300"
+     width="900" height="300" role="img" aria-label="Measured kernel speedups on the reference device">
+  <title>Measured kernel speedups on the reference device</title>
+  <rect width="900" height="300" fill="#F6F8FC"/>
+  <text x="40" y="52" font-family="ui-sans-serif,system-ui,sans-serif" font-size="27"
+        font-weight="700" fill="#0C1526">Kernel speedups</text>
+  <text x="40" y="80" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15"
+        fill="#5A6B85">Helio G99. Best-of-9, integer results identical to the scalar reference.</text>
+    <rect x="60" y="140" width="780" height="34" rx="17.0" fill="#5A6B85" opacity="0.18"/>
+    <rect x="60" y="140" width="563.4" height="34" rx="17.0" fill="#2F6FEB"/>
+    <text x="60" y="128" font-family="ui-sans-serif,system-ui,sans-serif" font-size="19" font-weight="600" fill="#0C1526">NEON int8 dot product</text>
+    <text x="840" y="128" text-anchor="end" font-family="ui-monospace,monospace" font-size="19" font-weight="700" fill="#2F6FEB">4.37x</text>
+    <text x="60" y="198" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#5A6B85">32-wide kernel, Q projection, bit-identical output</text>
+    <rect x="60" y="230" width="780" height="34" rx="17.0" fill="#5A6B85" opacity="0.18"/>
+    <rect x="60" y="230" width="777.4" height="34" rx="17.0" fill="#38BDF8"/>
+    <text x="60" y="218" font-family="ui-sans-serif,system-ui,sans-serif" font-size="19" font-weight="600" fill="#0C1526">Pre-unpacked K-quant cache</text>
+    <text x="840" y="218" text-anchor="end" font-family="ui-monospace,monospace" font-size="19" font-weight="700" fill="#38BDF8">6.03x</text>
+    <text x="60" y="288" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15" fill="#5A6B85">256x1024 matvec: 0.409 ms to 0.068 ms</text>
+</svg>

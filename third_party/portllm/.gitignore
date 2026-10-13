@@ -1,0 +1,5 @@
+/target
+oracle/target
+**/*.rs.bk
+*.gguf
+.DS_Store

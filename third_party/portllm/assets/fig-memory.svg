@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300"
+     width="900" height="300" role="img" aria-label="Resident memory, resident loader versus mapped streaming">
+  <title>Resident memory, resident loader versus mapped streaming</title>
+  <rect width="900" height="300" fill="#F6F8FC"/>
+  <text x="40" y="52" font-family="ui-sans-serif,system-ui,sans-serif" font-size="27"
+        font-weight="700" fill="#0C1526">Fitting past the memory wall</text>
+  <text x="40" y="80" font-family="ui-sans-serif,system-ui,sans-serif" font-size="15"
+        fill="#5A6B85">One layer is decoded on demand and released. Two layers stay resident.</text>
+
+  <text x="60" y="150" font-family="ui-sans-serif,system-ui,sans-serif" font-size="18"
+        font-weight="600" fill="#0C1526">Resident loader</text>
+  <rect x="60" y="166" width="780" height="34" rx="17" fill="#F59E0B" opacity="0.75"/>
+  <text x="60" y="226" font-family="ui-monospace,monospace" font-size="16" fill="#5A6B85">
+    whole file held in RAM, plus every layer decoded up front</text>
+  <text x="840" y="150" text-anchor="end" font-family="ui-monospace,monospace"
+        font-size="20" font-weight="700" fill="#F59E0B">~1 GB</text>
+
+  <text x="60" y="256" font-family="ui-sans-serif,system-ui,sans-serif" font-size="18"
+        font-weight="600" fill="#0C1526">Mapped streaming</text>
+  <rect x="60" y="272" width="780" height="34" rx="17" fill="#22C55E" opacity="0.8"/>
+  <rect x="60" y="272" width="15.6" height="34" rx="17" fill="#22C55E"/>
+  <text x="840" y="256" text-anchor="end" font-family="ui-monospace,monospace"
+        font-size="20" font-weight="700" fill="#22C55E">20 MB</text>
+  <text x="90" y="295" font-family="ui-monospace,monospace"
+        font-size="15" fill="#5A6B85">468 MB model, 3 MB RSS</text>
+</svg>

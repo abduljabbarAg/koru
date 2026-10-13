@@ -1,0 +1,32 @@
+[package]
+name = "portllm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "A portable LLM engine that sizes itself to the device it runs on."
+license = "MIT"
+
+[lib]
+name = "portllm"
+path = "src/lib.rs"
+
+# A C ABI alongside the Rust one, so an Android app or a Python binding can
+# call the fit calculation without a Rust toolchain. No dependencies are
+# needed for this: a handful of extern "C" functions over the same code.
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "portllm"
+path = "src/main.rs"
+
+[dependencies]
+# Intentionally none. The probe, registry and scorer must stay usable on a
+# phone before any native toolchain is in play; a dependency tree would be
+# built for the host, not the target.
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
