@@ -173,9 +173,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!_scroll.hasClients) return;
       final grew = next.messages.length != previous?.messages.length;
       final finishing = previous?.busy == true && !next.busy;
-      final atBottom =
-          _scroll.position.pixels >= _scroll.position.maxScrollExtent - 140;
-      if (!next.busy && !grew && !finishing && !atBottom) return;
+      // A new turn always brings the view back: that is what pressing send
+      // means. Arriving tokens do not, because the reader may be reading back
+      // through an earlier answer and being dragged to the bottom on every
+      // token makes that impossible.
+      if (grew) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scroll.hasClients) return;
+          _scroll.jumpTo(_scroll.position.maxScrollExtent);
+          setState(() => _following = true);
+        });
+        return;
+      }
+      if (!_following) return;
+      if (!next.busy && !finishing) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_scroll.hasClients) return;
         _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -233,6 +244,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? _intro()
                 : ListView.builder(
                     controller: _scroll,
+                    onNotification: (n) {
+                      if (n is ScrollUpdateNotification) _onScroll();
+                      return false;
+                    },
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     itemCount: st.messages.length,
                     itemBuilder: (_, i) => _ChatBubble(
@@ -251,6 +266,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ),
           ),
+          // A way back down while an answer is arriving.
+          //
+          // Only shown when the reader is actually scrolled up. Following a
+          // stream by dragging is the normal way to read back through a long
+          // answer, and the view used to keep yanking itself to the bottom, so
+          // the only way to read was to wait for it to finish.
+          if (st.busy && !_following)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Center(
+                child: _JumpToNewestButton(onTap: _jumpToNewest),
+              ),
+            ),
           // The engine's progress lives here rather than on the splash.
           //
           // It is the same information in the same place, but here being slow
@@ -267,6 +295,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   /// The empty state. Previously an empty list, which is the least useful thing
   /// a chat screen can be.
+  /// Whether the reader is at the bottom, which is what decides if an arriving
+  /// token should scroll the view or be left for later.
+  bool _following = true;
+
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final pos = _scroll.position;
+    // A finger tolerance, because "at the bottom" during a drag is never
+    // exactly true and a reader would be yanked back by a pixel.
+    _following = pos.maxScrollExtent - pos.pixels < 48;
+  }
+
+  void _jumpToNewest() {
+    if (!_scroll.hasClients) return;
+    _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    setState(() => _following = true);
+  }
+
   Widget _intro() {
     const suggestions = [
       'How am I doing?',
@@ -539,19 +585,47 @@ class _ChatBubbleState extends State<_ChatBubble> {
                       _ => KoruActivity.thinking,
                     },
                   )
-                : Text(
-                    m.text,
-                    style: TextStyle(
-                      fontSize: 15,
-                      height: 1.45,
-                      // Progress text arrives on a pending bubble, so it is
-                      // muted until real tokens land. A pending message that
-                      // has text is progress, never an answer.
-                      color: isUser
-                          ? Colors.white
-                          : (m.pending ? KoruColors.inkFaint : KoruColors.ink),
-                    ),
-                  ),
+                // Replies are rendered, not dumped. A cloud answer arrives
+                // with **bold**, "-" bullets and numbered steps already in it,
+                // and showing the asterisks and hashes is showing the reader
+                // the plumbing.
+                //
+                // The user's own text is left alone. What somebody typed is
+                // theirs, and a stray asterisk from a price is not a heading.
+                : isUser
+                    // The time goes inside the bubble rather than in a row
+                    // above it. A row per message is what made a long thread
+                    // grow tall enough to push the approval cards below the
+                    // fold, which is a worse problem than not having a time at
+                    // all. Twelve pixels inside the bubble does not move
+                    // anything.
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            m.text,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              height: 1.45,
+                              color: Colors.white,
+                            ),
+                          ),
+                          if (m.time != null) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              _clock(m.time!),
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: Colors.white.withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ],
+                        ],
+                      )
+                    : _RichReply(
+                        text: m.text,
+                        muted: m.pending,
+                      ),
           ),
           if (m.handoff != null && !_handoffDismissed)
             HandoffCard(
@@ -591,5 +665,201 @@ class _ChatBubbleState extends State<_ChatBubble> {
       },
       child: body,
     );
+  }
+}
+
+/// Shown while an answer is arriving and the reader is not at the bottom.
+class _JumpToNewestButton extends StatelessWidget {
+  const _JumpToNewestButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: KoruColors.surface,
+      shape: const CircleBorder(side: BorderSide(color: KoruColors.line)),
+      elevation: 2,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: const Padding(
+          // 48 is the smallest comfortable touch target, and this is a target
+          // people hit with a thumb while reading one-handed.
+          padding: EdgeInsets.all(14),
+          child: Icon(Icons.keyboard_arrow_down_rounded,
+              size: 22, color: KoruColors.inkSoft),
+        ),
+      ),
+    );
+  }
+}
+
+/// Renders the small amount of markdown a chat reply actually uses.
+///
+/// Deliberately not a markdown parser. Bold, italics, bullets, numbered steps
+/// and headings are what models reach for; tables, links, images and HTML are
+/// what a full renderer would also accept, and on a phone a link someone did
+/// not ask for is a worse failure than an unrendered pipe character.
+///
+/// Streaming is the constraint that shapes this. The text arrives a token at a
+/// time, so an unterminated "**" has to render as literal asterisks until the
+/// closing pair turns up, or the answer visibly flickers between two layouts as
+/// it is written. A pattern that does not close is therefore not styled at all.
+class _RichReply extends StatelessWidget {
+  const _RichReply({required this.text, required this.muted});
+
+  final String text;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = TextStyle(
+      fontSize: 15,
+      height: 1.45,
+      color: muted ? KoruColors.inkFaint : KoruColors.ink,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: _blocks(text, base),
+    );
+  }
+
+  /// Splits [text] into paragraphs and returns a widget per line.
+  List<Widget> _blocks(String raw, TextStyle base) {
+    final out = <Widget>[];
+    final lines = raw.split('\n');
+    var ordered = 0;
+
+    for (final line in lines) {
+      final trimmed = line.trimRight();
+      if (trimmed.trim().isEmpty) {
+        if (out.isNotEmpty) out.add(const SizedBox(height: 8));
+        ordered = 0;
+        continue;
+      }
+
+      final bullet = RegExp(r'^\s*[-*+]\s+').firstMatch(trimmed);
+      final numbered = RegExp(r'^\s*\d+[.)]\s+').firstMatch(trimmed);
+
+      if (bullet != null) {
+        out.add(_row('\u2022', trimmed.substring(bullet.end), base, indent: 16));
+        ordered = 0;
+        continue;
+      }
+      if (numbered != null) {
+        final n = RegExp(r'^\s*(\d+)').firstMatch(trimmed)!.group(1)!;
+        out.add(_row('$n.', trimmed.substring(numbered.end), base, indent: 22));
+        ordered++;
+        continue;
+      }
+      ordered = 0;
+
+      final heading = RegExp(r'^(#{1,3})\s+(.*)\$').firstMatch(trimmed);
+      if (heading != null) {
+        final level = heading.group(1)!.length;
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 2),
+          child: _InlineText(
+            _inline(heading.group(2)!, base.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: level == 1 ? 16 : 15,
+            )),
+            style: base.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: level == 1 ? 16 : 15,
+            ),
+          ),
+        ));
+        continue;
+      }
+
+      out.add(Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: _InlineText(_inline(trimmed, base), style: base),
+      ));
+    }
+    return out;
+  }
+
+  Widget _row(String marker, String body, TextStyle base, {required double indent}) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 3, left: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: indent,
+            child: Text(marker,
+                style: base.copyWith(color: KoruColors.inkFaint)),
+          ),
+          Expanded(child: _InlineText(_inline(body, base), style: base)),
+        ],
+      ),
+    );
+  }
+
+  /// The one inline pass: **bold** and *italic*.
+  ///
+  /// Bold is only applied when a closing pair exists on the same line. An
+  /// unclosed run while a reply is still streaming would otherwise restyle the
+  /// rest of the paragraph every token, which reads as the app breaking.
+  static String _inline(String s, TextStyle base) {
+    String styled(String input, String marker, TextStyle style) {
+      final escaped = RegExp.escape(marker);
+      final re = RegExp('$escaped([^$escaped]{1,200})$escaped');
+      return input.replaceAllMapped(re, (m) => '<b>${m.group(1)}</b>');
+    }
+
+    var out = s;
+    out = styled(out, '**', base.copyWith(fontWeight: FontWeight.w700));
+    // Single asterisks, but only where a double was not already consumed.
+    out = out.replaceAllMapped(
+      RegExp(r'(?<!\*)\*([^*]{1,200})\*(?!\*)'),
+      (m) => '<i>${m.group(1)}</i>',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'`([^`]{1,200})`'),
+      (m) => '<c>${m.group(1)}</c>',
+    );
+    return out;
+  }
+}
+
+/// Renders the tiny inline dialect produced by [_RichReply._inline].
+///
+/// A bespoke parser rather than a general one, because the tags that can appear
+/// here are exactly three and all of them nest. Accepting anything else would
+/// mean accepting markup nobody asked to render.
+class _InlineText extends StatelessWidget {
+  const _InlineText(this.raw, {required this.style});
+
+  final String raw;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final spans = <TextSpan>[];
+    final re = RegExp(r'<(b|i|c)>(.*?)</\1>');
+    var at = 0;
+    for (final m in re.allMatches(raw)) {
+      if (m.start > at) {
+        spans.add(TextSpan(text: raw.substring(at, m.start)));
+      }
+      final inner = m.group(2)!;
+      spans.add(TextSpan(
+        text: inner,
+        style: switch (m.group(1)) {
+          'b' => style.copyWith(fontWeight: FontWeight.w700),
+          'i' => style.copyWith(fontStyle: FontStyle.italic),
+          _ => style.copyWith(
+              fontFamily: 'monospace',
+              backgroundColor: KoruColors.line.withValues(alpha: 0.5)),
+        },
+      ));
+      at = m.end;
+    }
+    if (at < raw.length) spans.add(TextSpan(text: raw.substring(at)));
+    return Text.rich(TextSpan(style: style, children: spans));
   }
 }
