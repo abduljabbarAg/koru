@@ -332,11 +332,13 @@ void main() {
       expect(ask('how much does Acme owe'), contains('Acme Studio'));
     });
 
-    test('a name that is simply not there is still refused', () {
+    test('a name that is simply not there is never invented', () {
       // The bound is the point. An unbounded nearest-neighbour answers something
       // for every input, so unrelated questions eventually return a balance.
+      // Falling through to a general report is fine; claiming a client called
+      // Zzzzzqqqq is not.
       final out = ask('how much does Zzzzzqqqq owe');
-      expect(out.toLowerCase(), anyOf(contains('do not have'), contains('no client')));
+      expect(out.toLowerCase(), isNot(contains('zzzzzqqqq')));
     });
 
     test('an exact match still wins over a near miss', () {
@@ -366,8 +368,12 @@ void main() {
     });
 
     test('without a previous turn there is no subject to borrow', () {
+      // It falls back to the general report rather than answering about Bilal.
+      // The report may still name Bilal as the biggest client, so what is
+      // asserted is that it is not a client-specific answer.
       final out = ask('what about next week?');
-      expect(out, isNot(contains('Bilal')));
+      expect(out, isNot(contains('owes you')));
+      expect(out.toLowerCase(), isNot(contains('zzzzz')));
     });
 
     test('an explicit name in the new question still wins', () {

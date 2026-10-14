@@ -13,12 +13,13 @@ import 'package:koru/theme.dart';
 void main() {
   /// WCAG relative luminance.
   double luminance(Color c) {
+    // Color.r/g/b are 0..1 doubles on current Flutter, not 0..255. Dividing
+    // by 255 again collapsed every channel to near zero and every pair of
+    // colours to a ratio of 1, which is how this test passed while measuring
+    // nothing.
     double channel(double v) {
-      final c = v / 255.0;
-      // Written out rather than as a ternary over `**`, which does not parse
-      // the way it reads.
-      if (c <= 0.04045) return c / 12.92;
-      return math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+      if (v <= 0.04045) return v / 12.92;
+      return math.pow((v + 0.055) / 1.055, 2.4).toDouble();
     }
 
     return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);

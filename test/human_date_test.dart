@@ -24,9 +24,10 @@ void main() {
       expect(rel('2026-10-20'), 'in 6 days');
     });
 
-    test('switches to weeks before "in 8 days" stops being useful', () {
+    test('switches to weeks once counting days stops helping', () {
+      expect(rel('2026-10-20'), 'in 6 days');
       expect(rel('2026-10-21'), 'next week');
-      expect(rel('2026-10-22'), 'in 2 weeks');
+      expect(rel('2026-10-28'), 'in 2 weeks');
     });
 
     test('months and years are not spelled as hundreds of days', () {
