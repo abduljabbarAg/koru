@@ -23,7 +23,17 @@
 ///
 /// Resolved by which cue appears earliest, not by trying one kind at a time and
 /// taking the first that matches.
-enum _Kind { deadline, event, eventEdit, payment, client, edit, delete, none }
+enum _Kind {
+  deadline,
+  event,
+  eventEdit,
+  payment,
+  client,
+  project,
+  edit,
+  delete,
+  none,
+}
 
 /// What the user appears to have asked to record.
 sealed class WriteIntent {
@@ -253,6 +263,42 @@ class DeleteClientIntent extends WriteIntent {
   String get summary => 'Delete $clientName';
 }
 
+/// A new piece of work, client or personal.
+class AddProjectIntent extends WriteIntent {
+  const AddProjectIntent({
+    required this.name,
+    this.clientName,
+    this.target,
+    this.plan,
+  });
+
+  final String name;
+
+  /// Typed, resolved against the real clients later. Null for a personal
+  /// project, which never has a client.
+  final String? clientName;
+
+  /// What "finished" looks like, in the user's own words.
+  final String? target;
+
+  /// How they intend to get there.
+  final String? plan;
+
+  /// Client work only when a client was named. Otherwise personal, which is the
+  /// safer default: a project attached to nobody is a personal project, and
+  /// attaching it to a guessed client would bill the wrong person for it.
+  bool get isPersonal => clientName == null;
+
+  @override
+  String get summary {
+    final bits = <String>['Add project "$name"'];
+    if (!isPersonal) bits.add('for $clientName');
+    if (target != null) bits.add('done when $target');
+    if (plan != null) bits.add('by: $plan');
+    return bits.join(', ');
+  }
+}
+
 /// A write that was asked for but is missing the one thing it needs.
 ///
 /// "add an entry" is an instruction to record something. It carries no name, so
@@ -389,6 +435,27 @@ class WriteIntentParser {
     'delete the client',
     'remove client',
     'remove the client',
+  ];
+
+  /// "start a project called X", "I'm learning X".
+  ///
+  /// Separate from the client cues because a project for a client and a
+  /// personal project are different things with different consequences, and a
+  /// loose phrase must not silently become billable work.
+  static const _projectCues = [
+    'start a project',
+    'start a new project',
+    'add a project',
+    'add a new project',
+    'create a project',
+    'create a new project',
+    'new project',
+    'open a project',
+    'set up a project',
+    'i am learning',
+    "i'm learning",
+    'i am working on',
+    "i'm working on",
   ];
 
   static const _editEventCues = [
@@ -548,6 +615,8 @@ class WriteIntentParser {
         return _event(clean, lower);
       case _Kind.eventEdit:
         return _editEvent(clean, lower);
+      case _Kind.project:
+        return _project(clean, lower);
       case _Kind.none:
         // No write cue anywhere. A sentence that merely mentions "client" is a
         // question for the model, not an instruction, and guessing here is how
@@ -565,6 +634,7 @@ class WriteIntentParser {
     final x = _earliestCue(lower, _deleteCues);
     final ev = _earliestCue(lower, _eventCues);
     final evEdit = _earliestCue(lower, _editEventCues);
+    final pr = _earliestCue(lower, _projectCues);
     // The "X paid N" shape has no cue phrase at all, it is its own pattern, so
     // it is detected separately and only when no explicit cue beat it.
     final paidAt = lower.indexOf(' paid');
@@ -592,6 +662,7 @@ class WriteIntentParser {
     // moving the first is exactly what the person did not ask for.
     offer(_Kind.eventEdit, evEdit?.$1);
     offer(_Kind.event, ev?.$1);
+    offer(_Kind.project, pr?.$1);
     if (best == _Kind.none && paidAt >= 0) best = _Kind.payment;
     return best;
   }
@@ -1081,6 +1152,68 @@ class WriteIntentParser {
   }
 
   /// "change the call with Bilal to Thursday", "move the standup to 10am".
+  /// "start a project called the shop", "I'm learning Arabic, done when I can
+  /// hold a conversation".
+  WriteIntent? _project(String clean, String lower) {
+    final found = _earliestCue(lower, _projectCues);
+    if (found == null) return null;
+
+    var rest = clean.substring(found.$1 + found.$2.length).trim();
+    if (rest.isEmpty) {
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
+
+    // The "done when" clause is read and cut, in that order, because it often
+    // contains a comma and everything after it is the plan, not the name.
+    String? target;
+    final done = RegExp(r'(?:done|finished|complete)\s+(?:when|once|after|at)\s+(.+)',
+        caseSensitive: false)
+        .firstMatch(rest);
+    if (done != null) {
+      target = _titleCase(done.group(1)!.trim());
+      rest = rest.substring(0, done.start).trim().replaceFirst(RegExp(r',\s*$'), '');
+    }
+
+    String? plan;
+    final by = RegExp(r'\b(?:by|using|through)\s+(.+)', caseSensitive: false)
+        .firstMatch(rest);
+    if (by != null) {
+      plan = _titleCase(by.group(1)!.trim());
+      rest = rest.substring(0, by.start).trim().replaceFirst(RegExp(r',\s*$'), '');
+    }
+
+    // "for Bilal" names the client. Cut before the name is taken, or the
+    // project would be called "shop for bilal".
+    String? clientName;
+    final forWhom =
+        RegExp(r'\s+for\s+([a-z][a-z\s.]{0,28)}$', caseSensitive: false)
+            .firstMatch(rest);
+    if (forWhom != null) {
+      clientName = _titleCase(forWhom.group(1)!.trim());
+      rest = rest.substring(0, forWhom.start).trim();
+    }
+
+    // "called X", "named X", or the words themselves.
+    for (final lead in const ['called ', 'named ', 'titled ']) {
+      if (rest.toLowerCase().startsWith(lead)) {
+        rest = rest.substring(lead.length).trim();
+        break;
+      }
+    }
+
+    final name = _titleCase(
+        rest.replaceAll(RegExp(r'^\s*(a|an|the)\s+', caseSensitive: false), '').trim());
+    if (name.length < 2 || _number.hasMatch(name)) {
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
+    return AddProjectIntent(
+      name: name,
+      clientName: clientName,
+      target: target,
+      plan: plan,
+    );
+  }
+
   WriteIntent? _editEvent(String clean, String lower) {
     final found = _earliestCue(lower, _editEventCues);
     if (found == null) return null;

@@ -646,6 +646,64 @@ void main() {
     });
   });
 
+  group('the assistant can add a project, in every mode', () {
+    testWidgets('a personal project is proposed and lands', (tester) async {
+      await boot(tester, engine: 'builtIn');
+      await say(tester, 'start a project called Learn Arabic');
+
+      await tapVisible(tester, find.text('Save it'));
+
+      final projects = await tester.runAsync(() => store.projects());
+      expect(projects!.map((p) => p.name), contains('Learn Arabic'));
+      expect(projects.first.kind.name, 'personal');
+      expect(projects.first.clientId, isNull);
+    });
+
+    testWidgets('"done when" is read into the project', (tester) async {
+      await boot(tester, engine: 'builtIn');
+      await say(tester,
+          'start a project called the shop, done when the door is open');
+
+      expect(lastReply(tester), contains('done when'));
+
+      await tapVisible(tester, find.text('Save it'));
+      final projects = await tester.runAsync(() => store.projects());
+      final shop = projects!.firstWhere((p) => p.name == 'the shop');
+      expect(shop.target, contains('door is open'));
+    });
+
+    testWidgets('a project for a named client attaches to them', (tester) async {
+      await boot(tester, engine: 'builtIn');
+      await say(tester, 'add client Bilal for 2000');
+      await tapVisible(tester, find.text('Save it'));
+
+      await say(tester, 'start a project called the rebrand for Bilal');
+      await tapVisible(tester, find.text('Save it'));
+
+      final projects = await tester.runAsync(() => store.projects());
+      final rebrand = projects!.firstWhere((p) => p.name == 'the rebrand');
+      expect(rebrand.kind.name, 'client');
+      expect(rebrand.clientId, isNotNull);
+      // The client must not be swallowed into the name.
+      expect(rebrand.name.toLowerCase(), isNot(contains('bilal')));
+    });
+
+    testWidgets('a project for someone who does not exist says so', (tester) async {
+      await boot(tester, engine: 'builtIn');
+      await say(tester, 'start a project called the rebrand for Zohaib');
+      expect(lastReply(tester), contains('do not have a client called Zohaib'));
+    });
+
+    testWidgets('a project with no name asks rather than saving nothing',
+        (tester) async {
+      await boot(tester, engine: 'builtIn');
+      await say(tester, 'start a project');
+      expect(find.text('Save it'), findsNothing);
+      final projects = await tester.runAsync(() => store.projects());
+      expect(projects, isEmpty);
+    });
+  });
+
 }
 
 /// Emits one token per event loop turn, the way a real server does.
@@ -733,6 +791,47 @@ class _ThrowingClient extends LocalModelClient {
   }) async =>
       const LocalFailed('Could not reach the local model.');
 
+  group('every engine gets the same writes', () {
+    // The claim worth testing is that the AI is an addition, not the mechanism:
+    // a client, a project and a calendar entry are recorded the same way with
+    // no engine, with a local model and with a cloud model. If that ever stops
+    // being true the assistant has become a dependency of the records.
+    for (final engine in const ['builtIn', 'onDevice', 'cloud']) {
+      testWidgets('$engine can add a client', (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'add client Bilal for 2000');
+        await tapVisible(tester, find.text('Save it'));
+        final clients = await tester.runAsync(() => store.clients());
+        expect(clients!.map((c) => c.name), contains('Bilal'));
+      });
 
+      testWidgets('$engine can add a project', (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'start a project called the rebrand');
+        await tapVisible(tester, find.text('Save it'));
+        final projects = await tester.runAsync(() => store.projects());
+        expect(projects!.map((p) => p.name), contains('the rebrand'));
+      });
+
+      testWidgets('$engine can add a calendar entry', (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'schedule a call with Bilal tomorrow at 3pm');
+        await tapVisible(tester, find.text('Save it'));
+        final events = await tester.runAsync(() => store.events());
+        expect(events.map((e) => e.title).join(' ').toLowerCase(),
+            contains('bilal'));
+      });
+
+      testWidgets('$engine shows a card rather than writing silently',
+          (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'add client Bilal for 2000');
+        // The card is the approval step. Nothing is written until it is used.
+        expect(find.text('Save it'), findsOneWidget);
+        final clients = await tester.runAsync(() => store.clients());
+        expect(clients, isEmpty);
+      });
+    }
+  });
 
 }

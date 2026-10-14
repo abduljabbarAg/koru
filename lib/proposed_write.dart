@@ -285,6 +285,70 @@ class ProposedEvent extends ProposedWrite {
 /// Atomic on purpose. Part of an import landing is worse than none of it,
 /// because there is then no way to tell what went in from what did not.
 /// A change to an entry already on the calendar.
+/// A new piece of work, client or personal.
+class ProposedProject extends ProposedWrite {
+  const ProposedProject({
+    required this.name,
+    this.client,
+    this.target,
+    this.plan,
+  });
+
+  final String name;
+
+  /// Resolved from the real clients. Null makes it a personal project, which is
+  /// the default on purpose.
+  final Client? client;
+  final String? target;
+  final String? plan;
+
+  bool get isPersonal => client == null;
+
+  @override
+  String get summary {
+    final bits = <String>['Add project "$name"'];
+    if (!isPersonal) bits.add('for ${client!.name}');
+    if (target != null) bits.add('done when $target');
+    if (plan != null) bits.add('by: $plan');
+    return bits.join(', ');
+  }
+
+  @override
+  Future<void> apply(ProfileStore store) async {
+    final id = await store.addProject(Project(
+      name: name,
+      kind: isPersonal ? ProjectKind.personal : ProjectKind.client,
+      clientId: client?.id,
+      target: target,
+      plan: plan,
+      // Starts at zero on purpose. Progress is the one number the assistant
+      // quotes back, and a new project has done nothing yet.
+      progress: 0,
+      created: DateTime.now().toIso8601String(),
+      updated: DateTime.now().toIso8601String(),
+    ));
+    if (target != null) {
+      await store.addProjectNote(ProjectNote(
+        projectId: id,
+        body: 'Done when: $target',
+        created: DateTime.now().toIso8601String(),
+      ));
+    }
+  }
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final found = (await store.projects())
+        .where((p) => p.name.toLowerCase() == name.toLowerCase())
+        .toList();
+    if (found.isEmpty) {
+      return 'I said I added the project "$name" and it is not in your '
+          'projects. Nothing was saved, so please try again.';
+    }
+    return null;
+  }
+}
+
 class ProposedEditEvent extends ProposedWrite {
   const ProposedEditEvent({
     required this.event,
@@ -684,6 +748,40 @@ class WriteResolver {
       case AddDeadlineIntent():
         return WriteResolution.proposed(
           ProposedDeadline(title: intent.title, due: intent.due),
+        );
+
+      case AddProjectIntent():
+        final named = intent.clientName;
+        if (named == null) {
+          return WriteResolution.proposed(
+            ProposedProject(
+              name: intent.name,
+              target: intent.target,
+              plan: intent.plan,
+            ),
+          );
+        }
+        final forWhom = _match(await store.clients(), named);
+        if (forWhom.isEmpty) {
+          return WriteResolution.problem(
+            'I do not have a client called $named. Say "add client $named" and I '
+            'will, or say "start a project called ${intent.name}" and it will be '
+            'a personal project.',
+          );
+        }
+        if (forWhom.length > 1) {
+          return WriteResolution.problem(
+            'More than one client matches $named: '
+            '${forWhom.map((c) => c.name).join(' and ')}. Tell me which one.',
+          );
+        }
+        return WriteResolution.proposed(
+          ProposedProject(
+            name: intent.name,
+            client: forWhom.single,
+            target: intent.target,
+            plan: intent.plan,
+          ),
         );
 
       case AddEventIntent():

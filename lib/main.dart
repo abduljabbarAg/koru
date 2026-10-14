@@ -12,6 +12,7 @@ import 'screens/business.dart';
 import 'screens/chat.dart';
 import 'screens/client_detail.dart';
 import 'screens/projects.dart';
+import 'screens/today.dart';
 import 'screens/settings.dart';
 import 'state.dart';
 import 'theme.dart';
@@ -324,30 +325,31 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         // A client link with no id cannot name a screen, and guessing which
         // client was meant is worse than landing on the list.
         if (link.id == null) {
-          setState(() => _tab = 1);
+          setState(() => _tab = 2);
         } else {
           final navigator = Navigator.of(context);
-          setState(() => _tab = 1);
+          setState(() => _tab = 2);
           await navigator.push(MaterialPageRoute<void>(
             builder: (_) => ClientDetailScreen(clientId: link.id!),
           ));
         }
       case AttentionTarget.event:
       // There is no event detail screen yet, so land on the calendar section.
-        setState(() => _tab = 1);
+        setState(() => _tab = 2);
       case AttentionTarget.deadline:
+        setState(() => _tab = 2);
       case AttentionTarget.project:
-        // Both live on the Business and Projects tabs respectively; there is no
-        // detail screen for either yet, so land where the list is.
-        setState(() => _tab = 1);
+        // No detail screen for a project yet, so land where the list is.
+        setState(() => _tab = 3);
       case AttentionTarget.chat:
-        setState(() => _tab = 0);
+        setState(() => _tab = 1);
     }
     // Cleared last, so a rebuild mid-navigation cannot re-enter this.
     ref.read(pendingLinkProvider.notifier).clear();
   }
 
   static const _pages = [
+    TodayScreen(),
     ChatScreen(),
     BusinessScreen(),
     ProjectsScreen(),
@@ -381,13 +383,17 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         child: SafeArea(
           top: false,
           child: SizedBox(
-            height: 62,
+            // Grown from 62 for the fifth tab. Labels are kept rather than
+            // dropped: an icon with no name is a worse affordance than a
+            // slightly shorter row.
+            height: 64,
             child: Row(
               children: [
-                _tabButton(0, Icons.forum_outlined, Icons.forum_rounded, 'Talk'),
-                _tabButton(1, Icons.work_outline_rounded, Icons.work_rounded, 'Business'),
-                _tabButton(2, Icons.folder_outlined, Icons.folder_rounded, 'Projects'),
-                _tabButton(3, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
+                _tabButton(0, Icons.today_outlined, Icons.today_rounded, 'Today'),
+                _tabButton(1, Icons.forum_outlined, Icons.forum_rounded, 'Talk'),
+                _tabButton(2, Icons.work_outline_rounded, Icons.work_rounded, 'Business'),
+                _tabButton(3, Icons.folder_outlined, Icons.folder_rounded, 'Projects'),
+                _tabButton(4, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
               ],
             ),
           ),
@@ -409,14 +415,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(sel ? on : off,
-                  size: 22, color: sel ? KoruColors.leaf : KoruColors.inkFaint),
-              const SizedBox(height: 3),
-              Text(label,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                    color: sel ? KoruColors.leaf : KoruColors.inkFaint,
-                  )),
+                  size: 21, color: sel ? KoruColors.leaf : KoruColors.inkFaint),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                  color: sel ? KoruColors.leaf : KoruColors.inkFaint,
+                ),
+              ),
             ],
           ),
         ),
