@@ -967,7 +967,10 @@ class WriteIntentParser {
     // in that order. Cutting the duration first matters: it ends with a number
     // that would otherwise be picked up as a clock time.
     var durationMin = _durationIn(rest.toLowerCase());
-    var recurrence = _recurrenceIn(rest.toLowerCase());
+    if (durationMin != null) {
+      rest = _stripDuration(rest);
+    }
+    final recurrence = _recurrenceIn(rest.toLowerCase());
 
     // A location is "at the studio" where "at" is followed by words rather
     // than by a clock, and only at the very end: "call with Bilal at Acme" is
@@ -997,6 +1000,30 @@ class WriteIntentParser {
       durationMin: durationMin,
       recurrence: recurrence,
     );
+  }
+
+  /// Removes the duration phrase from [raw] so it cannot become part of the
+  /// title.
+  ///
+  /// Reading it is not enough. "Call with Bilal for 2 hours" parses a duration
+  /// and then saves a meeting called "call with bilal for 2 hours", which is
+  /// correct in every field and useless in the one the person reads.
+  static String _stripDuration(String raw) {
+    final out = raw.replaceAll(
+      RegExp(r'\s*\b(?:for\s+)?\d{1,4}\s*(?:hours?|hrs?|h|minutes?|mins?|m)\b',
+          caseSensitive: false),
+      '',
+    );
+    final words = out.replaceAll(
+      RegExp(r'\s*\b(?:an hour and a half|half an hour|half-hour|an hour|one hour)\b',
+          caseSensitive: false),
+      '',
+    );
+    final tidied = words.replaceAll(RegExp(r'\s+'), ' ').trim();
+    // Removing the duration can leave the "for" that introduced it standing on
+    // its own at the end. Only a trailing one, because "a call for Bilal" is
+    // an ordinary title and must survive untouched.
+    return tidied.replaceFirst(RegExp(r'\s+for\s*$', caseSensitive: false), '');
   }
 
   /// "for 90 minutes", "for 2 hours", "2 hour call" as minutes.

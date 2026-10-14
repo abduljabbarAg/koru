@@ -209,6 +209,12 @@ void main() {
       expect(e.title.toLowerCase(), isNot(contains('for')));
     });
 
+    test('the phrase leaves nothing behind', () {
+      final e = p.parse('schedule a call with Bilal tomorrow at 3pm for 2 hours')
+          as AddEventIntent;
+      expect(e.title.trim(), 'call with bilal');
+    });
+
     test('a bare "for 2" is not read as two hours', () {
       // In a sentence about a meeting, "for 2" is two o'clock far more often,
       // and reading it as a length invents a block nobody asked for.

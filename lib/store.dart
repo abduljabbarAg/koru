@@ -149,7 +149,6 @@ class ProfileStore {
         note TEXT,
         client_id INTEGER,
         duration_min INTEGER,
-        recurrence TEXT,
         synced INTEGER NOT NULL DEFAULT 0,
         created TEXT NOT NULL
       )

@@ -335,7 +335,8 @@ class CalendarEvent {
     // walked forward, and the cap stops a daily meeting filling the list to the
     // end of time.
     var guard = 0;
-    while (at.isBefore(to) && guard < cap * 40) {
+    // Inclusive at the end: a meeting on the last day of the window is in it.
+    while (!at.isAfter(to) && guard < cap * 40) {
       if (!at.isBefore(DateTime(from.year, from.month, from.day))) {
         out.add(copyWith(date: _iso(at)));
         if (out.length >= cap) break;
