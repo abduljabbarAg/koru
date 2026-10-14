@@ -1131,11 +1131,15 @@ final attentionProvider = FutureProvider<List<AttentionItem>>((ref) async {
   final received = await ref.watch(receivedTotalsProvider.future);
   final deadlines = await ref.watch(openDeadlinesProvider.future);
   final projects = await ref.watch(projectsProvider.future);
+  final events = await ref.watch(eventsProvider.future);
   return Attention.build(
     clients: clients,
     deadlines: deadlines,
     received: received,
     projects: projects,
+    // Today's entries used to stay inside the Business screen, so a call at 3pm
+    // could not reach a notification or the widget however overdue it got.
+    events: events,
   );
 });
 

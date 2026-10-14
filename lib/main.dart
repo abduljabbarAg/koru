@@ -332,6 +332,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             builder: (_) => ClientDetailScreen(clientId: link.id!),
           ));
         }
+      case AttentionTarget.event:
+      // There is no event detail screen yet, so land on the calendar section.
+        setState(() => _tab = 1);
       case AttentionTarget.deadline:
       case AttentionTarget.project:
         // Both live on the Business and Projects tabs respectively; there is no

@@ -34,7 +34,11 @@ class AttentionBridge {
   static List<String> urgentTitles(List<AttentionItem> items) => [
         for (final i in items)
           if (i.kind == AttentionKind.overdueMoney ||
-              i.kind == AttentionKind.dueToday)
+              i.kind == AttentionKind.dueToday ||
+              // A call today is worth a sound the way an overdue invoice is:
+              // both are a thing that is missed if nobody is told. Tomorrow's
+              // entries are not, or the alert becomes wallpaper.
+              i.kind == AttentionKind.eventToday)
             '${i.title}|${i.detail}',
       ];
 
@@ -162,7 +166,8 @@ class AttentionBridge {
     final urgent = items.any((i) =>
         i.kind == AttentionKind.overdueMoney ||
         i.kind == AttentionKind.dueToday ||
-        i.kind == AttentionKind.dueSoon);
+        i.kind == AttentionKind.dueSoon ||
+        i.kind == AttentionKind.eventToday);
     return urgent ? 'thinking' : 'wave';
   }
 

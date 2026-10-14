@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../currency.dart';
+import '../human_date.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -213,7 +214,9 @@ class ClientDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  p.note == null ? p.date : '${p.date}  ·  ${p.note}',
+                  p.note == null
+                      ? formatDate(p.date, DateTime.now())
+                      : '${formatDate(p.date, DateTime.now())}  ·  ${p.note}',
                   style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
                 ),
               ],
@@ -262,7 +265,9 @@ class ClientDetailScreen extends ConsumerWidget {
                     style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
                 Text(
-                  late ? 'was due ${d.due}' : 'due ${d.due}',
+                  late
+                        ? 'was due ${formatDate(d.due, DateTime.now())}'
+                        : 'due ${formatDate(d.due, DateTime.now())}',
                   style: TextStyle(
                     fontSize: 12.5,
                     color: late ? KoruColors.clay : KoruColors.inkFaint,
@@ -362,8 +367,8 @@ class _RetainerPanel extends ConsumerWidget {
         final subtitle = last == null
             ? 'Never paid. A retainer that has not started is not income.'
             : late
-                ? 'Was due ${iso(next)} and has not landed'
-                : 'Next due ${iso(next!)}';
+                ? 'Was due ${formatDate(next, DateTime.now())} and has not landed'
+                : 'Next due ${formatDay(next!, DateTime.now())}';
         return Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(

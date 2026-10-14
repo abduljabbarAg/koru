@@ -487,4 +487,78 @@ void main() {
       expect(Attention.top(items), startsWith('Bilal owes you'));
     });
   });
+
+  group('calendar entries reach the attention list', () {
+    final t = DateTime(2026, 10, 13, 9, 0);
+
+    List<AttentionItem> build(List<CalendarEvent> events) => Attention.build(
+          clients: const [],
+          deadlines: const [],
+          received: const {},
+          events: events,
+          today: t,
+        );
+
+    test("today's entry is said out loud", () {
+      final items = build([const CalendarEvent(
+        id: 1,
+        date: '2026-10-13',
+        time: '15:00',
+        title: 'Call with Bilal',
+        location: 'The studio',
+      )]);
+      final item = items.single;
+      expect(item.kind, AttentionKind.eventToday);
+      expect(item.detail, 'Today at 15:00, The studio');
+      expect(item.target, AttentionTarget.event);
+    });
+
+    test('an entry whose hour has passed is not raised', () {
+      // Saying "Bilal at 09:00" at 09:01 is noise, and noise is how a
+      // notification gets switched off for good.
+      final items = build([const CalendarEvent(
+        id: 1,
+        date: '2026-10-13',
+        time: '08:00',
+        title: 'Call with Bilal',
+      )]);
+      expect(items, isEmpty);
+    });
+
+    test('one still ahead of us today is raised', () {
+      final items = build([const CalendarEvent(
+        id: 1,
+        date: '2026-10-13',
+        time: '18:00',
+        title: 'Call with Bilal',
+      )]);
+      expect(items.single.kind, AttentionKind.eventToday);
+    });
+
+    test('tomorrow is mentioned without shouting', () {
+      final items = build([const CalendarEvent(
+        id: 1,
+        date: '2026-10-14',
+        title: 'Site visit',
+      )]);
+      final item = items.single;
+      expect(item.kind, AttentionKind.eventSoon);
+      expect(item.detail, 'Tomorrow');
+      // Lower than today's, because it can wait.
+      expect(item.weight, lessThan(0.8));
+    });
+
+    test('next week is planning, not interrupting', () {
+      expect(build([const CalendarEvent(id: 1, date: '2026-10-20', title: 'Far off')]),
+          isEmpty);
+    });
+
+    test("today's entry makes a sound, tomorrow's does not", () {
+      final today = build([const CalendarEvent(id: 1, date: '2026-10-13', time: '18:00', title: 'Call')]);
+      final soon = build([const CalendarEvent(id: 2, date: '2026-10-14', title: 'Visit')]);
+      expect(AttentionBridge.urgentTitles(today), isNotEmpty);
+      expect(AttentionBridge.urgentTitles(soon), isEmpty);
+    });
+  });
+
 }

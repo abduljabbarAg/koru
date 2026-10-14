@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../attention_bridge.dart';
 import '../currency.dart';
+import '../human_date.dart';
 import '../guide.dart';
 import '../models.dart';
 import '../state.dart';
@@ -890,7 +891,9 @@ Row(
                       style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 2),
                   Text(
-                    late ? 'was due ${d.due}' : 'due ${d.due}',
+                    late
+                        ? 'was due ${formatDate(d.due, DateTime.now())}'
+                        : 'due ${formatDate(d.due, DateTime.now())}',
                     style: TextStyle(
                       fontSize: 12.5,
                       color: late ? KoruColors.clay : KoruColors.inkFaint,
@@ -1105,7 +1108,7 @@ Row(
       if (c.amount != null) '${money(c.amount!)} ${currency.code} invoiced',
       if (alreadyReceived > 0) '${money(alreadyReceived)} received',
       if (c.leadSource != null) 'via ${c.leadSource}',
-      if (c.parsedDue != null) 'due ${c.due}',
+      if (c.parsedDue != null) 'due ${formatDate(c.due, DateTime.now())}',
     ];
 
     return Container(

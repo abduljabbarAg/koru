@@ -1,3 +1,4 @@
+import 'human_date.dart';
 import 'models.dart';
 
 /// Something worth interrupting the user about.
@@ -20,6 +21,17 @@ enum AttentionKind {
 
   /// A project that has not been touched in a while.
   stalledProject,
+
+  /// Something happening today at a known time.
+  ///
+  /// Separate from [dueToday] because a deadline is a thing to finish by a
+  /// date and an entry is a place to be at a time. Putting them under one
+  /// heading made "due today" mean both, and a call at 3pm is not overdue at
+  /// 3:01 the way an invoice is.
+  eventToday,
+
+  /// Something happening in the next day or two.
+  eventSoon,
 }
 
 /// Why this matters, in one sentence, written to be read on a lock screen.
@@ -54,6 +66,7 @@ enum AttentionTarget {
   deadline,
   project,
   chat,
+  event,
 }
 
 /// Decides what is worth saying out loud.
@@ -77,6 +90,7 @@ class Attention {
     required List<Deadline> deadlines,
     required Map<int, double> received,
     List<Project> projects = const [],
+    List<CalendarEvent> events = const [],
     DateTime? today,
   }) {
     final now = today ?? DateTime.now();
@@ -94,9 +108,51 @@ class Attention {
       out.add(AttentionItem(
         kind: AttentionKind.overdueMoney,
         title: '${c.name} owes you',
-        detail: '${owing.toStringAsFixed(0)} overdue since ${c.parsedDue?.toIso8601String().substring(0, 10) ?? 'its due date'}',
+        // "overdue by 4 days" rather than a date the reader has to subtract
+        // from today themselves.
+        detail: '${owing.toStringAsFixed(0)} '
+            '${overdueSince(c.parsedDue, now)}',
         target: AttentionTarget.client,
         weight: 1.0,
+      ));
+    }
+
+    // Calendar entries. Only the next two days: anything further off is
+    // planning, not something to be interrupted about.
+    for (final e in events) {
+      final date = DateTime.tryParse(e.date);
+      if (date == null) continue;
+      final day = DateTime(date.year, date.month, date.day);
+      final days = day.difference(midnight).inDays;
+      if (days < 0 || days > 1) continue;
+
+      // Once the hour has passed, an entry is no longer something to be told
+      // about. Saying "Bilal at 3pm" at 4pm is noise, and noise is how a
+      // notification gets turned off for good.
+      if (days == 0 && e.time != null) {
+        final parts = e.time!.split(':');
+        final h = int.tryParse(parts.first);
+        final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+        if (h != null && now.hour * 60 + now.minute > h * 60 + m) continue;
+      }
+
+      final where = e.location?.trim();
+      out.add(AttentionItem(
+        kind: days == 0 ? AttentionKind.eventToday : AttentionKind.eventSoon,
+        title: e.title,
+        detail: switch ((days, e.time, where)) {
+          (0, final t?, final w?) when w.isNotEmpty => 'Today at $t, $w',
+          (0, final t?, _) => 'Today at $t',
+          (0, _, final w?) when w.isNotEmpty => 'Today, $w',
+          (0, _, _) => 'Today',
+          (_, final t?, final w?) when w.isNotEmpty => 'Tomorrow at $t, $w',
+          (_, final t?, _) => 'Tomorrow at $t',
+          (_, _, final w?) when w.isNotEmpty => 'Tomorrow, $w',
+          _ => 'Tomorrow',
+        },
+        target: AttentionTarget.event,
+        // Today's remaining entries sit above stalled projects and below money.
+        weight: days == 0 ? 0.8 : 0.55,
       ));
     }
 
