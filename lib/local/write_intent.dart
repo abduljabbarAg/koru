@@ -90,6 +90,8 @@ class AddEventIntent extends WriteIntent {
     required this.date,
     this.time,
     this.location,
+    this.durationMin,
+    this.recurrence,
   });
 
   final String title;
@@ -104,13 +106,104 @@ class AddEventIntent extends WriteIntent {
 
   final String? location;
 
+  /// How long it runs, in minutes. Null means the calendar app's own default,
+  /// which is better than a guess: a default that is wrong shows as a one hour
+  /// block the person has to correct.
+  final int? durationMin;
+
+  /// Set when the entry repeats.
+  final EventRecurrence? recurrence;
+
   @override
   String get summary {
     final parts = <String>['Add "$title" to your calendar'];
     final t = time;
     parts.add(t == null ? (date ?? 'today') : '$date at $t');
+    final mins = durationMin;
+    if (mins != null) parts.add('for ${_duration(mins)}');
     if (location != null) parts.add('at $location');
+    final r = recurrence;
+    if (r != null) parts.add(r.phrase);
     return parts.join(', ');
+  }
+}
+
+/// "for 90 minutes", "for 2 hours". Never a bare number, because "for 2" in a
+/// sentence is far more often two o'clock than two hours.
+String _duration(int minutes) {
+  if (minutes < 60) return '$minutes minutes';
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  if (m == 0) return '$h hour${h == 1 ? '' : 's'}';
+  return '$h hour${h == 1 ? '' : 's'} $m minutes';
+}
+
+/// How often an entry repeats.
+enum EventRecurrence {
+  daily('every day'),
+  weekly('every week'),
+  fortnightly('every two weeks'),
+  monthly('every month'),
+  yearly('every year');
+
+  final String phrase;
+  const EventRecurrence(this.phrase);
+
+  /// The date of the occurrence after [from], or null when it does not recur.
+  DateTime? next(DateTime from) => switch (this) {
+        EventRecurrence.daily => from.add(const Duration(days: 1)),
+        EventRecurrence.weekly => from.add(const Duration(days: 7)),
+        EventRecurrence.fortnightly => from.add(const Duration(days: 14)),
+        // Months are not 30 days. Adding 30 to 31 January gives 2 March, which
+        // is the wrong meeting.
+        EventRecurrence.monthly => DateTime(from.year, from.month + 1,
+            from.day.clamp(1, _daysIn(from.year, from.month + 1))),
+        EventRecurrence.yearly => DateTime(from.year + 1, from.month, from.day),
+      };
+
+  static int _daysIn(int year, int month) =>
+      DateTime(year, month + 1, 0).day;
+}
+
+/// A change to an entry already on the calendar.
+class EditEventIntent extends WriteIntent {
+  const EditEventIntent({
+    required this.title,
+    this.date,
+    this.time,
+    this.location,
+    this.durationMin,
+    this.recurrence,
+  });
+
+  /// How the entry was named, resolved against the real events later.
+  final String title;
+
+  /// Every field is optional and null means leave it alone, the same rule as
+  /// [EditClientIntent]. "move the call with Bilal to Thursday" must not quietly
+  /// drop the time it had.
+  final String? date;
+  final String? time;
+  final String? location;
+  final int? durationMin;
+  final EventRecurrence? recurrence;
+
+  bool get changesAnything =>
+      date != null ||
+      time != null ||
+      location != null ||
+      durationMin != null ||
+      recurrence != null;
+
+  @override
+  String get summary {
+    final bits = <String>[];
+    if (date != null) bits.add('date $date');
+    if (time != null) bits.add('time $time');
+    if (durationMin != null) bits.add('length ${_duration(durationMin!)}');
+    if (location != null) bits.add('place $location');
+    if (recurrence != null) bits.add(recurrence!.phrase);
+    return 'Change "$title": ${bits.isEmpty ? 'nothing' : bits.join(', ')}';
   }
 }
 
@@ -298,6 +391,17 @@ class WriteIntentParser {
     'remove the client',
   ];
 
+  static const _editEventCues = [
+    'move the call',
+    'move the meeting',
+    'move the appointment',
+    'reschedule',
+    'change the call',
+    'change the meeting',
+    'push the call',
+    'postpone',
+  ];
+
   static const _paymentCues = [
     'mark as paid',
     'mark paid',
@@ -432,8 +536,6 @@ class WriteIntentParser {
     switch (kind) {
       case _Kind.deadline:
         return _deadline(clean, lower);
-      case _Kind.event:
-        return _event(clean, lower);
       case _Kind.payment:
         return _payment(clean, lower);
       case _Kind.client:
@@ -442,6 +544,10 @@ class WriteIntentParser {
         return _edit(clean, lower);
       case _Kind.delete:
         return _delete(clean, lower);
+      case _Kind.event:
+        return _event(clean, lower);
+      case _Kind.eventEdit:
+        return _editEvent(clean, lower);
       case _Kind.none:
         // No write cue anywhere. A sentence that merely mentions "client" is a
         // question for the model, not an instruction, and guessing here is how
@@ -457,6 +563,8 @@ class WriteIntentParser {
     final c = _earliestCue(lower, _clientCues);
     final e = _earliestCue(lower, _editCues);
     final x = _earliestCue(lower, _deleteCues);
+    final ev = _earliestCue(lower, _eventCues);
+    final evEdit = _earliestCue(lower, _editEventCues);
     // The "X paid N" shape has no cue phrase at all, it is its own pattern, so
     // it is detected separately and only when no explicit cue beat it.
     final paidAt = lower.indexOf(' paid');
@@ -479,6 +587,11 @@ class WriteIntentParser {
     // gets lost. They are only taken when nothing else claimed the sentence.
     offer(_Kind.delete, x?.$1);
     offer(_Kind.edit, e?.$1);
+    // An edit wins over a new entry for the same sentence: "move the call to
+    // Thursday" carries the cue for both, and adding a second call rather than
+    // moving the first is exactly what the person did not ask for.
+    offer(_Kind.eventEdit, evEdit?.$1);
+    offer(_Kind.event, ev?.$1);
     if (best == _Kind.none && paidAt >= 0) best = _Kind.payment;
     return best;
   }
@@ -850,6 +963,12 @@ class WriteIntentParser {
       }
     }
 
+    // "for 2 hours" and "every week" are read off the sentence and then cut,
+    // in that order. Cutting the duration first matters: it ends with a number
+    // that would otherwise be picked up as a clock time.
+    var durationMin = _durationIn(rest.toLowerCase());
+    var recurrence = _recurrenceIn(rest.toLowerCase());
+
     // A location is "at the studio" where "at" is followed by words rather
     // than by a clock, and only at the very end: "call with Bilal at Acme" is
     // far more often about the client than about a venue, and the ones that
@@ -875,7 +994,132 @@ class WriteIntentParser {
       date: _dateIn(lower) ?? _iso(DateTime.now()),
       time: time,
       location: location,
+      durationMin: durationMin,
+      recurrence: recurrence,
     );
+  }
+
+  /// "for 90 minutes", "for 2 hours", "2 hour call" as minutes.
+  ///
+  /// A bare "for 2" is not read as two hours. In a sentence about a meeting,
+  /// "for 2" is two o'clock far more often, and reading it as a duration
+  /// invents a two hour block that nobody asked for.
+  static int? _durationIn(String lower) {
+    final m = RegExp(
+      r'\b(?:for\s+)?(\d{1,3})\s*(hours?|hrs?|h)\b',
+    ).firstMatch(lower);
+    if (m != null) {
+      final h = int.tryParse(m.group(1)!);
+      if (h == null || h <= 0 || h > 24) return null;
+      return h * 60;
+    }
+    final mins = RegExp(
+      r'\b(?:for\s+)?(\d{1,4})\s*(?:minutes?|mins?|m)\b',
+    ).firstMatch(lower);
+    if (mins != null) {
+      final v = int.tryParse(mins.group(1)!);
+      if (v == null || v <= 0 || v > 24 * 60) return null;
+      return v;
+    }
+    // "half an hour", "an hour and a half".
+    if (lower.contains('half an hour') || lower.contains('half-hour')) return 30;
+    if (RegExp(r'\ban hour and a half\b').hasMatch(lower)) return 90;
+    if (RegExp(r'\ban hour\b|\bone hour\b').hasMatch(lower)) return 60;
+    return null;
+  }
+
+  /// The repeat phrase, or null when the entry does not repeat.
+  static EventRecurrence? _recurrenceIn(String lower) {
+    // Checked longest phrase first: "every two weeks" contains "every", and
+    // matching the short one first would turn it into a weekly meeting.
+    if (lower.contains('every two weeks') ||
+        lower.contains('every fortnight') ||
+        lower.contains('fortnightly')) {
+      return EventRecurrence.fortnightly;
+    }
+    if (RegExp(r'\bevery (single )?day\b|\bda(i|ily)\b|\beveryday\b')
+        .hasMatch(lower)) {
+      return EventRecurrence.daily;
+    }
+    if (RegExp(r'\bevery week\b|\bweekly\b').hasMatch(lower)) {
+      return EventRecurrence.weekly;
+    }
+    if (RegExp(r'\bevery month\b|\bmonthly\b').hasMatch(lower)) {
+      return EventRecurrence.monthly;
+    }
+    if (RegExp(r'\bevery year\b|\byearly\b|\bannually\b').hasMatch(lower)) {
+      return EventRecurrence.yearly;
+    }
+    return null;
+  }
+
+  /// "change the call with Bilal to Thursday", "move the standup to 10am".
+  WriteIntent? _editEvent(String clean, String lower) {
+    final found = _earliestCue(lower, _editEventCues);
+    if (found == null) return null;
+
+    // The title is what sits after the cue, up to the first word that starts a
+    // field. Trimming at the first preposition is what keeps "move the call with
+    // Bilal to Thursday" from carrying the date into the name.
+    var rest = clean.substring(found.$1 + found.$2.length).trim();
+    if (rest.isEmpty) return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+
+    final date = _dateIn(lower);
+    final time = _timeIn(lower);
+    final durationMin = _durationIn(lower);
+    final recurrence = _recurrenceIn(lower);
+    final place = RegExp(r'\bat\s+((?:the\s+)?[a-z][a-z\s]{0,24})$')
+        .firstMatch(rest.toLowerCase());
+    String? location;
+    if (place != null && !_number.hasMatch(place.group(1)!)) {
+      final start = rest.toLowerCase().indexOf(place.group(1)!, place.start);
+      location = _titleCase(rest.substring(start));
+    }
+
+    var title = rest;
+    for (final lead in const [' to ', ' on ', ' for ', ' at ', ' into ']) {
+      final at = title.toLowerCase().indexOf(lead);
+      if (at > 0) {
+        title = title.substring(0, at);
+        break;
+      }
+    }
+    title = title
+        .replaceAll(RegExp(r'\s+(on|to|for|at|by|due)\s+\w+\s*$'), '')
+        .trim();
+    // The cue's own noun is dropped, the same way a new event is built.
+    title = _stripEditNoun(title);
+    if (title.length < 2) {
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
+    if (date == null &&
+        time == null &&
+        durationMin == null &&
+        recurrence == null &&
+        location == null) {
+      return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
+    }
+    return EditEventIntent(
+      title: title,
+      date: date,
+      time: time,
+      location: location,
+      durationMin: durationMin,
+      recurrence: recurrence,
+    );
+  }
+
+  /// Removes a leading noun the edit cue already supplied.
+  static String _stripEditNoun(String raw) {
+    for (final noun in const [
+      'call', 'meeting', 'appointment', 'event', 'standup', 'stand-up',
+      'sync', 'demo', 'lunch', 'dinner', 'coffee',
+    ]) {
+      final r = raw.toLowerCase();
+      if (r.startsWith('$noun ')) return raw.substring(noun.length + 1).trim();
+      if (r == noun) return '';
+    }
+    return raw;
   }
 
   /// The clock time in [lower] as "HH:mm", or null when it carries none.

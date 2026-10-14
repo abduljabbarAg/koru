@@ -31,7 +31,7 @@ class ProfileStore {
   /// than no test, so [transaction] and [close] refuse clearly instead.
   final Database? _root;
 
-  static const int schemaVersion = 7;
+  static const int schemaVersion = 8;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -46,6 +46,7 @@ class ProfileStore {
         if (v >= 5) await _migrateToV5(d);
         if (v >= 6) await _migrateToV6(d);
         if (v >= 7) await _migrateToV7(d);
+        if (v >= 8) await _migrateToV8(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
@@ -54,9 +55,19 @@ class ProfileStore {
         if (from < 5) await _migrateToV5(d);
         if (from < 6) await _migrateToV6(d);
         if (from < 7) await _migrateToV7(d);
+        if (from < 8) await _migrateToV8(d);
       },
     );
     return ProfileStore(db);
+  }
+
+  /// Repeat rules for calendar entries.
+  ///
+  /// Additive, so existing installs keep their entries. The column is the
+  /// enum's name rather than an integer so a future kind cannot silently
+  /// renumber what is already stored.
+  static Future<void> _migrateToV8(Database d) async {
+    await d.execute('ALTER TABLE events ADD COLUMN recurrence TEXT');
   }
 
   static Future<void> _createV1(Database d) async {
@@ -138,6 +149,7 @@ class ProfileStore {
         note TEXT,
         client_id INTEGER,
         duration_min INTEGER,
+        recurrence TEXT,
         synced INTEGER NOT NULL DEFAULT 0,
         created TEXT NOT NULL
       )
@@ -540,6 +552,12 @@ class ProfileStore {
 
   Future<void> deleteEvent(int id) =>
       _db.delete('events', where: 'id = ?', whereArgs: [id]);
+
+  /// One entry by id, or null once it has been deleted.
+  Future<CalendarEvent?> event(int id) async {
+    final rows = await _db.query('events', where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? null : CalendarEvent.fromMap(rows.first);
+  }
 
   static String _isoDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

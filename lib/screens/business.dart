@@ -5,6 +5,7 @@ import '../attention_bridge.dart';
 import '../currency.dart';
 import '../guide.dart';
 import '../human_date.dart';
+import '../local/write_intent.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -963,6 +964,13 @@ Row(
                   Text(e.location!,
                       style: const TextStyle(
                           fontSize: 12.5, color: KoruColors.inkFaint)),
+                if (e.durationMin != null || e.recurrence != null)
+                  Text([
+                    if (e.durationMin != null) '${e.durationMin} min',
+                    if (e.recurrence != null) e.recurrence!.phrase,
+                  ].join(' \u00b7 '),
+                      style: const TextStyle(
+                          fontSize: 12, color: KoruColors.inkFaint)),
               ],
             ),
           ),
@@ -978,6 +986,12 @@ Row(
             onPressed: e.synced ? null : () => _syncEvent(context, ref, e),
           ),
           IconButton(
+            tooltip: 'Change ${e.title}',
+            icon: const Icon(Icons.edit_outlined,
+                size: 17, color: KoruColors.inkFaint),
+            onPressed: () => _editEvent(context, ref, e),
+          ),
+          IconButton(
             tooltip: 'Delete ${e.title}',
             icon: const Icon(Icons.close_rounded,
                 size: 18, color: KoruColors.inkFaint),
@@ -986,6 +1000,22 @@ Row(
         ],
       ),
     );
+  }
+
+  Future<void> _editEvent(
+    BuildContext context,
+    WidgetRef ref,
+    CalendarEvent e,
+  ) async {
+    final store = await ref.read(storeProvider.future);
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: KoruColors.surface,
+      builder: (_) => _EventSheet(event: e),
+    );
+    if (changed != true) return;
+    ref.invalidate(eventsProvider);
   }
 
   /// Points at the chat rather than opening a half-featured form: the parser
@@ -1229,5 +1259,171 @@ Row(
         ],
       ),
     );
+  }
+}
+
+/// Changes an entry that already exists.
+///
+/// Every field is filled in with what is already stored, so opening and
+/// cancelling cannot half-erase a meeting. The repeat rule is a dropdown rather
+/// than a free field because "every week" and "weekly" have to mean one thing
+/// between the parser and the form, and a typo in a recurring rule is a meeting
+/// that quietly stops repeating.
+class _EventSheet extends ConsumerStatefulWidget {
+  const _EventSheet({required this.event});
+
+  final CalendarEvent event;
+
+  @override
+  ConsumerState<_EventSheet> createState() => _EventSheetState();
+}
+
+class _EventSheetState extends ConsumerState<_EventSheet> {
+  late final TextEditingController _title;
+  late final TextEditingController _location;
+  late final TextEditingController _date;
+  late final TextEditingController _time;
+  late final TextEditingController _duration;
+  EventRecurrence? _recurrence;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.event;
+    _title = TextEditingController(text: e.title);
+    _location = TextEditingController(text: e.location ?? '');
+    _date = TextEditingController(text: e.date);
+    _time = TextEditingController(text: e.time ?? '');
+    _duration = TextEditingController(
+      text: e.durationMin == null ? '' : '${e.durationMin}',
+    );
+    _recurrence = e.recurrence;
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _location.dispose();
+    _date.dispose();
+    _time.dispose();
+    _duration.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Change entry',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _title,
+              decoration: const InputDecoration(labelText: 'Title'),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _date,
+                    decoration:
+                        const InputDecoration(labelText: 'Date (YYYY-MM-DD)'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _time,
+                    decoration: const InputDecoration(labelText: 'Time (HH:mm)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _location,
+              decoration: const InputDecoration(labelText: 'Where'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _duration,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Length in minutes',
+                hintText: 'leave empty for the default',
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<EventRecurrence?>(
+              initialValue: _recurrence,
+              decoration: const InputDecoration(labelText: 'Repeats'),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Once')),
+                for (final r in EventRecurrence.values)
+                  DropdownMenuItem(value: r, child: Text(_titleCase(r.phrase))),
+              ],
+              onChanged: (v) => setState(() => _recurrence = v),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: _saving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _titleCase(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final store = await ref.read(storeProvider.future);
+    final e = widget.event;
+    final mins = int.tryParse(_duration.text.trim());
+
+    await store.updateEvent(CalendarEvent(
+      id: e.id,
+      title: _title.text.trim().isEmpty ? e.title : _title.text.trim(),
+      date: _date.text.trim(),
+      time: _time.text.trim().isEmpty ? null : _time.text.trim(),
+      location: _location.text.trim().isEmpty ? null : _location.text.trim(),
+      durationMin: mins,
+      recurrence: _recurrence,
+      note: e.note,
+      clientId: e.clientId,
+      // A changed date or time means the phone's copy is out of date. Left
+      // set, the entry would never sync again and the two calendars would
+      // quietly disagree.
+      synced: (_date.text.trim() == e.date &&
+              (_time.text.trim().isEmpty ? null : _time.text.trim()) == e.time)
+          ? e.synced
+          : false,
+      created: e.created,
+    ));
+    if (mounted) Navigator.pop(context, true);
   }
 }

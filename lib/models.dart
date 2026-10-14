@@ -1,5 +1,7 @@
 /// Domain models, kept out of the storage layer so the assistant and the UI can
 /// reason about them without importing sqflite.
+
+import 'local/write_intent.dart';
 ///
 /// Fitness is gone: the table survives for older installs, but nothing reads or
 /// writes it, and a freelancer tool that also tracks body measurements was two
@@ -294,11 +296,59 @@ class CalendarEvent {
     this.note,
     this.clientId,
     this.durationMin,
+    this.recurrence,
     this.synced = false,
     this.created = '',
   });
 
+  /// How this repeats, by name. Stored as the enum's name rather than as an
+  /// int, so adding a kind later cannot silently renumber the existing ones.
+  final EventRecurrence? recurrence;
+
   bool get allDay => time == null || time!.isEmpty;
+
+  /// The next occurrence after [from], or this event's own date when it does
+  /// not repeat.
+  ///
+  /// Recurrence is stored as one row, not expanded into copies. Copies drift
+  /// from each other the moment one is edited, and a meeting that moved stays
+  /// moved. The price is that the calendar has to be asked for occurrences
+  /// rather than holding them, which is what [occurrences] is for.
+  List<CalendarEvent> occurrences(DateTime from, DateTime to, {int cap = 60}) {
+    final r = recurrence;
+    if (r == null) {
+      final d = DateTime.tryParse(date);
+      if (d == null) return const [];
+      final day = DateTime(d.year, d.month, d.day);
+      return day.isBefore(DateTime(from.year, from.month, from.day)) ||
+              day.isAfter(DateTime(to.year, to.month, to.day))
+          ? const []
+          : [this];
+    }
+    final out = <CalendarEvent>[];
+    var cursor = DateTime.tryParse(date);
+    if (cursor == null) return const [];
+    // Guarded on both ends: a recurrence created in the past still has to be
+    // walked forward, and the cap stops a daily meeting filling the list to the
+    // end of time.
+    var guard = 0;
+    while (cursor.isBefore(to) && guard < cap * 40) {
+      if (!cursor.isBefore(DateTime(from.year, from.month, from.day))) {
+        out.add(copyWith(date: _iso(cursor)));
+        if (out.length >= cap) break;
+      }
+      final nextDate = r.next(cursor);
+      if (nextDate == null) break;
+      cursor = nextDate;
+      guard++;
+    }
+    return out;
+  }
+
+  static String _iso(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   Map<String, Object?> toMap() => {
         if (id != null) 'id': id,
@@ -309,6 +359,7 @@ class CalendarEvent {
         if (note != null) 'note': note,
         if (clientId != null) 'client_id': clientId,
         if (durationMin != null) 'duration_min': durationMin,
+        if (recurrence != null) 'recurrence': recurrence!.name,
         'synced': synced ? 1 : 0,
         'created': created,
       };
@@ -321,6 +372,7 @@ class CalendarEvent {
         'note': note,
         'client_id': clientId,
         'duration_min': durationMin,
+        'recurrence': recurrence?.name,
         'synced': synced ? 1 : 0,
         'created': created,
       };
@@ -334,6 +386,11 @@ class CalendarEvent {
         note: m['note'] as String?,
         clientId: m['client_id'] as int?,
         durationMin: m['duration_min'] as int?,
+        recurrence: m['recurrence'] == null
+            ? null
+            : EventRecurrence.values
+                .where((r) => r.name == m['recurrence'])
+                .firstOrNull,
         synced: (m['synced'] as int? ?? 0) == 1,
         created: m['created'] as String? ?? '',
       );
@@ -580,4 +637,8 @@ class ProjectNote {
         body: m['body'] as String? ?? '',
         created: m['created'] as String? ?? '',
       );
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

@@ -217,18 +217,24 @@ class ProposedEvent extends ProposedWrite {
     required this.date,
     this.time,
     this.location,
+    this.durationMin,
+    this.recurrence,
   });
 
   final String title;
   final String date;
   final String? time;
   final String? location;
+  final int? durationMin;
+  final EventRecurrence? recurrence;
 
   @override
   String get summary {
     final at = time == null ? date : '$date at $time';
     final place = location == null ? '' : ', at $location';
-    return 'Add "$title" to your calendar, $at$place';
+    final len = durationMin == null ? '' : ', for ${durationMin} min';
+    final every = recurrence == null ? '' : ', ${recurrence!.phrase}';
+    return 'Add "$title" to your calendar, $at$place$len$every';
   }
 
   /// The moment this entry starts, for handing to the phone's calendar.
@@ -249,6 +255,8 @@ class ProposedEvent extends ProposedWrite {
         date: date,
         time: time,
         location: location,
+        durationMin: durationMin,
+        recurrence: recurrence,
         created: DateTime.now().toIso8601String(),
       ));
 
@@ -258,6 +266,8 @@ class ProposedEvent extends ProposedWrite {
         .where((e) =>
             e.title.toLowerCase() == title.toLowerCase() && e.date == date)
         .toList();
+    // A repeating entry is stored as its first occurrence, so the date to check
+    // is the one that was asked for rather than the next one it would roll to.
     if (found.isEmpty) {
       return 'I said I added that calendar entry and it is not in your '
           'calendar. Nothing was saved, so please try again.';
@@ -274,6 +284,85 @@ class ProposedEvent extends ProposedWrite {
 ///
 /// Atomic on purpose. Part of an import landing is worse than none of it,
 /// because there is then no way to tell what went in from what did not.
+/// A change to an entry already on the calendar.
+class ProposedEditEvent extends ProposedWrite {
+  const ProposedEditEvent({
+    required this.event,
+    this.date,
+    this.time,
+    this.location,
+    this.durationMin,
+    this.recurrence,
+  });
+
+  /// Resolved from the real entries, never from typed text.
+  final CalendarEvent event;
+
+  /// Every field optional and null means leave it alone, so moving a call to
+  /// Thursday does not quietly drop the time it had.
+  final String? date;
+  final String? time;
+  final String? location;
+  final int? durationMin;
+  final EventRecurrence? recurrence;
+
+  @override
+  String get summary {
+    final bits = <String>[];
+    if (date != null) bits.add('to $date');
+    if (time != null) bits.add('to $time');
+    if (durationMin != null) bits.add('length ${durationMin} min');
+    if (location != null) bits.add('place $location');
+    if (recurrence != null) bits.add(recurrence!.phrase);
+    return 'Change "${event.title}": ${bits.isEmpty ? 'nothing' : bits.join(', ')}';
+  }
+
+  @override
+  Future<void> apply(ProfileStore store) async {
+    final moved = date != null || time != null;
+    await store.updateEvent(CalendarEvent(
+      id: event.id,
+      date: date ?? event.date,
+      time: time ?? event.time,
+      title: event.title,
+      location: location ?? event.location,
+      note: event.note,
+      clientId: event.clientId,
+      durationMin: durationMin ?? event.durationMin,
+      recurrence: recurrence ?? event.recurrence,
+      // Moving it invalidates the phone's copy. Leaving the flag set would stop
+      // a later sync from running and the two calendars would quietly disagree,
+      // which is the failure this flag exists to prevent.
+      synced: moved ? false : event.synced,
+      created: event.created,
+    ));
+  }
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = event.id;
+    if (id == null) return 'That entry has no id, so I cannot confirm anything.';
+    final now = await store.event(id);
+    if (now == null) {
+      return '"${event.title}" is no longer in your calendar, so there was '
+          'nothing to change. Nothing was saved.';
+    }
+    if (date != null && now.date != date) {
+      return '"${event.title}" still says $date, not $date. '
+          'The change did not save.';
+    }
+    if (time != null && now.time != time) {
+      return '"${event.title}" still says ${now.time ?? 'no time'}, not $time. '
+          'The change did not save.';
+    }
+    if (durationMin != null && now.durationMin != durationMin) {
+      return '"${event.title}" still has the length ${now.durationMin ?? 'unset'}, '
+          'not $durationMin. The change did not save.';
+    }
+    return null;
+  }
+}
+
 class ProposedPlan extends ProposedWrite {
   const ProposedPlan({required this.steps, this.problems = const []});
 
@@ -603,8 +692,64 @@ class WriteResolver {
           date: intent.date ?? DateTime.now().toIso8601String().substring(0, 10),
           time: intent.time,
           location: intent.location,
+          durationMin: intent.durationMin,
+          recurrence: intent.recurrence,
+        ));
+
+      case EditEventIntent():
+        // From today onwards: an entry that already happened is history, and the
+        // same words would otherwise match last week's call rather than next
+        // week's.
+        final today = DateTime.now();
+        final events = await store.events(
+          from: DateTime(today.year, today.month, today.day),
+        );
+        final hit = _matchEvent(events, intent.title);
+        if (hit == null) {
+          return WriteResolution.problem(
+            'I do not have an entry called "${intent.title}". '
+            'Say "schedule ${intent.title}" and I will.',
+          );
+        }
+        if (hit.length > 1) {
+          return WriteResolution.problem(
+            'More than one entry matches ${intent.title}: '
+            '${hit.map((e) => '"${e.title}" on ${e.date}').join(' and ')}. '
+            'Tell me which one.',
+          );
+        }
+        return WriteResolution.proposed(ProposedEditEvent(
+          event: hit.single,
+          date: intent.date,
+          time: intent.time,
+          location: intent.location,
+          durationMin: intent.durationMin,
+          recurrence: intent.recurrence,
         ));
     }
+  }
+
+  /// Entries whose title matches [typed], nearest first.
+  ///
+  /// Only upcoming ones. Changing an event that already happened is a different
+  /// sentence from the one people use, and searching the whole history would
+  /// make the most recent past entry beat the one they meant to move.
+  List<CalendarEvent> _matchEvent(List<CalendarEvent> events, String typed) {
+    final needle = typed.trim().toLowerCase();
+    if (needle.isEmpty) return const [];
+    bool score(CalendarEvent e) {
+      final t = e.title.toLowerCase();
+      if (t == needle) return 3;
+      if (t.startsWith(needle)) return 2;
+      return t.contains(needle) ? 1 : 0;
+    }
+
+    final scored = events.map((e) => (e, score(e))).where((r) => r.$2 > 0).toList()
+      ..sort((a, b) => b.$2.compareTo(a.$2));
+    if (scored.isEmpty) return const [];
+    final best = scored.first.$2;
+    // A tie at the same quality is an ambiguity, not a choice.
+    return scored.where((r) => r.$2 == best).map((r) => r.$1).toList();
   }
 
   /// Clients whose name matches [typed], nearest match first.

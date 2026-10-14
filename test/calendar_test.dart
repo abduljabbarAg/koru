@@ -180,4 +180,143 @@ void main() {
       expect(clocked.text.toLowerCase(), contains('it is'));
     });
   });
+
+  group('durations are read, and a bare number is not one', () {
+    const p = WriteIntentParser();
+
+    test('"for 2 hours" is two hours', () {
+      final e = p.parse('schedule a call with Bilal tomorrow at 3pm for 2 hours')
+          as AddEventIntent;
+      expect(e.durationMin, 120);
+    });
+
+    test('"90 minutes" is ninety minutes', () {
+      final e = p.parse('schedule a review with Acme friday for 90 minutes')
+          as AddEventIntent;
+      expect(e.durationMin, 90);
+    });
+
+    test('"an hour and a half" is understood', () {
+      final e = p.parse('schedule a workshop monday for an hour and a half')
+          as AddEventIntent;
+      expect(e.durationMin, 90);
+    });
+
+    test('the duration does not become the title', () {
+      final e = p.parse('schedule a call with Bilal tomorrow at 3pm for 2 hours')
+          as AddEventIntent;
+      expect(e.title.toLowerCase(), isNot(contains('hours')));
+      expect(e.title.toLowerCase(), isNot(contains('for')));
+    });
+
+    test('a bare "for 2" is not read as two hours', () {
+      // In a sentence about a meeting, "for 2" is two o'clock far more often,
+      // and reading it as a length invents a block nobody asked for.
+      final e = p.parse('schedule a call with Bilal tomorrow for 2') as AddEventIntent;
+      expect(e.durationMin, isNull);
+    });
+  });
+
+  group('recurrence', () {
+    const p = WriteIntentParser();
+
+    test('the common phrases are read', () {
+      expect((p.parse('schedule a standup with Acme every week monday')
+              as AddEventIntent)
+              .recurrence,
+          EventRecurrence.weekly);
+      expect((p.parse('schedule a sync with Bilal every month on the 3rd')
+              as AddEventIntent)
+              .recurrence,
+          EventRecurrence.monthly);
+      expect((p.parse('schedule a call with Bilal every two weeks')
+              as AddEventIntent)
+              .recurrence,
+          EventRecurrence.fortnightly);
+    });
+
+    test('"every two weeks" is not read as weekly', () {
+      // "every two weeks" contains "every", so the short match has to lose.
+      final e = p.parse('schedule a call with Bilal every two weeks')
+          as AddEventIntent;
+      expect(e.recurrence, EventRecurrence.fortnightly);
+      expect(e.recurrence, isNot(EventRecurrence.weekly));
+    });
+
+    test('a single entry is left alone', () {
+      expect((p.parse('schedule a call with Bilal tomorrow') as AddEventIntent)
+          .recurrence, isNull);
+    });
+  });
+
+  group('editing an entry', () {
+    const p = WriteIntentParser();
+
+    test('moving a call to another day is an edit, not a new entry', () {
+      final e = p.parse('move the call with Bilal to thursday') as EditEventIntent;
+      expect(e.title.toLowerCase(), contains('bilal'));
+      expect(e.date, isNotNull);
+    });
+
+    test('a reschedule names the entry', () {
+      final e = p.parse('reschedule the standup with Acme to 10am') as EditEventIntent;
+      expect(e.title.toLowerCase(), contains('acme'));
+      expect(e.time, '10:00');
+    });
+
+    test('an edit with nothing to change asks rather than proposing', () {
+      expect(p.parse('move the call with Bilal'), isA<IncompleteWriteIntent>());
+    });
+  });
+
+  group('a repeating entry rolls forward', () {
+    test('a weekly entry occurs on the right days', () {
+      final e = CalendarEvent(
+        id: 1,
+        date: '2026-10-12',
+        time: '09:00',
+        title: 'Standup',
+        recurrence: EventRecurrence.weekly,
+      );
+      final occ = e.occurrences(DateTime(2026, 10, 12), DateTime(2026, 11, 9));
+      expect(occ.map((o) => o.date).toList(), [
+        '2026-10-12', '2026-10-19', '2026-10-26', '2026-11-02', '2026-11-09',
+      ]);
+    });
+
+    test('a monthly entry does not drift onto a short month', () {
+      // Adding 30 days to 31 January lands on 2 March, which is the wrong
+      // meeting. This is the whole reason recurrence is a date arithmetic and
+      // not a duration.
+      final e = CalendarEvent(
+        id: 2,
+        date: '2026-01-31',
+        title: 'Rent',
+        recurrence: EventRecurrence.monthly,
+      );
+      final next = e.recurrence!.next(DateTime(2026, 1, 31))!;
+      expect(next.month, 2);
+      expect(next.day, 28);
+    });
+
+    test('a non-recurring entry only occurs on its own day', () {
+      final e = CalendarEvent(id: 3, date: '2026-10-12', title: 'Once');
+      expect(e.occurrences(DateTime(2026, 10, 1), DateTime(2026, 11, 1)).length, 1);
+      expect(e.occurrences(DateTime(2026, 11, 1), DateTime(2026, 12, 1)), isEmpty);
+    });
+
+    test('the walk forward is capped so a daily entry cannot run away', () {
+      final e = CalendarEvent(
+        id: 4,
+        date: '2020-01-01',
+        title: 'Daily',
+        recurrence: EventRecurrence.daily,
+      );
+      expect(
+        e.occurrences(DateTime(2026, 1, 1), DateTime(2030, 1, 1)).length,
+        lessThanOrEqualTo(60),
+      );
+    });
+  });
+
 }
