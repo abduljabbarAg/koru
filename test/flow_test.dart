@@ -118,39 +118,41 @@ void main() {
   final clockPattern = RegExp(r'^\d{1,2}:\d{2}\s?(am|pm)$');
 
   String lastReply(WidgetTester tester) {
-    final inList = find.descendant(
-      of: find.byType(ListView),
-      matching: find.byType(Text),
+    // Scoped to the last bubble rather than to the whole list, because a reply
+    // is several rendered paragraphs and the text after the answer is the next
+    // question. Matching the bubble by its runtime type name is what lets this
+    // stay a black-box helper while the widget itself is private.
+    final bubbles = find.byWidgetPredicate(
+      (w) => w.runtimeType.toString().contains('_ChatBubble'),
     );
-    // A reply is rendered rather than printed, so it arrives as a Text.rich and
-    // its plain `data` is null. Both forms are read, or every reply in the app
-    // is invisible to this helper and it silently returns whatever badge text
-    // happened to be last.
-    final plain = tester.widgetList<Text>(inList).map((t) => t.data);
-    final rich = tester
-        .widgetList<RichText>(find.descendant(
-          of: find.byType(ListView),
-          matching: find.byType(RichText),
-        ))
-        .map((r) => r.text.toPlainText());
-    // A reply is a rendered Text.rich, so its plain `data` is null. Reading
-    // both forms into one list would lose the on-screen order, so the rendered
-    // ones win outright: they *are* the reply, and the plain Texts around them
-    // are badges, engine names and the user's own bubbles.
-    final rendered = rich
+    final bubbleScope = bubbles.evaluate().isEmpty
+        ? find.byType(ListView)
+        : bubbles.last;
+
+    // A reply is a rendered Text.rich, so its plain `data` is null and a helper
+    // that only reads Text.data silently returns whatever badge text happened
+    // to be last.
+    final rendered = tester
+        .widgetList<RichText>(
+          find.descendant(of: bubbleScope, matching: find.byType(RichText)),
+        )
+        .map((r) => r.text.toPlainText())
         .where((t) => t.trim().isNotEmpty)
         .toList();
-    if (rendered.isNotEmpty) return rendered.last;
+    if (rendered.isNotEmpty) return rendered.join('\n');
 
-    final texts = plain
+    // A plain-text fallback, for a bubble that was not rendered: whatever the
+    // user typed back, with the clock dropped so "no" is still findable.
+    final texts = tester
+        .widgetList<Text>(
+          find.descendant(of: bubbleScope, matching: find.byType(Text)),
+        )
+        .map((t) => t.data)
         .whereType<String>()
         .where((t) => t.trim().isNotEmpty)
-        // A bubble carries its time inside it, after the message. Matched by
-        // shape rather than dropped by length, so a reply as short as "no" is
-        // still found.
         .where((t) => !clockPattern.hasMatch(t.trim()))
         .toList();
-    return texts.isEmpty ? '' : texts.last;
+    return texts.isEmpty ? '' : texts.join('\n');
   }
 
   Future<void> tapVisible(WidgetTester tester, Finder finder) async {
