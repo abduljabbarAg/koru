@@ -49,8 +49,7 @@ void main() {
           expect(
             r,
             greaterThanOrEqualTo(4.5),
-            reason: '$name (#${colour.toARGB32().toRadixString(16).padLeft(8, '0')}) '
-                'is ${r.toStringAsFixed(2)}:1 on $bgName',
+            reason: '$name is only ${r.toStringAsFixed(2)}:1 on $bgName',
           );
         });
       });

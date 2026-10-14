@@ -779,7 +779,7 @@ Row(
                     decoration: BoxDecoration(
                       color: i < activeCount ? tint : tintBg,
                       borderRadius: BorderRadius.circular(3),
-                      border: i < activeCount ? null : Border.all(color: tint.withOpacity(0.35)),
+                      border: i < activeCount ? null : Border.all(color: tint.withValues(alpha: 0.35)),
                     ),
                   ),
                 ),
@@ -1017,6 +1017,9 @@ Row(
       await store.updateEvent(
           CalendarEvent.fromMap({...e.toMap(), 'synced': 1}));
       ref.invalidate(eventsProvider);
+      // The write crosses an await, so the element may be gone by now; using
+      // the context then throws instead of quietly doing nothing.
+      if (!context.mounted) return;
       toast(context, 'Copied to your phone calendar.');
     } else {
       toast(context, 'Your phone calendar could not be written to. Check the '

@@ -9,8 +9,8 @@ import 'deep_link.dart';
 import 'mascot/mascot.dart';
 import 'onboarding.dart';
 import 'screens/business.dart';
-import 'screens/client_detail.dart';
 import 'screens/chat.dart';
+import 'screens/client_detail.dart';
 import 'screens/projects.dart';
 import 'screens/settings.dart';
 import 'state.dart';
@@ -357,11 +357,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   Widget build(BuildContext context) {
     // Listen rather than read, so a link that arrives while the app is already
-    // open is handled too. `fireImmediately` covers the cold start, where the
-    // provider has already taken the value before this widget built.
+    // open is handled too.
     ref.listen<KoruDeepLink?>(pendingLinkProvider, (prev, next) {
       if (next != null) _openPendingLink(next);
-    }, fireImmediately: true);
+    });
+    // Covers the cold start, where the link was already taken before this
+    // widget existed and so no transition will ever fire. `ref.listen` has no
+    // fireImmediately in riverpod 2.x, so it is done by hand after the first
+    // frame, when a navigator actually exists to push onto.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pending = ref.read(pendingLinkProvider);
+      if (pending != null) _openPendingLink(pending);
+    });
     ref.read(pendingLinkProvider.notifier).listenOnOpen();
 
     return Scaffold(
