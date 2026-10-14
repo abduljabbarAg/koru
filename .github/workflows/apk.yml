@@ -281,11 +281,15 @@ jobs:
       - name: test
         run: flutter test
 
+      # The Gradle build refuses to sign a release with the debug key unless
+      # this is set explicitly, because a debug-signed "release" succeeds and
+      # looks fine while being uninstallable in place for every user. CI has no
+      # keystore, so it opts in here on purpose rather than by default.
       - name: build release apk
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi -Pkoru.allowDebugSigning=true
 
       - name: build app bundle
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release -Pkoru.allowDebugSigning=true
 
       - name: collect artifacts
         run: |

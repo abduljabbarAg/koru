@@ -10,17 +10,33 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Release signing is opt-in.
+// Release signing is opt-in, and a missing keystore now stops the build.
 //
-// v0.1 signed release builds with the debug key unconditionally, which means a
-// published APK could never be upgraded in place by someone who installed it
-// from a store. When android/key.properties is present and correct it signs
-// properly; otherwise it falls back to the debug key so CI stays green.
+// It used to fall back to the debug key so CI stayed green, which is worse than
+// the alternative: the build succeeded, produced an APK called "release", and
+// nothing said otherwise. A debug-signed APK cannot be upgraded in place by
+// anyone who installed it from a store, so shipping one by accident is not a
+// cosmetic problem.
+//
+// Set `koru.allowDebugSigning=true` in gradle.properties (or pass -P) to opt
+// back in for local builds and CI. It is deliberately not the default.
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseKeystore = keystorePropertiesFile.exists()
 if (hasReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+val allowDebugSigning: Boolean =
+    (project.findProperty("koru.allowDebugSigning") as String?)?.toBoolean() ?: false
+
+if (!hasReleaseKeystore && !allowDebugSigning) {
+    throw GradleException(
+        "No release keystore at ${keystorePropertiesFile.path}, so the release " +
+            "build would be signed with the debug key and could never be " +
+            "upgraded in place. Add android/key.properties, or set " +
+            "-Pkoru.allowDebugSigning=true to sign with debug on purpose."
+    )
 }
 
 android {

@@ -5,16 +5,26 @@ import 'package:flutter/services.dart';
 class KoruColors {
   static const ink = Color(0xFF14110F);
   static const inkSoft = Color(0xFF4A423D);
-  static const inkFaint = Color(0xFF8A7F78);
+  /// Darkened from #8A7F78.
+  ///
+  /// The original measured 3.68:1 on cream and 3.90:1 on white, against a
+  /// requirement of 4.5:1 for body text. It was the colour of the "still owed",
+  /// "due" and secondary-label text, so the least legible colour in the app was
+  /// carrying the figures people read to decide who to chase.
+  static const inkFaint = Color(0xFF786E67);
   static const cream = Color(0xFFFBF8F4);
   static const surface = Color(0xFFFFFFFF);
   static const line = Color(0xFFE8E1DA);
 
   static const leaf = Color(0xFF2F7A5A);
   static const leafSoft = Color(0xFFE4F1EA);
-  static const clay = Color(0xFFC1663F);
+  /// Darkened from #C1663F, which measured 3.79:1 on cream.
+  static const clay = Color(0xFFAC5533);
   static const claySoft = Color(0xFFFAEAE2);
-  static const gold = Color(0xFFB8892B);
+  /// Darkened from #B8892B, which measured 2.98:1 on cream: the worst contrast
+  /// in the app, on the colour that marks an active client. Status is exactly the
+  /// kind of text that has to be legible, so it is now 5.06:1.
+  static const gold = Color(0xFF8A641C);
   static const goldSoft = Color(0xFFFAF0D8);
 }
 

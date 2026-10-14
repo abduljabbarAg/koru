@@ -1057,6 +1057,48 @@ Future<Map<int, String>> _latestNotePerProject(ProfileStore store) async {
   return out;
 }
 
+/// The link a notification tap asked us to open.
+///
+/// Null when no tap is waiting. Reading it takes the value and clears it, so a
+/// second rebuild cannot navigate twice: the notification is gone from the tray
+/// the moment it is tapped, and a replayed link would yank the user out of
+/// whatever they had started reading.
+///
+/// Held in a provider rather than pushed straight into the navigator because a
+/// cold start usually beats Flutter to the tap. The app is built first, and only
+/// then does there exist a navigator to push onto.
+final pendingLinkProvider = NotifierProvider<PendingLink, KoruDeepLink?>(
+  PendingLink.new,
+);
+
+class PendingLink extends Notifier<KoruDeepLink?> {
+  @override
+  KoruDeepLink? build() {
+    // Asked for rather than pushed in, because the link usually exists before
+    // anything is listening.
+    Future.microtask(_drain);
+    return null;
+  }
+
+  Future<void> _drain() async {
+    final link = await const AttentionBridge().takeLink();
+    if (link == null) return;
+    state = link;
+    // Only meaningful once something is mounted to navigate.
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+  }
+
+  /// Marks a link as handled so it cannot fire a second time.
+  void clear() => state = null;
+
+  /// Listens for taps that arrive while the app is already open.
+  void listenOnOpen() {
+    const AttentionBridge().listen((link) {
+      state = link;
+    });
+  }
+}
+
 final chatProvider = NotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);
 
 final clientsProvider = FutureProvider<List<Client>>((ref) async {

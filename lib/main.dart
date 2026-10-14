@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'attention.dart';
 import 'attention_bridge.dart';
+import 'deep_link.dart';
 import 'mascot/mascot.dart';
 import 'onboarding.dart';
 import 'screens/business.dart';
+import 'screens/client_detail.dart';
 import 'screens/chat.dart';
 import 'screens/projects.dart';
 import 'screens/settings.dart';
@@ -308,6 +311,39 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _tab = 0;
 
+  /// Opens whatever a notification tap asked for.
+  ///
+  /// Notification taps used to be parsed, tested and then dropped on the floor:
+  /// [AttentionBridge.takeLink] existed and had no callers, so tapping a
+  /// notification opened the app and did nothing else. The user could not tell
+  /// that from the notification not having worked at all.
+  Future<void> _openPendingLink(KoruDeepLink? link) async {
+    if (link == null) return;
+    switch (link.target) {
+      case AttentionTarget.client:
+        // A client link with no id cannot name a screen, and guessing which
+        // client was meant is worse than landing on the list.
+        if (link.id == null) {
+          setState(() => _tab = 1);
+        } else {
+          final navigator = Navigator.of(context);
+          setState(() => _tab = 1);
+          await navigator.push(MaterialPageRoute<void>(
+            builder: (_) => ClientDetailScreen(clientId: link.id!),
+          ));
+        }
+      case AttentionTarget.deadline:
+      case AttentionTarget.project:
+        // Both live on the Business and Projects tabs respectively; there is no
+        // detail screen for either yet, so land where the list is.
+        setState(() => _tab = 1);
+      case AttentionTarget.chat:
+        setState(() => _tab = 0);
+    }
+    // Cleared last, so a rebuild mid-navigation cannot re-enter this.
+    ref.read(pendingLinkProvider.notifier).clear();
+  }
+
   static const _pages = [
     ChatScreen(),
     BusinessScreen(),
@@ -317,6 +353,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen rather than read, so a link that arrives while the app is already
+    // open is handled too. `fireImmediately` covers the cold start, where the
+    // provider has already taken the value before this widget built.
+    ref.listen<KoruDeepLink?>(pendingLinkProvider, (prev, next) {
+      if (next != null) _openPendingLink(next);
+    }, fireImmediately: true);
+    ref.read(pendingLinkProvider.notifier).listenOnOpen();
+
     return Scaffold(
       body: IndexedStack(index: _tab, children: _pages),
       bottomNavigationBar: Container(

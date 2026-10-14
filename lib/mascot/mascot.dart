@@ -327,23 +327,6 @@ class KoruMascotPainter extends CustomPainter {
 
     // Face.
     final eyeY = centreY - l(7);
-
-    // Beard, laid down before the eyes so the frames and eyes sit over it. It
-    // frames the face rather than covering it: the mouth stays visible, because
-    // a character whose smile has been swallowed by a beard reads as a smudge.
-    final beard = Path()
-      ..moveTo(l(96) - l(34), centreY + l(4))
-      ..quadraticBezierTo(l(96) - l(33), centreY + l(34), l(96), centreY + l(40))
-      ..quadraticBezierTo(l(96) + l(33), centreY + l(34), l(96) + l(34), centreY + l(4))
-      ..quadraticBezierTo(l(96) + l(26), centreY + l(21), l(96) + l(17), centreY + l(11))
-      // The dip under the lower lip, so the smile has somewhere to sit.
-      ..quadraticBezierTo(l(96), centreY + l(24), l(96) - l(17), centreY + l(11))
-      ..quadraticBezierTo(l(96) - l(26), centreY + l(21), l(96) - l(34), centreY + l(4))
-      ..close();
-    canvas.drawPath(
-      beard,
-      Paint()..color = KoruColors.ink.withOpacity(0.13),
-    );
     if (clip == KoruClip.blink && _blinkClosed(t)) {
       for (final dx in [-17.0, 17.0]) {
         final curve = Path()
@@ -369,37 +352,6 @@ class KoruMascotPainter extends CustomPainter {
           Paint()..color = KoruColors.ink,
         );
       }
-    }
-
-    // Glasses, drawn after the eyes so the rims read as sitting on the face.
-    // The bridge is drawn even when blinking, so a blink does not make him
-    // briefly bespectacled and then not.
-    final framePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = l(1.9)
-      ..color = KoruColors.ink.withOpacity(0.78);
-    for (final dx in [-17.0, 17.0]) {
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(l(96) + l(dx), eyeY),
-          width: l(19),
-          height: l(15),
-        ),
-        framePaint,
-      );
-    }
-    // Bridge between the lenses, and a temple running back to each ear.
-    canvas.drawLine(
-      Offset(l(96) - l(7.5), eyeY - l(1)),
-      Offset(l(96) + l(7.5), eyeY - l(1)),
-      framePaint,
-    );
-    for (final side in [1.0, -1.0]) {
-      canvas.drawLine(
-        Offset(l(96) + side * l(26.5), eyeY - l(2)),
-        Offset(l(96) + side * l(31), eyeY - l(4)),
-        framePaint,
-      );
     }
 
     final smile = Path()
