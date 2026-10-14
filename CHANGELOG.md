@@ -2,7 +2,10 @@
 
 ## 1.5.0
 
-Dark mode, and a Today screen.
+Dark mode, a Today screen, and the mascot in the notification bar.
+
+Also: Koru now explains what it wants permissions for, answers like somebody
+rather than a search box, and no longer loses the client you named.
 
 ### Added
 
@@ -20,6 +23,25 @@ Dark mode, and a Today screen.
 - **Haptics** on a write that lands, and a tick when switching tabs. A tap that
   changes somebody's records should be felt; the card is gone before a toast is
   read.
+- **The mascot in the notification bar.** The status bar icon was Android's
+  generic info dot. It is now Koru, drawn as a silhouette with the face cut out
+  of it, because a tinted 24dp icon turns any filled detail into a smudge. The
+  thing that speaks at you at nine in the morning is the thing that answered
+  when you tapped.
+- **Koru explains the permissions first.** One message covering all three,
+  before the first Android dialog, because "Allow Koru to send notifications?"
+  gives nobody any way to judge the answer. Calendar is now asked for as well.
+  It is asked once the app is actually usable, not over the onboarding form.
+- **Koru's own face while it is working.** The thinking state showed three
+  dots. Dots say something is happening somewhere; the mascot says who is
+  doing it, and it is still there when the answer arrives.
+- **A no-AI chat that talks back.** "yes", "no", "anything else", "and him",
+  "is Bilal late", "did I get paid this month" are all answered. A question that
+  can be answered with yes or no now gets yes or no *and the number*, because a
+  bare yes to "am I behind" is not useful.
+- **Names are the names that were said.** A project called "the shop" is called
+  "the shop"; it is no longer title-cased, and "for Bilal" is no longer part of
+  the name.
 - **Errors that are not error strings.** "database or disk is full" is for
   whoever is debugging. What a person who just tapped something needs is that it
   did not work and that trying again is reasonable.

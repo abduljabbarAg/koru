@@ -33,7 +33,7 @@ void main() {
     return (hi + 0.05) / (lo + 0.05);
   }
 
-  const backgrounds = <String, Color>{
+  final backgrounds = <String, Color>{
     'cream': KoruColors.cream,
     'surface': KoruColors.surface,
   };
@@ -95,11 +95,21 @@ void main() {
           reason: 'the text inverts');
     });
 
-    test('a soft fill stays lighter than the text on it in both modes', () {
+    test('a soft fill separates from the accent sitting on it', () {
+      // The fill inverts with the mode, which is the whole point: in the light
+      // palette leafSoft is lighter than the text printed on it, in the dark
+      // palette it is darker. Pinning the direction stops somebody "fixing" one
+      // of them to look like the other and losing the chip.
       expect(luminance(KoruPalette.light.leafSoft),
           greaterThan(luminance(KoruPalette.light.leaf)));
       expect(luminance(KoruPalette.dark.leafSoft),
-          greaterThan(luminance(KoruPalette.dark.leaf)));
+          lessThan(luminance(KoruPalette.dark.leaf)));
+
+      // And in both, the accent on its own fill is readable.
+      for (final p in [KoruPalette.light, KoruPalette.dark]) {
+        expect(ratio(p.leaf, p.leafSoft), greaterThanOrEqualTo(4.5),
+            reason: 'accent on its own fill');
+      }
     });
   });
 

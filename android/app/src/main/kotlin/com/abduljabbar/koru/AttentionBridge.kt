@@ -521,7 +521,7 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
     private fun postUrgentIfChanged(ctx: Context) {
         if (urgent.isEmpty() || !changed) return
         val notification = NotificationCompat.Builder(ctx, URGENT_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_koru)
             .setContentTitle(if (urgent.size == 1) "Koru: something is due" else "Koru: ${urgent.size} things are due")
             .setContentText(urgent.take(3).joinToString("\n"))
             .setStyle(
@@ -548,7 +548,7 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
             else -> "$count thing${if (count == 1) "" else "s"} need you"
         }
         return NotificationCompat.Builder(ctx, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_koru)
             .setContentTitle(if (count > 0) "Koru: $headline" else "Koru")
             .setContentText(body)
             .setOngoing(true)

@@ -111,7 +111,7 @@ class AttentionWatcher : Service() {
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_koru)
             .setContentTitle(if (count > 0) "Koru: $headline" else "Koru")
             .setContentText(body)
             .setOngoing(true)

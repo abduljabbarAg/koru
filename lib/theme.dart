@@ -11,7 +11,7 @@ class KoruColors {
   /// of these colours is referenced from a const widget literal in a file that
   /// has no context in scope. Set once before the first frame, and again when
   /// the system theme changes.
-  static setBrightness(Brightness b) =>
+  static KoruPalette setBrightness(Brightness b) =>
       _active = b == Brightness.dark ? KoruPalette.dark : KoruPalette.light;
 
   /// What the app is currently painting with.
@@ -91,7 +91,7 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
     cream: Color(0xFFFBF8F4),
     surface: Color(0xFFFFFFFF),
     line: Color(0xFFE8E1DA),
-    leaf: Color(0xFF2F7A5A),
+    leaf: Color(0xFF2E7757),
     leafSoft: Color(0xFFE4F1EA),
     clay: Color(0xFFAC5533),
     claySoft: Color(0xFFFAEAE2),
@@ -200,7 +200,7 @@ ThemeData buildKoruTheme({Brightness brightness = Brightness.light}) {
         fontWeight: FontWeight.w700,
         letterSpacing: -0.4,
       ),
-      systemOverlayStyle: SystemUiOverlayStyle(
+      systemOverlayStyle: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
       ),
@@ -217,7 +217,7 @@ ThemeData buildKoruTheme({Brightness brightness = Brightness.light}) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: p.surface,
-      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(KoruRadius.field),
         borderSide: BorderSide(color: p.line),
@@ -237,22 +237,22 @@ ThemeData buildKoruTheme({Brightness brightness = Brightness.light}) {
       style: FilledButton.styleFrom(
         backgroundColor: p.leaf,
         foregroundColor: Colors.white,
-        minimumSize: Size.fromHeight(52),
+        minimumSize: const Size.fromHeight(52),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(KoruRadius.field),
         ),
-        textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: p.ink,
-        minimumSize: Size.fromHeight(52),
+        minimumSize: const Size.fromHeight(52),
         side: BorderSide(color: p.line),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(KoruRadius.field),
         ),
-        textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
     dividerTheme: DividerThemeData(color: p.line, space: 1, thickness: 1),

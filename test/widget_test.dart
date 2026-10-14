@@ -879,7 +879,7 @@ void main() {
     testWidgets('KoruPill renders its label', (tester) async {
       await pumpApp(
         tester,
-        const Scaffold(
+        Scaffold(
           body: KoruPill(label: 'PAID', color: KoruColors.leaf, background: KoruColors.leafSoft),
         ),
       );
@@ -889,7 +889,7 @@ void main() {
     testWidgets('StatTile shows value and sub', (tester) async {
       await pumpApp(
         tester,
-        const Scaffold(
+        Scaffold(
           body: StatTile(
             label: 'OWED',
             value: '2,400',

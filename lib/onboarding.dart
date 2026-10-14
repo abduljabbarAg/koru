@@ -15,7 +15,7 @@ import 'widgets.dart';
 /// product measures itself against, and asking once here is better than nagging
 /// later about a limit the user never chose.
 class OnboardingScreen extends ConsumerStatefulWidget {
-  OnboardingScreen({super.key});
+  const OnboardingScreen({super.key});
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -95,7 +95,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       setState(() => _step++);
       _mascot.play(_clipFor(_step + 1));
       _page.animateToPage(_step,
-          duration: Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+          duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
     } else {
       _save();
     }
@@ -106,7 +106,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     setState(() => _step--);
     _mascot.play(_clipFor(_step - 1));
     _page.animateToPage(_step,
-        duration: Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+        duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
   }
 
   /// Writes the profile and finishes onboarding.
@@ -149,10 +149,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
               child: Row(
                 children: [
-                  KoruMark(),
-                  SizedBox(width: 12),
+                  const KoruMark(),
+                  const SizedBox(width: 12),
                   Text('Koru', style: Theme.of(context).textTheme.titleLarge),
-                  Spacer(),
+                  const Spacer(),
                   Text('${_step + 1} of $_steps',
                       style: TextStyle(color: KoruColors.inkFaint, fontSize: 13)),
                 ],
@@ -178,7 +178,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             Expanded(
               child: PageView(
                 controller: _page,
-                physics: NeverScrollableScrollPhysics(),
+                physics: const NeverScrollableScrollPhysics(),
                 children: [
                   _intro(),
                   _nickName(),
@@ -200,10 +200,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     Expanded(
                       child: OutlinedButton(
                         onPressed: _back,
-                        child: Text('Back'),
+                        child: const Text('Back'),
                       ),
                     ),
-                  if (_step > 0) SizedBox(width: 12),
+                  if (_step > 0) const SizedBox(width: 12),
                   Expanded(
                     flex: 2,
                     child: FilledButton(
@@ -236,7 +236,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       child: Row(
         children: [
           KoruMascot(size: 54, controller: _mascot, semanticLabel: 'Koru'),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               switch (clip) {
@@ -260,15 +260,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _guide(clip),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           Text(title,
-              style: TextStyle(
+              style: const TextStyle(
                   fontSize: 27, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.6)),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(sub,
               style: TextStyle(
                   fontSize: 15, color: KoruColors.inkSoft, height: 1.45)),
-          SizedBox(height: 24),
+          const SizedBox(height: 24),
           ...children,
         ],
       ),
@@ -280,7 +280,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'Your clients, your money and what is due. It runs on this phone. '
             'No account, no real name.',
         [
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(18),
             child: Image.asset(
@@ -291,20 +291,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               excludeFromSemantics: true,
             ),
           ),
-          SizedBox(height: 20),
-          KoruFeature(
+          const SizedBox(height: 20),
+          const KoruFeature(
               icon: Icons.lock_outline_rounded,
               title: 'Local by default',
               body: 'Your clients and your money are answered here, without a network call.'),
-          KoruFeature(
+          const KoruFeature(
               icon: Icons.payments_outlined,
               title: 'Knows what you are owed',
               body: 'Clients, payments and deadlines, so asking about money gets an answer.'),
-          KoruFeature(
+          const KoruFeature(
               icon: Icons.edit_note_rounded,
               title: 'Writes when you say so',
               body: 'Say "add client Bilal for 2000". Nothing is saved until you approve it.'),
-          KoruFeature(
+          const KoruFeature(
               icon: Icons.people_outline_rounded,
               title: 'Knows when to step aside',
               body: 'Some questions deserve a real person, not a model.'),
@@ -342,7 +342,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           : 'Check it over. $missing ${missing == 1 ? 'answer is' : 'answers are'} '
               'empty and Koru will say so rather than guess.',
       [
-        SizedBox(height: 10),
+        const SizedBox(height: 10),
         for (final row in rows)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -365,7 +365,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         Text(row.$1,
                             style: TextStyle(
                                 fontSize: 11.5, color: KoruColors.inkFaint)),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(row.$2,
                             style: TextStyle(
                               fontSize: 14.5,
@@ -409,7 +409,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     setState(() => _step = target);
     _mascot.play(_clipFor(target));
     _page.animateToPage(target,
-        duration: Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+        duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
   }
 
   Widget _nickName() => _body(
@@ -418,18 +418,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'A nickname, not a name. It stays on this device and is never attached '
             'to anything sent to a cloud model.',
         [
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           TextField(
             controller: _nick,
             textCapitalization: TextCapitalization.none,
-            decoration: InputDecoration(hintText: 'nickname'),
+            decoration: const InputDecoration(hintText: 'nickname'),
           ),
         ],
       );
 
   Widget _choice(String title, List<String> opts, String? sel, void Function(String) onPick) =>
       _body(title, 'Pick one. You can change this later in Settings.', [
-        SizedBox(height: 4),
+        const SizedBox(height: 4),
         ...opts.map((o) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: InkWell(
@@ -470,7 +470,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             'this number so it can tell you when you are full instead of letting '
             'you quietly take on work you have no room for.',
         [
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Row(
             children: [
               for (final n in _capacityOptions) ...[
@@ -506,12 +506,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ],
             ],
           ),
-          SizedBox(height: 18),
+          const SizedBox(height: 18),
           Text(
             'And what are you paid in?',
             style: TextStyle(fontSize: 15, color: KoruColors.inkSoft, height: 1.4),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -542,7 +542,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 ),
             ],
           ),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           Text(
             'You can change this any time in Settings.',
             style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
@@ -572,21 +572,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'Last one. What do you want to be true in three months?',
         'Be specific. This is what I will hold you to.',
         [
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           TextField(
             controller: _goals,
             maxLines: 4,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: 'e.g. get paid by 5 clients, stop taking work I cannot finish',
             ),
           ),
-          SizedBox(height: 18),
-          SectionLabel('I want help with'),
+          const SizedBox(height: 18),
+          const SectionLabel('I want help with'),
           Text(
             'Pick as many as apply.',
             style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           ..._helps.map((h) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: ChoiceChip(
@@ -609,7 +609,7 @@ class KoruFeature extends StatelessWidget {
   final String title;
   final String body;
 
-  KoruFeature({super.key, required this.icon, required this.title, required this.body});
+  const KoruFeature({super.key, required this.icon, required this.title, required this.body});
 
   @override
   Widget build(BuildContext context) {
@@ -619,7 +619,7 @@ class KoruFeature extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: KoruColors.leaf, size: 22),
-          SizedBox(width: 14),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -627,7 +627,7 @@ class KoruFeature extends StatelessWidget {
                 Text(title,
                     style: TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 15.5, color: KoruColors.ink)),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(body,
                     style: TextStyle(
                         color: KoruColors.inkFaint, fontSize: 13.5, height: 1.4)),

@@ -6,7 +6,7 @@ import 'proposed_write.dart';
 import 'theme.dart';
 
 class KoruMark extends StatelessWidget {
-  KoruMark({super.key, this.size = 28});
+  const KoruMark({super.key, this.size = 28});
 
   /// Static mark for places with no room to animate, such as a dense list row.
   final double size;
@@ -26,7 +26,7 @@ class KoruMark extends StatelessWidget {
 }
 
 class SectionLabel extends StatelessWidget {
-  SectionLabel(this.text, {super.key});
+  const SectionLabel(this.text, {super.key});
 
   final String text;
 
@@ -48,7 +48,7 @@ class SectionLabel extends StatelessWidget {
 }
 
 class StatTile extends StatelessWidget {
-  StatTile({
+  const StatTile({
     super.key,
     required this.label,
     required this.value,
@@ -86,7 +86,7 @@ class StatTile extends StatelessWidget {
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tint),
             ),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Text(
             value,
             style: TextStyle(
@@ -97,7 +97,7 @@ class StatTile extends StatelessWidget {
             ),
           ),
           if (sub != null) ...[
-            SizedBox(height: 2),
+            const SizedBox(height: 2),
             Text(sub!, style: TextStyle(fontSize: 13, color: KoruColors.inkFaint)),
           ],
         ],
@@ -107,7 +107,7 @@ class StatTile extends StatelessWidget {
 }
 
 class EmptyHint extends StatelessWidget {
-  EmptyHint({
+  const EmptyHint({
     super.key,
     required this.icon,
     required this.title,
@@ -133,15 +133,15 @@ class EmptyHint extends StatelessWidget {
       child: Column(
         children: [
           Icon(icon, size: 30, color: KoruColors.inkFaint),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Text(title,
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: KoruColors.ink)),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(body,
               textAlign: TextAlign.center,
               style: TextStyle(color: KoruColors.inkFaint, fontSize: 13, height: 1.4)),
           if (action != null) ...[
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             action!,
           ],
         ],
@@ -160,7 +160,7 @@ class EmptyHint extends StatelessWidget {
 /// An amount can be corrected in place, because "Bilal paid 500" where 5000
 /// was meant is the most likely wrong read and the easiest to fix.
 class WriteCard extends StatefulWidget {
-  WriteCard({
+  const WriteCard({
     super.key,
     required this.write,
     required this.onApprove,
@@ -240,7 +240,7 @@ class _WriteCardState extends State<WriteCard> {
           Row(
             children: [
               Icon(Icons.edit_note_rounded, size: 18, color: KoruColors.gold),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   write.summary,
@@ -255,7 +255,7 @@ class _WriteCardState extends State<WriteCard> {
             ],
           ),
           if (write is ProposedPayment) ...[
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             TextField(
               controller: _amount,
               enabled: !_busy,
@@ -268,22 +268,22 @@ class _WriteCardState extends State<WriteCard> {
               ),
             ),
           ],
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42)),
                   onPressed: _busy || amountError ? null : _approve,
-                  child: Text('Save it'),
+                  child: const Text('Save it'),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(42)),
                   onPressed: _busy ? null : widget.onDiscard,
-                  child: Text('Discard'),
+                  child: const Text('Discard'),
                 ),
               ),
             ],
@@ -299,7 +299,7 @@ class _WriteCardState extends State<WriteCard> {
 /// This replaces a line of text in the chat bubble. The routing layer already
 /// knew when to step aside; now there is somewhere to step aside to.
 class HandoffCard extends StatelessWidget {
-  HandoffCard({super.key, required this.plan, this.onDismiss});
+  const HandoffCard({super.key, required this.plan, this.onDismiss});
 
   final HandoffPlan plan;
   final VoidCallback? onDismiss;
@@ -339,7 +339,7 @@ class HandoffCard extends StatelessWidget {
                     color: accent,
                   ),
                 ),
-                SizedBox(width: 11),
+                const SizedBox(width: 11),
                 Expanded(
                   child: Text(
                     plan.headline,
@@ -359,12 +359,12 @@ class HandoffCard extends StatelessWidget {
                   ),
               ],
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
               plan.body,
               style: TextStyle(fontSize: 13.5, color: KoruColors.inkSoft, height: 1.45),
             ),
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             ...plan.resources.map((r) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Row(
@@ -408,7 +408,7 @@ class HandoffCard extends StatelessWidget {
 
 /// Small pill used for statuses and routing badges.
 class KoruPill extends StatelessWidget {
-  KoruPill({
+  const KoruPill({
     super.key,
     required this.label,
     required this.color,
@@ -431,7 +431,7 @@ class KoruPill extends StatelessWidget {
         children: [
           if (icon != null) ...[
             Icon(icon, size: 12, color: color),
-            SizedBox(width: 4),
+            const SizedBox(width: 4),
           ],
           Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
         ],
@@ -458,7 +458,7 @@ Future<T?> showKoruSheet<T>(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         decoration: BoxDecoration(
           color: KoruColors.cream,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -473,13 +473,13 @@ Future<T?> showKoruSheet<T>(
                     color: KoruColors.line, borderRadius: BorderRadius.circular(2)),
               ),
             ),
-            Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             if (subtitle != null) ...[
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(subtitle,
                   style: TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4)),
             ],
-            SizedBox(height: 18),
+            const SizedBox(height: 18),
             Flexible(child: SingleChildScrollView(child: builder(ctx))),
           ],
         ),
@@ -505,7 +505,7 @@ void toast(BuildContext context, String message) {
 /// said about the screen you are on, shaped like a comic speech balloon, so he
 /// reads as a helper rather than a logo.
 class KoruGuideBanner extends StatelessWidget {
-  KoruGuideBanner({
+  const KoruGuideBanner({
     super.key,
     required this.speech,
     this.mascotSize = 64,
@@ -531,7 +531,7 @@ class KoruGuideBanner extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           KoruMascot(size: mascotSize, onTap: onTap),
-          SizedBox(width: 6),
+          const SizedBox(width: 6),
           Expanded(
             child: Container(
               margin: const EdgeInsets.only(left: 4),
@@ -557,7 +557,7 @@ class KoruGuideBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: EdgeInsets.only(top: 1, right: 8),
+                    padding: const EdgeInsets.only(top: 1, right: 8),
                     child: Icon(
                       Icons.format_quote_rounded,
                       size: 16,
@@ -606,7 +606,7 @@ String money(double v) {
 /// becomes seventeen is the same failure as the Business page reading zero,
 /// only slower to notice.
 class PlanCard extends StatelessWidget {
-  PlanCard({
+  const PlanCard({
     super.key,
     required this.write,
     required this.onApprove,
@@ -639,17 +639,17 @@ class PlanCard extends StatelessWidget {
             children: [
               Icon(Icons.playlist_add_check_rounded,
                   size: 17, color: KoruColors.clay),
-              SizedBox(width: 7),
+              const SizedBox(width: 7),
               Expanded(
                 child: Text(
                   steps.length == 1 ? 'Koru wants to add one client' : 'Koru wants to add ${steps.length} clients',
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 13.5),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           // Every step, numbered. Not a summary of a summary: the user is being
           // asked to agree to twenty specific claims about money, so all twenty
           // are on the screen.
@@ -667,13 +667,13 @@ class PlanCard extends StatelessWidget {
                   ),
                   Expanded(
                     child: Text(steps[i].summary,
-                        style: TextStyle(fontSize: 13, height: 1.35)),
+                        style: const TextStyle(fontSize: 13, height: 1.35)),
                   ),
                 ],
               ),
             ),
           if (problems.isNotEmpty) ...[
-            SizedBox(height: 4),
+            const SizedBox(height: 4),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),
@@ -686,10 +686,10 @@ class PlanCard extends StatelessWidget {
                 children: [
                   Text(
                     '${problems.length} line${problems.length == 1 ? '' : 's'} I could not read',
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize: 12.5, fontWeight: FontWeight.w700),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   for (final p in problems.take(6))
                     Padding(
                       padding: const EdgeInsets.only(bottom: 2),
@@ -705,19 +705,19 @@ class PlanCard extends StatelessWidget {
               ),
             ),
           ],
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Text(
             'Nothing is saved until you press Add. All of it goes in together, '
             'or none of it does.',
             style: TextStyle(
                 fontSize: 11.5, color: KoruColors.inkFaint, height: 1.35),
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           Row(
             children: [
               if (busy)
                 Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   child: SizedBox(
                     width: 18,
                     height: 18,
@@ -729,15 +729,15 @@ class PlanCard extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: onDiscard,
-                    child: Text('Cancel'),
+                    child: const Text('Cancel'),
                   ),
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
                     onPressed: steps.isEmpty ? null : onApprove,
-                    icon: Icon(Icons.check_rounded, size: 18),
+                    icon: const Icon(Icons.check_rounded, size: 18),
                     label: Text(steps.length == 1 ? 'Add' : 'Add ${steps.length}'),
                   ),
                 ),
@@ -757,7 +757,7 @@ class PlanCard extends StatelessWidget {
 /// are noise at best and alarming at worst. What they need is that it did not
 /// work, and that trying again is reasonable.
 class KoruErrorView extends StatelessWidget {
-  KoruErrorView({super.key, required this.onRetry, this.what = 'load this'});
+  const KoruErrorView({super.key, required this.onRetry, this.what = 'load this'});
 
   final VoidCallback onRetry;
   final String what;

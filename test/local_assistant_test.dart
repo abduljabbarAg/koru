@@ -392,4 +392,115 @@ void main() {
     });
   });
 
+
+  group('talking to it like a person', () {
+    test('a yes is taken as go on, not as a new question', () {
+      for (final yes in ['yes', 'yeah', 'yep', 'sure', 'ok', 'go ahead']) {
+        final out = a.answer(question: yes, facts: facts());
+        expect(out.text, isNot(contains('could not')), reason: yes);
+        expect(out.text, isNotEmpty, reason: yes);
+      }
+    });
+
+    test('a no is accepted without arguing', () {
+      final out = a.answer(question: 'no', facts: facts());
+      expect(out.text.toLowerCase(), anyOf(contains('okay'), contains('no problem'),
+          contains('fair enough'), contains('understood')));
+    });
+
+    test('"anything else" says what is actually true right now', () {
+      final out = a.answer(
+        question: 'anything else',
+        facts: facts(
+          clients: const [Client(id: 1, name: 'Acme', status: 'delivered', amount: 5000)],
+          received: const {},
+        ),
+      );
+      // The outstanding amount, not a menu.
+      expect(out.text, contains('Acme'));
+      expect(out.text, contains('5000'));
+    });
+
+    test('"and him" with one client answers about that client', () {
+      final out = a.answer(
+        question: 'and him',
+        facts: facts(
+          clients: const [Client(id: 1, name: 'Acme', status: 'delivered', amount: 5000)],
+          received: const {},
+        ),
+      );
+      expect(out.text, contains('Acme'));
+    });
+
+    test('"and him" with several clients asks rather than guessing', () {
+      final out = a.answer(
+        question: 'and him',
+        facts: facts(
+          clients: const [
+            Client(id: 1, name: 'Acme', status: 'paid', amount: 5000),
+            Client(id: 2, name: 'Globex', status: 'paid', amount: 2000),
+          ],
+          received: const {1: 5000, 2: 2000},
+        ),
+      );
+      expect(out.text, contains('Who did you mean'));
+      expect(out.text, contains('Acme'));
+    });
+  });
+
+  group('yes and no questions about the records', () {
+    test('a yes/no question gets yes or no and the number', () {
+      final out = a.answer(
+        question: 'did i get paid',
+        facts: facts(
+          clients: const [
+            Client(id: 1, name: 'Acme', status: 'paid', amount: 5000),
+            Client(id: 2, name: 'Globex', status: 'delivered', amount: 2000),
+          ],
+          received: const {1: 5000},
+        ),
+      );
+      expect(out.text, contains('Not everything'));
+      expect(out.text, contains('2000'));
+      expect(out.text, contains('Globex'));
+    });
+
+    test('naming the client answers about that client', () {
+      final out = a.answer(
+        question: 'is globex late',
+        facts: facts(
+          clients: const [
+            Client(id: 1, name: 'Acme', status: 'paid', amount: 5000),
+            Client(id: 2, name: 'Globex', status: 'delivered', amount: 2000),
+          ],
+          received: const {1: 5000},
+        ),
+      );
+      expect(out.text, contains('Globex'));
+      expect(out.text, contains('2000'));
+    });
+
+    test('a settled client gets a clear no', () {
+      final out = a.answer(
+        question: 'is acme late',
+        facts: facts(
+          clients: const [Client(id: 1, name: 'Acme', status: 'paid', amount: 5000)],
+          received: const {1: 5000},
+        ),
+      );
+      expect(out.text, contains('settled'));
+    });
+
+    test('nobody owing anything gets a clear no', () {
+      final out = a.answer(
+        question: 'am i behind',
+        facts: facts(
+          clients: const [Client(id: 1, name: 'Acme', status: 'paid', amount: 5000)],
+          received: const {1: 5000},
+        ),
+      );
+      expect(out.text, contains('Nobody owes you'));
+    });
+  });
+
 }

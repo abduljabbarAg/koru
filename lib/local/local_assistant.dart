@@ -56,6 +56,16 @@ class LocalAssistant {
     switch (intent) {
       case _Intent.greeting:
         return LocalAnswer(_greeting(facts, q), usedData: facts.hasProfile);
+      case _Intent.agree:
+        return LocalAnswer(_agree(facts, q), usedData: false);
+      case _Intent.disagree:
+        return LocalAnswer(_disagree(facts), usedData: false);
+      case _Intent.more:
+        return LocalAnswer(_more(facts), usedData: facts.hasRecords);
+      case _Intent.vagueFollowUp:
+        return LocalAnswer(_vagueFollowUp(facts, q), usedData: facts.hasRecords);
+      case _Intent.yesNoAboutRecords:
+        return LocalAnswer(_yesNoAboutRecords(facts, q), usedData: facts.hasRecords);
       case _Intent.howAreYou:
         return LocalAnswer(_howAreYou(facts), usedData: false);
       case _Intent.thanks:
@@ -222,6 +232,42 @@ class LocalAssistant {
     if (RegExp(r'\b(hello|hi|hey|yo|salam|assalam)\b').hasMatch(q) ||
         has(const ['good morning', 'good evening', 'good afternoon'])) {
       return _Intent.greeting;
+    }
+
+    // Short replies to whatever Koru just said.
+    //
+    // Matched against the whole sentence being almost nothing, because "yes"
+    // after an offer means something and "yes, and add a client called Bilal"
+    // does not. Stripped of punctuation first so "Yes!" and "yes." land here too.
+    final bare = q.replaceAll(RegExp(r'[^a-z\s]'), '').trim();
+    if (RegExp(r'^(yes|yeah|yep|yup|sure|ok|okay|alright|right|will do|'
+                r'sounds good|please do|go ahead)$').hasMatch(bare)) {
+      return _Intent.agree;
+    }
+    if (RegExp(r'^(no|nope|nah|not now|maybe later|never mind|nevermind|'
+                r'cancel|stop)$').hasMatch(bare)) {
+      return _Intent.disagree;
+    }
+    if (RegExp(r'^(and then|what else|anything else|what now|what next|'
+                r'what should i do|where do i start|anything|go on|keep going)$')
+        .hasMatch(bare)) {
+      return _Intent.more;
+    }
+
+    // "and him", "what about her", "the other one". A pronoun with no subject,
+    // which is most of how people talk to something that already knows them.
+    if (RegExp(r'^(and )?(him|her|them|that one|the other one|the other|'
+                r'that client|that person)$').hasMatch(bare)) {
+      return _Intent.vagueFollowUp;
+    }
+
+    // Yes/no questions about the records. Answerable, and refusing them is what
+    // makes an assistant feel like a search box.
+    if (RegExp(r'\b(is|are|was|were|does|do|did|has|have|am)\b').hasMatch(q) &&
+        (q.contains('owe') || q.contains('paid') || q.contains('late') ||
+         q.contains('behind') || q.contains('up to date') ||
+         q.contains('still waiting') || q.contains('received'))) {
+      return _Intent.yesNoAboutRecords;
     }
 
     if (has(const ['who are you', 'what are you', 'your name', 'about you'])) {
@@ -866,6 +912,108 @@ class LocalAssistant {
       'Anything about faith, health, medicine or law goes to a stronger model '
       'instead, and anything urgent goes to a person.';
 
+  /// A yes. There is never a question on screen when this is said, so the
+  /// honest answer is to take it as "go on" and offer the next useful thing
+  /// rather than to pretend something was asked.
+  String _agree(LocalFacts f, String q) => _pick([
+        'Good.',
+        'Will do.',
+        'Okay.',
+        'Right.',
+      ], q) +
+      (f.hasRecords ? ' What would you like to do next?' : _capabilities());
+
+  /// A no. Taken at face value and left alone.
+  String _disagree(LocalFacts f) => _pick([
+        'Okay, leaving it there.',
+        'No problem.',
+        'Fair enough.',
+        'Understood.',
+      ], 'no');
+
+  /// "anything else". Offers the thing that is actually true right now rather
+  /// than a menu, because a menu is a form and the person is talking.
+  String _more(LocalFacts f) {
+    final lines = <String>[];
+    final late = f.clients.where((c) => f.balanceOf(c) > 0).toList()
+      ..sort((a, b) => f.balanceOf(b).compareTo(f.balanceOf(a)));
+    if (late.isNotEmpty) {
+      lines.add(
+          '${late.first.name} is still holding ${_num(f.balanceOf(late.first))}, which is the largest outstanding.');
+    }
+    if (f.deadlines.isNotEmpty) {
+      lines.add('You have ${f.deadlines.length} deadline'
+          '${f.deadlines.length == 1 ? '' : 's'} on file.');
+    }
+    if (f.events.isNotEmpty) {
+      lines.add('Next up: ${f.events.first.title}.');
+    }
+    if (lines.isEmpty) {
+      return 'There is nothing waiting on you that I can see. Ask me anything '
+          'about your clients, your money, your calendar or your deadlines, '
+          'and I will answer from what is on this phone.';
+    }
+    return '${lines.take(3).join('\n')}\n\nAsk me about any of those, or say '
+        '"chase" and I will draft the follow-ups.';
+  }
+
+  /// "and him?" with no name in it.
+  ///
+  /// The previous question is already folded into [q] by the caller, so if a
+  /// client is named anywhere it is answered normally. This is only reached when
+  /// nothing is named, and the useful thing to do is guess the subject from the
+  /// records and ask, rather than shrugging.
+  String _vagueFollowUp(LocalFacts f, String q) {
+    if (f.clients.isEmpty) {
+      return 'Who did you mean? I do not have any clients on file yet.';
+    }
+    if (f.clients.length == 1) {
+      return _clientDetail(f, f.clients.first);
+    }
+    final named = _clientNamedIn(q, f);
+    if (named != null) return _clientDetail(f, named);
+    final late = f.clients.where((c) => f.balanceOf(c) > 0).toList()
+      ..sort((a, b) => f.balanceOf(b).compareTo(f.balanceOf(a)));
+    if (late.isNotEmpty && late.length == 1) {
+      return _clientDetail(f, late.first);
+    }
+    final names = f.clients.take(4).map((c) => c.name).join(', ');
+    return 'Who did you mean? I have ${f.clients.length} clients: $names.';
+  }
+
+  /// "is Bilal late?", "did I get paid this month?"
+  ///
+  /// Answered yes or no, with the number attached, because a bare yes to "am I
+  /// behind" is not useful and a bare no is worse.
+  String _yesNoAboutRecords(LocalFacts f, String q) {
+    final named = _clientNamedIn(q, f);
+    if (named != null) {
+      final outstanding = f.balanceOf(named);
+      if (outstanding > 0) {
+        final invoiced = named.invoicedOn;
+        return '${named.name} has not paid in full. ${_num(outstanding)} '
+            'outstanding${invoiced == null ? '' : ', invoiced on $invoiced'}.';
+      }
+      return '${named.name} is settled. Nothing outstanding.';
+    }
+
+    final owing = f.clients.where((c) => f.balanceOf(c) > 0).toList();
+    if (owing.isEmpty) {
+      return f.clients.isEmpty
+          ? 'I do not have any clients on file yet, so there is nobody owing you.'
+          : 'Nobody owes you anything. Every client on file is settled.';
+    }
+    final total = owing.fold<double>(0, (sum, c) => sum + f.balanceOf(c));
+    if (q.contains('paid') || q.contains('received')) {
+      return 'Not everything. ${owing.length} of your ${f.clients.length} '
+          'clients still owe money, ${_num(total)} in total. '
+          '${owing.map((c) => c.name).take(3).join(', ')} are the ones.';
+    }
+    return 'Yes, you are behind on ${owing.length} '
+        '${owing.length == 1 ? 'client' : 'clients'}, ${_num(total)} in total. '
+        'Say "chase" and I will draft the follow-ups.';
+  }
+
   String _fallback(LocalFacts f) {
     final suggestions = <String>[
       if (f.clients.isNotEmpty) '"who owes me money?"',
@@ -959,6 +1107,11 @@ class _ExprParser {
 
 enum _Intent {
   greeting,
+  agree,
+  disagree,
+  more,
+  vagueFollowUp,
+  yesNoAboutRecords,
   howAreYou,
   thanks,
   goodbye,

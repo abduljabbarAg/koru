@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'attention.dart';
@@ -1237,17 +1239,47 @@ final chosenModelProvider = FutureProvider<String?>((ref) async {
   return (path == null || path.isEmpty) ? null : path;
 });
 
+/// The reason Koru wants these three, in one place, said once.
+///
+/// Android shows a permission dialog with no explanation attached: "Allow Koru to
+/// send notifications?" gives somebody no way to judge whether the answer is
+/// right. So the judgement has to be made before the dialog, not after.
+///
+/// One message covering all three, because three separate explanations is three
+/// separate reasons to stop reading. Said in the order the prompts appear.
+const permissionReason = 'Koru needs three things to work when it is closed: '
+    'notifications to tell you something is due, battery exemption so it can '
+    'check on time, and your calendar so a meeting is not entered twice.';
+
 /// Asks for the permissions Koru needs, in the order that is least annoying.
 ///
 /// Notifications first because without them nothing else matters, and because a
 /// refusal there explains the silence better than a battery setting does.
 /// Battery exemption after, since it opens a system dialog that looks alarming
-/// and should not be the first thing the app asks for.
+/// and should not be the first thing the app asks for. Calendar last, because it
+/// is the only one that can be refused without losing anything.
 ///
 /// Never throws and never blocks. A person who says no to all of it still gets
 /// into the app, because a helper that holds the door until you agree to
 /// everything is not a helper.
-Future<void> requestHealthPermissions(WidgetRef ref) async {
+Future<void> requestHealthPermissions(
+  WidgetRef ref, {
+  ScaffoldMessengerState? messenger,
+}) async {
+  // Said before the first prompt, and left up. A reason that flashes past while
+  // a dialog opens is not a reason, so the delay lives in the caller that owns
+  // a screen: a Timer there can be cancelled when the screen goes, whereas a
+  // bare delay here outlives the widget and outlives the test.
+  if (messenger != null) {
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(const SnackBar(
+        content: Text(permissionReason),
+        duration: Duration(seconds: 7),
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+
   final bridge = ref.read(healthBridgeProvider);
   var health = await bridge.check();
   if (!health.notifications) await bridge.requestNotifications();
@@ -1257,7 +1289,15 @@ Future<void> requestHealthPermissions(WidgetRef ref) async {
   if (!health.batteryExempt) await bridge.requestBatteryExempt();
   health = await bridge.check();
   if (health.autostart == false) await bridge.openAutostartSettings();
+
+  // Calendar. Only asked if it is not already granted, and a refusal is normal:
+  // the in-app calendar is the source of truth and works without this, so being
+  // told no costs the user nothing they can see.
+  final calendar = ref.read(calendarBridgeProvider);
+  if (!await calendar.hasPermission) await calendar.requestPermission();
+
   ref.invalidate(healthProvider);
+  ref.invalidate(calendarPermissionProvider);
 }
 
 /// The payments ledger, newest first, for the money section.
@@ -1286,6 +1326,14 @@ final eventsProvider = FutureProvider<List<CalendarEvent>>((ref) async {
 /// Writing to the phone's own calendar. Kept behind a provider so a test can
 /// replace it and no test ever touches a real calendar.
 final calendarBridgeProvider = Provider<CalendarBridge>((ref) => const CalendarBridge());
+
+/// Whether Koru may write to the phone's own calendar.
+///
+/// A provider rather than a read inside the settings switch, so a grant made on
+/// first run shows up there without the screen having to guess when to look.
+final calendarPermissionProvider = FutureProvider<bool>(
+  (ref) => ref.watch(calendarBridgeProvider).hasPermission,
+);
 
 /// How many clients this person is willing to carry at once.
 ///

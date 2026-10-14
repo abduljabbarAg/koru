@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../attention.dart';
-import '../attention_bridge.dart';
 import '../currency.dart';
-import '../human_date.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -21,7 +19,7 @@ import '../widgets.dart';
 /// never disagree about what is urgent, and every write invalidates one
 /// provider rather than three computations.
 class TodayScreen extends ConsumerWidget {
-  TodayScreen({super.key});
+  const TodayScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,13 +27,13 @@ class TodayScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Today'),
+        title: const Text('Today'),
         backgroundColor: KoruColors.cream,
         surfaceTintColor: Colors.transparent,
       ),
       backgroundColor: KoruColors.cream,
       body: items.when(
-        loading: () => Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => KoruErrorView(
           onRetry: () => ref.invalidate(attentionProvider),
           what: 'work out what is due',
@@ -63,7 +61,7 @@ class TodayScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
                 _Summary(items: list),
-                SizedBox(height: 18),
+                const SizedBox(height: 18),
                 if (overdue.isNotEmpty) ...[
                   _Section(
                     label: 'Overdue',
@@ -100,8 +98,8 @@ class TodayScreen extends ConsumerWidget {
                     ],
                   ),
                 ],
-                SizedBox(height: 8),
-                _ProjectGlance(),
+                const SizedBox(height: 8),
+                const _ProjectGlance(),
               ],
             ),
           );
@@ -152,9 +150,9 @@ class _Summary extends ConsumerWidget {
                   Text('Still owed',
                       style: TextStyle(
                           fontSize: 12.5, color: KoruColors.inkFaint)),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
-                    '${symbol} ${_plain(owed)}',
+                    '$symbol ${_plain(owed)}',
                     style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -207,7 +205,7 @@ class _Section extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(bottom: 2, left: 2),
           child: Text(label,
-              style: TextStyle(
+              style: const TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w700)),
         ),
         Padding(
@@ -217,7 +215,7 @@ class _Section extends StatelessWidget {
                   fontSize: 12, color: KoruColors.inkFaint)),
         ),
         ...children,
-        SizedBox(height: 14),
+        const SizedBox(height: 14),
       ],
     );
   }
@@ -247,9 +245,9 @@ class _AttentionRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(item.title,
-              style: TextStyle(
+              style: const TextStyle(
                   fontSize: 14.5, fontWeight: FontWeight.w600)),
-          SizedBox(height: 2),
+          const SizedBox(height: 2),
           Text(item.detail,
               style: TextStyle(
                   fontSize: 12.5, color: KoruColors.inkFaint)),
@@ -278,9 +276,9 @@ class _ProjectGlance extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Projects going quiet',
+        const Text('Projects going quiet',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        SizedBox(height: 2),
+        const SizedBox(height: 2),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
           child: Text(
@@ -308,13 +306,13 @@ class _ProjectGlance extends ConsumerWidget {
                   size: 16,
                   color: p.isPersonal ? KoruColors.clay : KoruColors.leaf,
                 ),
-                SizedBox(width: 9),
+                const SizedBox(width: 9),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(p.name,
-                          style: TextStyle(
+                          style: const TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w500)),
                       if (p.progressNote != null &&
                           p.progressNote!.isNotEmpty)
@@ -328,7 +326,7 @@ class _ProjectGlance extends ConsumerWidget {
                     ],
                   ),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text('${(p.progress * 100).round()}%',
                     style: TextStyle(
                         fontSize: 13,
@@ -337,7 +335,7 @@ class _ProjectGlance extends ConsumerWidget {
               ],
             ),
           ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
       ],
     );
   }
@@ -366,10 +364,10 @@ class _AllClear extends StatelessWidget {
           children: [
             Icon(Icons.check_circle_outline,
                 size: 44, color: KoruColors.leaf),
-            SizedBox(height: 12),
-            Text('Nothing needs you today',
+            const SizedBox(height: 12),
+            const Text('Nothing needs you today',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text(
               'Nothing overdue, nothing due, no calls. Say "add client Bilal '
               'for 2000" in Talk when something comes in.',

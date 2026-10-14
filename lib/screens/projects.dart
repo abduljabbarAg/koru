@@ -19,7 +19,7 @@ import '../widgets.dart';
 /// a user with three personal projects and one client project calling them four
 /// different things.
 class ProjectsScreen extends ConsumerStatefulWidget {
-  ProjectsScreen({super.key});
+  const ProjectsScreen({super.key});
 
   @override
   ConsumerState<ProjectsScreen> createState() => _ProjectsScreenState();
@@ -34,7 +34,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Projects'),
+        title: const Text('Projects'),
         backgroundColor: KoruColors.cream,
         surfaceTintColor: Colors.transparent,
       ),
@@ -43,11 +43,11 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
         backgroundColor: KoruColors.leaf,
         foregroundColor: Colors.white,
         onPressed: () => _edit(null),
-        icon: Icon(Icons.add),
-        label: Text('New project'),
+        icon: const Icon(Icons.add),
+        label: const Text('New project'),
       ),
       body: projects.when(
-        loading: () => Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => KoruErrorView(
           onRetry: () => ref.invalidate(projectsProvider),
           what: 'load your projects',
@@ -77,7 +77,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 onChanged: (k) => setState(() => _filter = k),
               ),
               if (shown.isEmpty)
-                Padding(
+                const Padding(
                   padding: EdgeInsets.symmetric(vertical: 40),
                   child: Center(child: Text('Nothing in this list yet.')),
                 ),
@@ -121,18 +121,18 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           controller: controller,
           autofocus: true,
           maxLines: 4,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             hintText: 'What happened since the last update?',
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: Text('Add'),
+            child: const Text('Add'),
           ),
         ],
       ),
@@ -245,7 +245,7 @@ class _ProjectCard extends StatelessWidget {
                     size: 16,
                     color: personal ? KoruColors.clay : KoruColors.leaf,
                   ),
-                  SizedBox(width: 6),
+                  const SizedBox(width: 6),
                   Text(
                     personal ? 'Personal' : 'Client work',
                     style: TextStyle(
@@ -254,7 +254,7 @@ class _ProjectCard extends StatelessWidget {
                       color: personal ? KoruColors.clay : KoruColors.leaf,
                     ),
                   ),
-                  Spacer(),
+                  const Spacer(),
                   Text('$pct%',
                       style: TextStyle(
                         fontSize: 13,
@@ -263,7 +263,7 @@ class _ProjectCard extends StatelessWidget {
                       )),
                 ],
               ),
-              SizedBox(height: 6),
+              const SizedBox(height: 6),
               Text(project.name,
                   style: TextStyle(
                     fontSize: 16,
@@ -271,12 +271,12 @@ class _ProjectCard extends StatelessWidget {
                     color: KoruColors.ink,
                   )),
               if (project.target != null && project.target!.isNotEmpty) ...[
-                SizedBox(height: 3),
+                const SizedBox(height: 3),
                 Text('Done when ${project.target}',
                     style: TextStyle(
                         fontSize: 13, color: KoruColors.inkSoft)),
               ],
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
@@ -290,7 +290,7 @@ class _ProjectCard extends StatelessWidget {
               ),
               if (project.progressNote != null &&
                   project.progressNote!.isNotEmpty) ...[
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(project.progressNote!,
                     style: TextStyle(
                         fontSize: 13, color: KoruColors.inkSoft)),
@@ -299,8 +299,8 @@ class _ProjectCard extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: onNote,
-                  icon: Icon(Icons.note_add_outlined, size: 18),
-                  label: Text('Add note'),
+                  icon: const Icon(Icons.note_add_outlined, size: 18),
+                  label: const Text('Add note'),
                 ),
               ),
             ],
@@ -319,7 +319,7 @@ class _ProjectCard extends StatelessWidget {
 /// the whole point: a number with no reason is the confident guess the rest of
 /// this app tries not to make.
 class ProjectSheet extends ConsumerStatefulWidget {
-  ProjectSheet({super.key, this.project});
+  const ProjectSheet({super.key, this.project});
 
   final Project? project;
 
@@ -374,9 +374,9 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(p == null ? 'New project' : 'Edit project',
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w700)),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             SegmentedButton<ProjectKind>(
               segments: const [
                 ButtonSegment(
@@ -393,46 +393,46 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
               selected: {_kind},
               onSelectionChanged: (s) => setState(() => _kind = s.first),
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             TextField(
               controller: _name,
-              decoration: InputDecoration(labelText: 'Name'),
+              decoration: const InputDecoration(labelText: 'Name'),
               textCapitalization: TextCapitalization.sentences,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _target,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Done when',
                 hintText: 'the shop is open',
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             TextField(
               controller: _plan,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'How you get there',
                 hintText: 'photos first, then the build',
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text('${(_progress * 100).round()}% along',
-                style: TextStyle(fontWeight: FontWeight.w600)),
+                style: const TextStyle(fontWeight: FontWeight.w600)),
             Slider(
               value: _progress.clamp(0, 1),
               onChanged: (v) => setState(() => _progress = v),
             ),
             TextField(
               controller: _note,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Why it is there',
                 hintText: 'two rooms left, both need wiring',
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Row(
               children: [
                 if (p != null)
@@ -440,9 +440,9 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
                     onPressed: _saving ? null : _delete,
                     style: TextButton.styleFrom(
                         foregroundColor: KoruColors.clay),
-                    child: Text('Delete'),
+                    child: const Text('Delete'),
                   ),
-                Spacer(),
+                const Spacer(),
                 FilledButton(
                   onPressed: _saving ? null : _save,
                   child: Text(p == null ? 'Add' : 'Save'),
@@ -515,11 +515,11 @@ class _Empty extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 44, color: KoruColors.inkFaint),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             Text(title,
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 17, fontWeight: FontWeight.w700)),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text(body,
                 textAlign: TextAlign.center,
                 style: TextStyle(

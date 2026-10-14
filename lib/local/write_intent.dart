@@ -549,6 +549,25 @@ class WriteIntentParser {
     'should i', 'can i', 'could i', 'am i', 'which ',
   ];
 
+  /// Whether the sentence opens like a question rather than an instruction.
+  ///
+  /// Looks at the first few words only, after dropping the polite opening people
+  /// type. "hey koru how much does bilal owe" is still a question; "start a
+  /// project, done when the door is open" is not, even though "when" is in it.
+  static bool _opensAsAQuestion(String clean) {
+    var body = clean.toLowerCase();
+    for (final opener in const ['hey koru ', 'koru ', 'ok koru ', 'hello ', 'hi ']) {
+      if (body.startsWith(opener)) {
+        body = body.substring(opener.length).trimLeft();
+        break;
+      }
+    }
+    // Three words is enough for "how much did Bilal owe" and "what can you do"
+    // while leaving room for an instruction to name a date or a person first.
+    final opening = body.split(' ').take(3).join(' ');
+    return _interrogatives.any(opening.contains);
+  }
+
   static final _number = RegExp(r'(\d[\d,]*(?:\.\d+)?)');
   static final _isoDate = RegExp(r'\b(\d{4}-\d{2}-\d{2})\b');
   static final _inDays = RegExp(r'\bin (\d+) days?\b');
@@ -584,9 +603,16 @@ class WriteIntentParser {
     // Dart, so both strings stay the same length and the indices line up.
     final lower = clean.toLowerCase();
 
-    // A question is not an instruction, checked before anything else so
-    // "how much did bilal pay" cannot read as a payment arriving.
-    if (_interrogatives.any(lower.contains)) return null;
+    // A question is not an instruction.
+    //
+    // Checked against the opening words only, because English puts the question
+    // word at the front. Scanning the whole sentence refused instructions that
+    // merely happened to contain one: "start a project called the shop, done when
+    // the door is open" was thrown out by "when", and "add a client, due in 3
+    // days" by "in 3 days" containing no question at all. The cost of that was a
+    // helper that silently did nothing on exactly the sentences that carried the
+    // most detail.
+    if (_opensAsAQuestion(clean)) return null;
 
     // Earliest cue wins, across all three kinds at once.
     //
@@ -1184,10 +1210,16 @@ class WriteIntentParser {
 
     // "for Bilal" names the client. Cut before the name is taken, or the
     // project would be called "shop for bilal".
+    //
+    // Anchored to the end but tolerant of the punctuation people actually type,
+    // and of "the": "for the Bilal Studio" is the same person as "for Bilal
+    // Studio", and refusing the first because of a word the name does not
+    // contain is worse than reading it.
     String? clientName;
-    final forWhom =
-        RegExp(r'\s+for\s+([a-z][a-z\s.]{0,28)}$', caseSensitive: false)
-            .firstMatch(rest);
+    final forWhom = RegExp(
+            r"\s+for\s+(?:the\s+)?([a-z][a-z\s.'-]{0,28}?)\s*[.!?]?\s*$",
+            caseSensitive: false)
+        .firstMatch(rest);
     if (forWhom != null) {
       clientName = _titleCase(forWhom.group(1)!.trim());
       rest = rest.substring(0, forWhom.start).trim();
@@ -1201,8 +1233,14 @@ class WriteIntentParser {
       }
     }
 
-    final name = _titleCase(
-        rest.replaceAll(RegExp(r'^\s*(a|an|the)\s+', caseSensitive: false), '').trim());
+    // The name is kept exactly as it was typed.
+    //
+    // This is the one field in the whole app that is not the app's to improve.
+    // A project called "the shop" is called "the shop"; quietly turning it into
+    // "Shop" means the name on the card is not the name they said, and they will
+    // not notice until they are looking for it later. Capitalisation people
+    // choose is information too.
+    final name = rest.replaceAll(RegExp(r'[.,;]\s*$'), '').trim();
     if (name.length < 2 || _number.hasMatch(name)) {
       return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
     }

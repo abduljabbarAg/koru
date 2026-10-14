@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../mascot/mascot.dart';
 import '../theme.dart';
 
 /// What the model is doing, said out loud next to the animation.
@@ -36,7 +37,7 @@ enum KoruActivity {
   looking('Looking up your clients');
 
   final String label;
-  KoruActivity(this.label);
+  const KoruActivity(this.label);
 }
 
 /// The waiting indicator.
@@ -50,16 +51,27 @@ enum KoruActivity {
 /// One controller drives the whole cycle so the stages cannot drift apart, which
 /// is what happens when each stage owns its own animation.
 class KoruThinkingDots extends StatefulWidget {
-  KoruThinkingDots({
+  const KoruThinkingDots({
     super.key,
     this.activity = KoruActivity.thinking,
     this.size = 18,
-    this.color = KoruColors.inkFaint,
+    this.color,
+    this.showMascot = false,
   });
 
   final KoruActivity activity;
   final double size;
-  final Color color;
+
+  /// Null means "whatever the current palette uses". Resolved in build rather
+  /// than stored, or a caller in the other palette would be stuck with the
+  /// colour it happened to construct this in.
+  final Color? color;
+
+  /// Show Koru's face instead of the animated dots.
+  ///
+  /// On wherever the app is speaking on somebody's behalf, which is the only
+  /// place the identity of the speaker was ever in doubt.
+  final bool showMascot;
 
   @override
   State<KoruThinkingDots> createState() => _KoruThinkingDotsState();
@@ -77,7 +89,7 @@ class _KoruThinkingDotsState extends State<KoruThinkingDots>
     super.initState();
     _cycle = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: _cycleMs),
+      duration: const Duration(milliseconds: _cycleMs),
     )..repeat();
   }
 
@@ -89,34 +101,54 @@ class _KoruThinkingDotsState extends State<KoruThinkingDots>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _cycle,
-      builder: (context, _) {
-        // Three stages across one loop: flat, rising, triangle.
-        final t = _cycle.value * 3;
-        final stage = t.floor() % 3;
-        final within = Curves.easeInOut.transform(t - t.floor());
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // The mascot, not three dots.
+        //
+        // Dots say "something is happening somewhere". They do not say who is
+        // doing it, and in a conversation the single most reassuring thing to
+        // show is the thing you are talking to still being there. The dots were
+        // also the only part of the reply that was not the mascot, which made
+        // the gap between them look like a different app had taken over.
+        if (widget.showMascot)
+          KoruMascot(
+            size: widget.size * 1.9,
+            busy: true,
+            semanticLabel: 'Koru is ${widget.activity.label.toLowerCase()}',
+          )
+        else
+          AnimatedBuilder(
+            animation: _cycle,
+            builder: (context, _) {
+              // Three stages across one loop: flat, rising, triangle.
+              final t = _cycle.value * 3;
+              final stage = t.floor() % 3;
+              final within = Curves.easeInOut.transform(t - t.floor());
 
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            for (var i = 0; i < 3; i++) ...[
-              if (i > 0) SizedBox(width: widget.size * 0.16),
-              _dot(stage, within, i),
-            ],
-            SizedBox(width: 9),
-            Text(
-              widget.activity.label,
-              style: TextStyle(
-                color: KoruColors.inkFaint,
-                fontSize: 12.5,
-                height: 1.2,
-              ),
-            ),
-          ],
-        );
-      },
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < 3; i++) ...[
+                    if (i > 0) SizedBox(width: widget.size * 0.16),
+                    _dot(stage, within, i),
+                  ],
+                ],
+              );
+            },
+          ),
+        const SizedBox(width: 9),
+        Text(
+          widget.activity.label,
+          style: TextStyle(
+            color: KoruColors.inkFaint,
+            fontSize: 12.5,
+            height: 1.2,
+          ),
+        ),
+      ],
     );
   }
 
@@ -140,7 +172,7 @@ class _KoruThinkingDotsState extends State<KoruThinkingDots>
           width: widget.size * 0.3,
           height: widget.size * 0.3,
           decoration: BoxDecoration(
-            color: widget.color,
+            color: widget.color ?? KoruColors.inkFaint,
             shape: BoxShape.circle,
           ),
         ),

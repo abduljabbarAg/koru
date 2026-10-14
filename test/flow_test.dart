@@ -704,6 +704,49 @@ void main() {
     });
   });
 
+
+  group('every engine gets the same writes', () {
+    // The claim worth testing is that the AI is an addition, not the mechanism:
+    // a client, a project and a calendar entry are recorded the same way with
+    // no engine, with a local model and with a cloud model. If that ever stops
+    // being true the assistant has become a dependency of the records.
+    for (final engine in const ['builtIn', 'onDevice', 'cloud']) {
+      testWidgets('$engine can add a client', (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'add client Bilal for 2000');
+        await tapVisible(tester, find.text('Save it'));
+        final clients = await tester.runAsync(() => store.clients());
+        expect(clients!.map((c) => c.name), contains('Bilal'));
+      });
+
+      testWidgets('$engine can add a project', (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'start a project called the rebrand');
+        await tapVisible(tester, find.text('Save it'));
+        final projects = await tester.runAsync(() => store.projects());
+        expect(projects!.map((p) => p.name), contains('the rebrand'));
+      });
+
+      testWidgets('$engine can add a calendar entry', (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'schedule a call with Bilal tomorrow at 3pm');
+        await tapVisible(tester, find.text('Save it'));
+        final events = await tester.runAsync(() => store.events());
+        expect(events!.map((e) => e.title).join(' ').toLowerCase(),
+            contains('bilal'));
+      });
+
+      testWidgets('$engine shows a card rather than writing silently',
+          (tester) async {
+        await boot(tester, engine: engine, model: _SilentClient());
+        await say(tester, 'add client Bilal for 2000');
+        // The card is the approval step. Nothing is written until it is used.
+        expect(find.text('Save it'), findsOneWidget);
+        final clients = await tester.runAsync(() => store.clients());
+        expect(clients, isEmpty);
+      });
+    }
+  });
 }
 
 /// Emits one token per event loop turn, the way a real server does.
@@ -791,47 +834,25 @@ class _ThrowingClient extends LocalModelClient {
   }) async =>
       const LocalFailed('Could not reach the local model.');
 
-  group('every engine gets the same writes', () {
-    // The claim worth testing is that the AI is an addition, not the mechanism:
-    // a client, a project and a calendar entry are recorded the same way with
-    // no engine, with a local model and with a cloud model. If that ever stops
-    // being true the assistant has become a dependency of the records.
-    for (final engine in const ['builtIn', 'onDevice', 'cloud']) {
-      testWidgets('$engine can add a client', (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'add client Bilal for 2000');
-        await tapVisible(tester, find.text('Save it'));
-        final clients = await tester.runAsync(() => store.clients());
-        expect(clients!.map((c) => c.name), contains('Bilal'));
-      });
+}
 
-      testWidgets('$engine can add a project', (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'start a project called the rebrand');
-        await tapVisible(tester, find.text('Save it'));
-        final projects = await tester.runAsync(() => store.projects());
-        expect(projects!.map((p) => p.name), contains('the rebrand'));
-      });
-
-      testWidgets('$engine can add a calendar entry', (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'schedule a call with Bilal tomorrow at 3pm');
-        await tapVisible(tester, find.text('Save it'));
-        final events = await tester.runAsync(() => store.events());
-        expect(events.map((e) => e.title).join(' ').toLowerCase(),
-            contains('bilal'));
-      });
-
-      testWidgets('$engine shows a card rather than writing silently',
-          (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'add client Bilal for 2000');
-        // The card is the approval step. Nothing is written until it is used.
-        expect(find.text('Save it'), findsOneWidget);
-        final clients = await tester.runAsync(() => store.clients());
-        expect(clients, isEmpty);
-      });
-    }
-  });
-
+/// A model that answers, but says nothing a parser could use.
+///
+/// The claim these tests exist to check is that Koru understood the request, not
+/// that a model produced the record. A silent client makes that visible: if the
+/// card ever stops appearing, the engine has quietly become the mechanism.
+class _SilentClient extends LocalModelClient {
+  @override
+  Future<LocalModelResult> chatStream({
+    required String endpoint,
+    required String model,
+    required String system,
+    required String question,
+    required void Function(String delta) onToken,
+    void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
+    int maxTokens = 160,
+    double temperature = 0.7,
+  }) async =>
+      const LocalReply('', 0.0);
 }

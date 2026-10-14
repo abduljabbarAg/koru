@@ -14,8 +14,8 @@ import 'screens/business.dart';
 import 'screens/chat.dart';
 import 'screens/client_detail.dart';
 import 'screens/projects.dart';
-import 'screens/today.dart';
 import 'screens/settings.dart';
+import 'screens/today.dart';
 import 'state.dart';
 import 'theme.dart';
 
@@ -24,11 +24,11 @@ void main() {
   // painted light and then repainted dark a frame later.
   WidgetsFlutterBinding.ensureInitialized();
   KoruColors.setBrightness(PlatformDispatcher.instance.platformBrightness);
-  runApp(ProviderScope(child: KoruApp()));
+  runApp(const ProviderScope(child: KoruApp()));
 }
 
 class KoruApp extends ConsumerWidget {
-  KoruApp({super.key});
+  const KoruApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -52,7 +52,7 @@ class KoruApp extends ConsumerWidget {
         );
         return child ?? const SizedBox.shrink();
       },
-      home: RootGate(),
+      home: const RootGate(),
     );
   }
 }
@@ -63,7 +63,7 @@ class KoruApp extends ConsumerWidget {
 /// himself, because the first thing a person sees should be the thing they are
 /// about to talk to.
 class RootGate extends ConsumerStatefulWidget {
-  RootGate({super.key});
+  const RootGate({super.key});
 
   @override
   ConsumerState<RootGate> createState() => _RootGateState();
@@ -72,6 +72,21 @@ class RootGate extends ConsumerStatefulWidget {
 class _RootGateState extends ConsumerState<RootGate> {
   bool? _ready;
   bool _splashDone = false;
+
+  /// How long the reason for the permissions stays up before the first prompt.
+  ///
+  /// Long enough to read on a phone held in one hand, short enough that nobody
+  /// puts the app down waiting for it.
+  static const _reasonReadTime = Duration(seconds: 4);
+
+  /// Owned here so it can be cancelled when the gate goes away.
+  Timer? _permissionTimer;
+
+  @override
+  void dispose() {
+    _permissionTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -85,6 +100,9 @@ class _RootGateState extends ConsumerState<RootGate> {
     if (!mounted) return;
     setState(() => _ready = true);
     ref.read(onboardedProvider.notifier).state = done;
+    // A first run has nothing to ask about until the form is finished, so the
+    // ask waits on onboarding rather than on the splash.
+    if (done) _askForPermissionsLater();
     // Started here rather than from the chat screen. The splash is where the
     // model is actually being unpacked, so it is the only place that can show
     // progress for it, and waiting until the chat screen meant the splash was
@@ -98,16 +116,31 @@ class _RootGateState extends ConsumerState<RootGate> {
     // and holding the start screen hostage to that is exactly how this deadlocked
     // before. The prompts are raised, the flag is written, and the app carries on
     // whatever was granted.
-    if (await store.get('asked_permissions') != '1') {
-      // Nothing is awaited here at all. requestHealthPermissions reads the
-      // health itself, and reading it twice on the way in only added a wait
-      // that the splash did not need and, being a timeout, a timer that could
-      // outlive the screen asking it.
-      unawaited(requestHealthPermissions(ref));
-      await store.put('asked_permissions', '1');
-    }
-
     if (done) ref.read(chatProvider.notifier).load();
+    // Once there is a real screen to put a message on. Not before: a snackbar
+    // that explains permissions has to be readable, and during onboarding it
+    // sits directly on top of the Continue button. Asking while somebody is
+    // halfway through a form is also just rude.
+  }
+
+  /// Explains the permissions, then asks for them, once the app is usable.
+  ///
+  /// After a frame rather than during it, because the messenger belongs to a
+  /// Scaffold that does not exist yet while this runs.
+  void _askForPermissionsLater() {
+    if (_permissionTimer != null) return;
+    _permissionTimer = Timer(_reasonReadTime, () async {
+      // Read before the first await. Everything below this line can outlive the
+      // frame it was scheduled in, and a messenger belonging to a screen that
+      // has since been replaced is worse than no explanation at all.
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      if (!mounted) return;
+      final store = await ref.read(storeProvider.future);
+      if (!mounted || messenger == null) return;
+      if (await store.get('asked_permissions') == '1') return;
+      unawaited(requestHealthPermissions(ref, messenger: messenger));
+      await store.put('asked_permissions', '1');
+    });
   }
 
   /// Checks permissions on first run after an upgrade, and never nags again.
@@ -136,13 +169,13 @@ class _RootGateState extends ConsumerState<RootGate> {
     // over to the app. Holding a copy in a field meant the last button on the
     // last screen did nothing at all.
     final onboarded = ref.watch(onboardedProvider);
-    if (!onboarded) return OnboardingScreen();
+    if (!onboarded) return const OnboardingScreen();
     // Watched from here so the notification is kept up to date for the whole
     // time the app is open, not only while a particular screen happens to be
     // mounted. Watching it inside the chat screen meant the badge went stale the
     // moment the user went to look at their clients.
     ref.watch(attentionPublisher);
-    return HomeShell();
+    return const HomeShell();
   }
 }
 
@@ -157,10 +190,10 @@ class _RootGateState extends ConsumerState<RootGate> {
 /// place to say so. Capped, so a model that never arrives still lets the user in
 /// to read the error rather than stranding them on a progress bar forever.
 class SplashScreen extends ConsumerStatefulWidget {
-  SplashScreen({
+  const SplashScreen({
     super.key,
     this.onDone,
-    this.minimum = Duration(milliseconds: 1500),
+    this.minimum = const Duration(milliseconds: 1500),
   });
 
   final VoidCallback? onDone;
@@ -180,7 +213,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     super.initState();
     _fade = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: 420),
+      duration: const Duration(milliseconds: 420),
     )..addStatusListener((status) {
         if (status == AnimationStatus.completed) widget.onDone?.call();
       });
@@ -197,7 +230,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     // The splash now leaves on a timer that cannot be starved by any of it, and
     // the engine reports its progress inside the chat instead, where being slow
     // is fine because there is other work to do.
-    _timer = Timer(widget.minimum + Duration(milliseconds: 250), _leave);
+    _timer = Timer(widget.minimum + const Duration(milliseconds: 250), _leave);
   }
 
   Timer? _timer;
@@ -229,15 +262,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              KoruMascot(size: 148, semanticLabel: 'Koru, your helper'),
-              SizedBox(height: 22),
+              const KoruMascot(size: 148, semanticLabel: 'Koru, your helper'),
+              const SizedBox(height: 22),
               Text('Koru', style: Theme.of(context).textTheme.headlineMedium),
-              SizedBox(height: 6),
+              const SizedBox(height: 6),
               Text(
                 'An assistant that knows your life',
                 style: TextStyle(color: KoruColors.inkFaint, fontSize: 14.5),
               ),
-              SizedBox(height: 28),
+              const SizedBox(height: 28),
               // Determinate when there is real progress to report, and honest
               // about what it is. The old bar swept forever regardless of
               // whether anything was happening, which is a bar that tells you
@@ -280,7 +313,7 @@ class _EngineLoadingBar extends StatelessWidget {
             valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
           ),
         ),
-        SizedBox(height: 10),
+        const SizedBox(height: 10),
         SizedBox(
           height: 16,
           child: Text(
@@ -295,7 +328,7 @@ class _EngineLoadingBar extends StatelessWidget {
           ),
         ),
         if (health != null && !health!.complete) ...[
-          SizedBox(height: 18),
+          const SizedBox(height: 18),
           // Named individually, because each of these can be refused on its own
           // and "something is not set up" gives the reader nothing to do.
           ...health!.problems.map(
@@ -306,7 +339,7 @@ class _EngineLoadingBar extends StatelessWidget {
                 children: [
                   Icon(Icons.info_outline_rounded,
                       size: 13, color: KoruColors.gold),
-                  SizedBox(width: 6),
+                  const SizedBox(width: 6),
                   Flexible(
                     child: Text(
                       problem,
@@ -325,7 +358,7 @@ class _EngineLoadingBar extends StatelessWidget {
 }
 
 class HomeShell extends ConsumerStatefulWidget {
-  HomeShell({super.key});
+  const HomeShell({super.key});
 
   @override
   ConsumerState<HomeShell> createState() => _HomeShellState();
@@ -370,12 +403,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     ref.read(pendingLinkProvider.notifier).clear();
   }
 
-  static const _pages = [
-    TodayScreen(),
-    ChatScreen(),
-    BusinessScreen(),
-    ProjectsScreen(),
-    SettingsScreen(),
+  // Not const: the screens read the palette, which is resolved per brightness.
+  static final _pages = [
+    const TodayScreen(),
+    const ChatScreen(),
+    const BusinessScreen(),
+    const ProjectsScreen(),
+    const SettingsScreen(),
   ];
 
   @override
@@ -443,7 +477,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             children: [
               Icon(sel ? on : off,
                   size: 21, color: sel ? KoruColors.leaf : KoruColors.inkFaint),
-              SizedBox(height: 2),
+              const SizedBox(height: 2),
               Text(
                 label,
                 maxLines: 1,

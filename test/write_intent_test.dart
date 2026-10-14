@@ -296,4 +296,56 @@ void main() {
     });
   });
 
+
+  group('a question word inside an instruction is not a question', () {
+    test('the instruction survives', () {
+      // Regression: the guard used to scan the whole sentence for a question
+      // word, so "when" in "done when the door is open" threw the instruction
+      // away and Koru silently did nothing on the most detailed thing said to it
+      // all day.
+      final intent = parser.parse('start a project called the shop, done when the door is open');
+      expect(intent, isA<AddProjectIntent>());
+      final project = intent! as AddProjectIntent;
+      expect(project.name, 'the shop');
+      expect(project.target, contains('door is open'));
+
+      expect(
+        parser.parse('add a deadline to send the invoice in 3 days'),
+        isNotNull,
+        reason: 'a date in an instruction is not a question',
+      );
+
+      // The guard still does its actual job, including after a greeting.
+      for (final q in [
+        'How much does Bilal owe?',
+        'what is outstanding',
+        'when is the invoice due',
+        'hey koru how much does bilal owe',
+        'can i see my clients',
+      ]) {
+        expect(parser.parse(q), isNull, reason: q);
+      }
+  
+    });
+  });
+
+  group('a project name is the name that was said', () {
+    test('keeps the article and the capitalisation', () {
+      final project = parser.parse('start a project called the rebrand for Bilal') as AddProjectIntent;
+      expect(project.name, 'the rebrand');
+      expect(project.clientName, 'Bilal');
+    });
+
+    test('the client is never swallowed into the name', () {
+      final project = parser.parse('start a project called the rebrand for Bilal') as AddProjectIntent;
+      expect(project.name.toLowerCase(), isNot(contains('bilal')));
+    });
+
+    test('"for the" still resolves the person', () {
+      final project = parser.parse('start a project called the rebrand for the Acme') as AddProjectIntent;
+      expect(project.clientName, 'Acme');
+      expect(project.name, 'the rebrand');
+    });
+  });
+
 }

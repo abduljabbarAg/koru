@@ -24,7 +24,7 @@ Client? _firstClient(Iterable<Client> xs) => xs.isEmpty ? null : xs.first;
 /// nowhere to show it, which is also why asking the model about a specific
 /// client was a guess.
 class ClientDetailScreen extends ConsumerWidget {
-  ClientDetailScreen({super.key, required this.clientId});
+  const ClientDetailScreen({super.key, required this.clientId});
 
   final int clientId;
 
@@ -47,7 +47,7 @@ class ClientDetailScreen extends ConsumerWidget {
         appBar: AppBar(),
         body: clients == null
             ? Center(child: CircularProgressIndicator(color: KoruColors.leaf))
-            : EmptyHint(
+            : const EmptyHint(
                 icon: Icons.person_off_outlined,
                 title: 'That client is gone',
                 body: 'They were deleted from the list.',
@@ -65,28 +65,28 @@ class ClientDetailScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           _statusPill(client, balance, currency),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           _moneySummary(client, balance, received[clientId] ?? 0, currency),
           if (client.isRetainer) ...[
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             _RetainerPanel(
               client: client,
               onAddNext: () => _addNextRetainerDeadline(context, ref, client),
             ),
           ],
           if (client.note != null && client.note!.trim().isNotEmpty) ...[
-            SizedBox(height: 18),
-            SectionLabel('Note'),
-            SizedBox(height: 6),
+            const SizedBox(height: 18),
+            const SectionLabel('Note'),
+            const SizedBox(height: 6),
             Text(
               client.note!,
               style: TextStyle(fontSize: 14, color: KoruColors.inkSoft, height: 1.5),
             ),
           ],
-          SizedBox(height: 18),
+          const SizedBox(height: 18),
           Row(
             children: [
-              Expanded(child: SectionLabel('Payments')),
+              const Expanded(child: SectionLabel('Payments')),
               if (payments.isNotEmpty)
                 Text(
                   '${payments.length} recorded',
@@ -94,7 +94,7 @@ class ClientDetailScreen extends ConsumerWidget {
                 ),
             ],
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           if (payments.isEmpty)
             Text(
               'Nothing recorded. Tap "Record payment" on the Business screen when '
@@ -103,9 +103,9 @@ class ClientDetailScreen extends ConsumerWidget {
             )
           else
             ...payments.map((p) => _paymentRow(ref, p, currency)),
-          SizedBox(height: 18),
-          SectionLabel('Deadlines'),
-          SizedBox(height: 4),
+          const SizedBox(height: 18),
+          const SectionLabel('Deadlines'),
+          const SizedBox(height: 4),
           if (deadlines.isEmpty)
             Text(
               'Nothing scheduled for this client.',
@@ -123,14 +123,14 @@ class ClientDetailScreen extends ConsumerWidget {
       'paid' => (KoruColors.leaf, KoruColors.leafSoft),
       'active' => (KoruColors.gold, KoruColors.goldSoft),
       'delivered' => (KoruColors.clay, KoruColors.claySoft),
-      _ => (KoruColors.inkSoft, Color(0xFFEFEBE7)),
+      _ => (KoruColors.inkSoft, const Color(0xFFEFEBE7)),
     };
     final late = c.isOverdueOn(DateTime.now());
     return Row(
       children: [
         KoruPill(label: c.status.toUpperCase(), color: color, background: background),
         if (balance > 0) ...[
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           KoruPill(
             label: '${money(balance)} ${currency.code} OUTSTANDING',
             color: late ? KoruColors.clay : KoruColors.gold,
@@ -138,7 +138,7 @@ class ClientDetailScreen extends ConsumerWidget {
           ),
         ],
         if (c.isRetainer) ...[
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           KoruPill(
             label: 'RETAINER',
             color: KoruColors.leaf,
@@ -174,7 +174,7 @@ class ClientDetailScreen extends ConsumerWidget {
               letterSpacing: -0.8,
             ),
           ),
-          SizedBox(height: 2),
+          const SizedBox(height: 2),
           Text(
             balance > 0
                 ? '${currency.code} still owed'
@@ -182,7 +182,7 @@ class ClientDetailScreen extends ConsumerWidget {
             style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
           ),
           if (meta.isNotEmpty) ...[
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
               meta.join('  ·  '),
               style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft),
@@ -210,9 +210,9 @@ class ClientDetailScreen extends ConsumerWidget {
               children: [
                 Text(
                   '${money(p.amount)} ${currency.code}',
-                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   p.note == null
                       ? formatDate(p.date, DateTime.now())
@@ -262,8 +262,8 @@ class ClientDetailScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(d.title,
-                    style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
-                SizedBox(height: 2),
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
                 Text(
                   late
                         ? 'was due ${formatDate(d.due, DateTime.now())}'
@@ -383,7 +383,7 @@ class _RetainerPanel extends ConsumerWidget {
                 size: 19,
                 color: late ? KoruColors.clay : KoruColors.leaf,
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -396,7 +396,7 @@ class _RetainerPanel extends ConsumerWidget {
                         color: KoruColors.ink,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: TextStyle(
@@ -412,8 +412,8 @@ class _RetainerPanel extends ConsumerWidget {
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
                     onPressed: onAddNext,
-                    icon: Icon(Icons.event_repeat_rounded, size: 17),
-                    label: Text('Add next one to my list'),
+                    icon: const Icon(Icons.event_repeat_rounded, size: 17),
+                    label: const Text('Add next one to my list'),
                   ),
                 ),
             ],
