@@ -367,7 +367,7 @@ class _RetainerPanel extends ConsumerWidget {
         final subtitle = last == null
             ? 'Never paid. A retainer that has not started is not income.'
             : late
-                ? 'Was due ${formatDay(next!, DateTime.now())} and has not landed'
+                ? 'Was due ${formatDay(next, DateTime.now())} and has not landed'
                 : 'Next due ${formatDay(next!, DateTime.now())}';
         return Container(
           padding: const EdgeInsets.all(14),
