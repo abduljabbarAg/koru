@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.4.0
+
+Calendar entries can have a length, repeat, and be changed.
+
+### Added
+
+- **Lengths.** "for 2 hours", "for 90 minutes", "an hour and a half". A bare
+  "for 2" is deliberately not read as a length: in a sentence about a meeting
+  that is two o'clock far more often, and inventing a block nobody asked for is
+  worse than showing an all-day entry.
+- **Repeats.** Daily, weekly, fortnightly, monthly and yearly. Stored as one
+  row rather than expanded into copies, because copies drift from each other
+  the moment one is moved and a meeting that moved has to stay moved. Monthly
+  rolls by date arithmetic and not by thirty days, so 31 January plus thirty
+  days is not the right meeting.
+- **Editing an entry.** It could be created and deleted but never changed, so
+  the only way to fix a meeting was to delete it and say it again. There is now
+  a sheet, and "move the call with Bilal to Thursday" resolves against the real
+  entries and proposes a change. Moving something clears its synced flag, or the
+  phone's copy would never be updated and the two calendars would disagree.
+- **Replies render.** Cloud answers arrived with **bold, bullets and numbered
+  steps still showing their asterisks. Bold, italics, headings, bullets,
+  numbered steps and inline code are handled, and nothing else: a full markdown
+  parser would also accept links and images, and a link nobody asked for is a
+  worse failure on a phone than an unrendered pipe. What the user typed stays
+  plain, because a stray asterisk from a price is not emphasis.
+- **Reading back while an answer streams.** The view followed the bottom on
+  every arriving token, so the only way to read a long answer was to wait for it
+  to finish. It now follows only while you are at the bottom, and a pill
+  appears when you are not.
+- **Timestamps on your own messages**, inside the bubble rather than in a row
+  above it. A row per message is what pushed the approval cards below the fold
+  last time this was attempted.
+
 ## 1.3.0
 
 Notifications now open something, and a release can no longer be signed with
