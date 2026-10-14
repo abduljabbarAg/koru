@@ -6,7 +6,7 @@ import 'proposed_write.dart';
 import 'theme.dart';
 
 class KoruMark extends StatelessWidget {
-  const KoruMark({super.key, this.size = 28});
+  KoruMark({super.key, this.size = 28});
 
   /// Static mark for places with no room to animate, such as a dense list row.
   final double size;
@@ -26,7 +26,7 @@ class KoruMark extends StatelessWidget {
 }
 
 class SectionLabel extends StatelessWidget {
-  const SectionLabel(this.text, {super.key});
+  SectionLabel(this.text, {super.key});
 
   final String text;
 
@@ -36,7 +36,7 @@ class SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10, left: 2),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           letterSpacing: 1.2,
           fontWeight: FontWeight.w700,
@@ -48,7 +48,7 @@ class SectionLabel extends StatelessWidget {
 }
 
 class StatTile extends StatelessWidget {
-  const StatTile({
+  StatTile({
     super.key,
     required this.label,
     required this.value,
@@ -86,10 +86,10 @@ class StatTile extends StatelessWidget {
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tint),
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w700,
               color: KoruColors.ink,
@@ -97,8 +97,8 @@ class StatTile extends StatelessWidget {
             ),
           ),
           if (sub != null) ...[
-            const SizedBox(height: 2),
-            Text(sub!, style: const TextStyle(fontSize: 13, color: KoruColors.inkFaint)),
+            SizedBox(height: 2),
+            Text(sub!, style: TextStyle(fontSize: 13, color: KoruColors.inkFaint)),
           ],
         ],
       ),
@@ -107,7 +107,7 @@ class StatTile extends StatelessWidget {
 }
 
 class EmptyHint extends StatelessWidget {
-  const EmptyHint({
+  EmptyHint({
     super.key,
     required this.icon,
     required this.title,
@@ -133,15 +133,15 @@ class EmptyHint extends StatelessWidget {
       child: Column(
         children: [
           Icon(icon, size: 30, color: KoruColors.inkFaint),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Text(title,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: KoruColors.ink)),
-          const SizedBox(height: 4),
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: KoruColors.ink)),
+          SizedBox(height: 4),
           Text(body,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: KoruColors.inkFaint, fontSize: 13, height: 1.4)),
+              style: TextStyle(color: KoruColors.inkFaint, fontSize: 13, height: 1.4)),
           if (action != null) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             action!,
           ],
         ],
@@ -160,7 +160,7 @@ class EmptyHint extends StatelessWidget {
 /// An amount can be corrected in place, because "Bilal paid 500" where 5000
 /// was meant is the most likely wrong read and the easiest to fix.
 class WriteCard extends StatefulWidget {
-  const WriteCard({
+  WriteCard({
     super.key,
     required this.write,
     required this.onApprove,
@@ -239,12 +239,12 @@ class _WriteCardState extends State<WriteCard> {
         children: [
           Row(
             children: [
-              const Icon(Icons.edit_note_rounded, size: 18, color: KoruColors.gold),
-              const SizedBox(width: 8),
+              Icon(Icons.edit_note_rounded, size: 18, color: KoruColors.gold),
+              SizedBox(width: 8),
               Expanded(
                 child: Text(
                   write.summary,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w600,
                     color: KoruColors.ink,
@@ -255,7 +255,7 @@ class _WriteCardState extends State<WriteCard> {
             ],
           ),
           if (write is ProposedPayment) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             TextField(
               controller: _amount,
               enabled: !_busy,
@@ -268,22 +268,22 @@ class _WriteCardState extends State<WriteCard> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42)),
                   onPressed: _busy || amountError ? null : _approve,
-                  child: const Text('Save it'),
+                  child: Text('Save it'),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(42)),
                   onPressed: _busy ? null : widget.onDiscard,
-                  child: const Text('Discard'),
+                  child: Text('Discard'),
                 ),
               ),
             ],
@@ -299,7 +299,7 @@ class _WriteCardState extends State<WriteCard> {
 /// This replaces a line of text in the chat bubble. The routing layer already
 /// knew when to step aside; now there is somewhere to step aside to.
 class HandoffCard extends StatelessWidget {
-  const HandoffCard({super.key, required this.plan, this.onDismiss});
+  HandoffCard({super.key, required this.plan, this.onDismiss});
 
   final HandoffPlan plan;
   final VoidCallback? onDismiss;
@@ -339,11 +339,11 @@ class HandoffCard extends StatelessWidget {
                     color: accent,
                   ),
                 ),
-                const SizedBox(width: 11),
+                SizedBox(width: 11),
                 Expanded(
                   child: Text(
                     plan.headline,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15.5,
                       fontWeight: FontWeight.w700,
                       color: KoruColors.ink,
@@ -353,18 +353,18 @@ class HandoffCard extends StatelessWidget {
                 if (onDismiss != null)
                   IconButton(
                     visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
+                    icon: Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
                     onPressed: onDismiss,
                     tooltip: 'Dismiss',
                   ),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Text(
               plan.body,
-              style: const TextStyle(fontSize: 13.5, color: KoruColors.inkSoft, height: 1.45),
+              style: TextStyle(fontSize: 13.5, color: KoruColors.inkSoft, height: 1.45),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             ...plan.resources.map((r) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Row(
@@ -382,12 +382,12 @@ class HandoffCard extends StatelessWidget {
                           children: [
                             Text(
                               r.name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontWeight: FontWeight.w600, fontSize: 13.5, color: KoruColors.ink),
                             ),
                             Text(
                               r.detail,
-                              style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.35),
+                              style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.35),
                             ),
                             Text(
                               '${r.number} - ${r.hours}',
@@ -408,7 +408,7 @@ class HandoffCard extends StatelessWidget {
 
 /// Small pill used for statuses and routing badges.
 class KoruPill extends StatelessWidget {
-  const KoruPill({
+  KoruPill({
     super.key,
     required this.label,
     required this.color,
@@ -431,7 +431,7 @@ class KoruPill extends StatelessWidget {
         children: [
           if (icon != null) ...[
             Icon(icon, size: 12, color: color),
-            const SizedBox(width: 4),
+            SizedBox(width: 4),
           ],
           Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
         ],
@@ -456,7 +456,7 @@ Future<T?> showKoruSheet<T>(
       padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: KoruColors.cream,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -473,13 +473,13 @@ Future<T?> showKoruSheet<T>(
                     color: KoruColors.line, borderRadius: BorderRadius.circular(2)),
               ),
             ),
-            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             if (subtitle != null) ...[
-              const SizedBox(height: 4),
+              SizedBox(height: 4),
               Text(subtitle,
-                  style: const TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4)),
+                  style: TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4)),
             ],
-            const SizedBox(height: 18),
+            SizedBox(height: 18),
             Flexible(child: SingleChildScrollView(child: builder(ctx))),
           ],
         ),
@@ -505,7 +505,7 @@ void toast(BuildContext context, String message) {
 /// said about the screen you are on, shaped like a comic speech balloon, so he
 /// reads as a helper rather than a logo.
 class KoruGuideBanner extends StatelessWidget {
-  const KoruGuideBanner({
+  KoruGuideBanner({
     super.key,
     required this.speech,
     this.mascotSize = 64,
@@ -531,7 +531,7 @@ class KoruGuideBanner extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           KoruMascot(size: mascotSize, onTap: onTap),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Expanded(
             child: Container(
               margin: const EdgeInsets.only(left: 4),
@@ -556,7 +556,7 @@ class KoruGuideBanner extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 1, right: 8),
                     child: Icon(
                       Icons.format_quote_rounded,
@@ -567,7 +567,7 @@ class KoruGuideBanner extends StatelessWidget {
                   Expanded(
                     child: Text(
                       text,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13.5,
                         color: KoruColors.ink,
                         height: 1.45,
@@ -606,7 +606,7 @@ String money(double v) {
 /// becomes seventeen is the same failure as the Business page reading zero,
 /// only slower to notice.
 class PlanCard extends StatelessWidget {
-  const PlanCard({
+  PlanCard({
     super.key,
     required this.write,
     required this.onApprove,
@@ -637,19 +637,19 @@ class PlanCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.playlist_add_check_rounded,
+              Icon(Icons.playlist_add_check_rounded,
                   size: 17, color: KoruColors.clay),
-              const SizedBox(width: 7),
+              SizedBox(width: 7),
               Expanded(
                 child: Text(
                   steps.length == 1 ? 'Koru wants to add one client' : 'Koru wants to add ${steps.length} clients',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 13.5),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           // Every step, numbered. Not a summary of a summary: the user is being
           // asked to agree to twenty specific claims about money, so all twenty
           // are on the screen.
@@ -662,18 +662,18 @@ class PlanCard extends StatelessWidget {
                   SizedBox(
                     width: 20,
                     child: Text('${i + 1}.',
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: KoruColors.inkFaint, fontSize: 12.5)),
                   ),
                   Expanded(
                     child: Text(steps[i].summary,
-                        style: const TextStyle(fontSize: 13, height: 1.35)),
+                        style: TextStyle(fontSize: 13, height: 1.35)),
                   ),
                 ],
               ),
             ),
           if (problems.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),
@@ -686,37 +686,37 @@ class PlanCard extends StatelessWidget {
                 children: [
                   Text(
                     '${problems.length} line${problems.length == 1 ? '' : 's'} I could not read',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12.5, fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   for (final p in problems.take(6))
                     Padding(
                       padding: const EdgeInsets.only(bottom: 2),
                       child: Text('"${p.text}" — ${p.reason}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 11.5, color: KoruColors.inkSoft)),
                     ),
                   if (problems.length > 6)
                     Text('and ${problems.length - 6} more',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 11.5, color: KoruColors.inkFaint)),
                 ],
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          const Text(
+          SizedBox(height: 12),
+          Text(
             'Nothing is saved until you press Add. All of it goes in together, '
             'or none of it does.',
             style: TextStyle(
                 fontSize: 11.5, color: KoruColors.inkFaint, height: 1.35),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Row(
             children: [
               if (busy)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 10),
                   child: SizedBox(
                     width: 18,
@@ -729,15 +729,15 @@ class PlanCard extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: onDiscard,
-                    child: const Text('Cancel'),
+                    child: Text('Cancel'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
                     onPressed: steps.isEmpty ? null : onApprove,
-                    icon: const Icon(Icons.check_rounded, size: 18),
+                    icon: Icon(Icons.check_rounded, size: 18),
                     label: Text(steps.length == 1 ? 'Add' : 'Add ${steps.length}'),
                   ),
                 ),
@@ -745,6 +745,51 @@ class PlanCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A failure the user can act on, rather than a database error string.
+///
+/// sqflite's messages are for whoever is debugging: "database or disk is full",
+/// "no such table: projects". Shown to somebody who just tapped something they
+/// are noise at best and alarming at worst. What they need is that it did not
+/// work, and that trying again is reasonable.
+class KoruErrorView extends StatelessWidget {
+  KoruErrorView({super.key, required this.onRetry, this.what = 'load this'});
+
+  final VoidCallback onRetry;
+  final String what;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded, size: 38, color: KoruColors.inkFaint),
+            const SizedBox(height: 12),
+            Text('Could not $what',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text(
+              'Nothing was changed. This usually clears on its own.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13.5, color: KoruColors.inkSoft),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
       ),
     );
   }

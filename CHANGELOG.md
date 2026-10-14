@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.5.0
+
+Dark mode, and a Today screen.
+
+### Added
+
+- **Dark mode.** Follows the system, including when the phone is switched while
+  the app is open. The palette was a bag of constants, and a constant cannot
+  have a dark mode because it does not know what it is painted on; the colours
+  are resolved from the active palette now. Every dark value was chosen by
+  running the contrast arithmetic, because a colour that clears 4.5:1 on cream
+  fails badly on near-black and the ink colours invert completely. Both
+  palettes are checked by test.
+- **A Today screen.** What needs doing today: overdue, due today, happening
+  today, coming up, and the projects that have gone quiet. Built on the same
+  attention list the notification, the widget and the badge already use, so the
+  four cannot disagree about what is urgent.
+- **Haptics** on a write that lands, and a tick when switching tabs. A tap that
+  changes somebody's records should be felt; the card is gone before a toast is
+  read.
+- **Errors that are not error strings.** "database or disk is full" is for
+  whoever is debugging. What a person who just tapped something needs is that it
+  did not work and that trying again is reasonable.
+
 ## 1.4.0
 
 Calendar entries can have a length, repeat, and be changed.

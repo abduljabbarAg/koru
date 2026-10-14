@@ -21,7 +21,7 @@ import '../theme.dart';
 import '../widgets.dart';
 
 class SettingsScreen extends ConsumerWidget {
-  const SettingsScreen({super.key});
+  SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,7 +29,7 @@ class SettingsScreen extends ConsumerWidget {
     final guide = ref.watch(guideFactsProvider).valueOrNull;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
         children: [
@@ -37,9 +37,9 @@ class SettingsScreen extends ConsumerWidget {
             speech: guide == null ? null : Guide.forSettings(guide),
             onTap: () {},
           ),
-          const SectionLabel('Your context'),
+          SectionLabel('Your context'),
           packet.when(
-            loading: () => const LinearProgressIndicator(color: KoruColors.leaf),
+            loading: () => LinearProgressIndicator(color: KoruColors.leaf),
             error: (e, _) => Text('$e'),
             data: (p) => Card(
               child: Padding(
@@ -49,48 +49,48 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     Row(
                       children: [
-                        const KoruMark(size: 34),
-                        const SizedBox(width: 12),
+                        KoruMark(size: 34),
+                        SizedBox(width: 12),
                         Expanded(
                           child: Text(p.nickname,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                     if (p.lifeStage.isNotEmpty) _line('Stage', p.lifeStage),
                     if (p.business.isNotEmpty) _line('Work', p.business),
                     if (p.goals.isNotEmpty) _line('Goals', p.goals),
                     if (p.focus.isNotEmpty) _line('Focus', p.focus),
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                     OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+                      style: OutlinedButton.styleFrom(minimumSize: Size(0, 42)),
                       onPressed: () => _editContext(context, ref),
-                      icon: const Icon(Icons.edit_outlined, size: 17),
-                      label: const Text('Edit this context'),
+                      icon: Icon(Icons.edit_outlined, size: 17),
+                      label: Text('Edit this context'),
                     ),
                   ],
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 22),
-          const SectionLabel('Engine'),
+          SizedBox(height: 22),
+          SectionLabel('Engine'),
           const _EnginePicker(),
           const _EngineAbsentNotice(),
-          const SizedBox(height: 22),
-          const SectionLabel('What leaves this phone'),
+          SizedBox(height: 22),
+          SectionLabel('What leaves this phone'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'When a cloud model is used, only this is sent:',
                     style: TextStyle(fontSize: 13.5, color: KoruColors.inkSoft),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
@@ -101,12 +101,12 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     child: Text(
                       packet.maybeWhen(data: (p) => p.renderForCloud(), orElse: () => '...'),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12.5, color: KoruColors.ink, height: 1.5),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
+                  SizedBox(height: 12),
+                  Text(
                     'Pseudonymous, not anonymous. It carries general context and '
                     'never your nickname, your name or your records.',
                     style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
@@ -115,20 +115,20 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 22),
+          SizedBox(height: 22),
           const _LocalModelCard(),
-          const SizedBox(height: 22),
-          const SectionLabel('Cloud model'),
+          SizedBox(height: 22),
+          SectionLabel('Cloud model'),
           const _CloudCard(),
-          const SizedBox(height: 8),
-          const Text(
+          SizedBox(height: 8),
+          Text(
             'Any provider works. Pick one, paste the key, test it. Only questions '
             'about faith, health, medicine or law are ever sent.',
             style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
           ),
-          const SizedBox(height: 22),
-          const SectionLabel('Routing'),
-          const Card(
+          SizedBox(height: 22),
+          SectionLabel('Routing'),
+          Card(
             child: Padding(
               padding: EdgeInsets.all(16),
               child: Column(
@@ -143,53 +143,53 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 22),
-          const SectionLabel('Currency'),
+          SizedBox(height: 22),
+          SectionLabel('Currency'),
           const _CurrencyCard(),
-          const SizedBox(height: 22),
-          const SectionLabel('Capacity'),
+          SizedBox(height: 22),
+          SectionLabel('Capacity'),
           const _CapacityCard(),
-          const SizedBox(height: 22),
-          const SectionLabel('Calendar'),
+          SizedBox(height: 22),
+          SectionLabel('Calendar'),
           const _CalendarSyncCard(),
-          const SizedBox(height: 22),
-          const SectionLabel('Data'),
+          SizedBox(height: 22),
+          SectionLabel('Data'),
           Card(
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.ios_share_outlined, color: KoruColors.leaf),
-                  title: const Text('Back up my data'),
-                  subtitle: const Text(
+                  leading: Icon(Icons.ios_share_outlined, color: KoruColors.leaf),
+                  title: Text('Back up my data'),
+                  subtitle: Text(
                       'Saves a readable copy of your clients, payments and deadlines'),
                   onTap: () => _backup(context, ref),
                 ),
-                const Divider(height: 1),
+                Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.settings_backup_restore_rounded, color: KoruColors.leaf),
-                  title: const Text('Restore from a backup'),
-                  subtitle: const Text('Merges a saved file into what is already here'),
+                  leading: Icon(Icons.settings_backup_restore_rounded, color: KoruColors.leaf),
+                  title: Text('Restore from a backup'),
+                  subtitle: Text('Merges a saved file into what is already here'),
                   onTap: () => _restore(context, ref),
                 ),
-                const Divider(height: 1),
+                Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.delete_sweep_outlined, color: KoruColors.clay),
-                  title: const Text('Clear conversation'),
-                  subtitle: const Text('Keeps your profile, clients and logs'),
+                  leading: Icon(Icons.delete_sweep_outlined, color: KoruColors.clay),
+                  title: Text('Clear conversation'),
+                  subtitle: Text('Keeps your profile, clients and logs'),
                   onTap: () async {
                     await ref.read(chatProvider.notifier).clear();
                     if (context.mounted) toast(context, 'Conversation cleared');
                   },
                 ),
-                const Divider(height: 1),
+                Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () => _deleteEverything(context, ref),
-                      icon: const Icon(Icons.delete_outline_rounded, color: KoruColors.clay),
-                      label: const Text('Delete all local data',
+                      icon: Icon(Icons.delete_outline_rounded, color: KoruColors.clay),
+                      label: Text('Delete all local data',
                           style: TextStyle(color: KoruColors.clay)),
                     ),
                   ),
@@ -211,12 +211,12 @@ class SettingsScreen extends ConsumerWidget {
           SizedBox(
             width: 76,
             child: Text(label,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12.5, color: KoruColors.inkFaint, fontWeight: FontWeight.w600)),
           ),
           Expanded(
             child: Text(value,
-                style: const TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4)),
+                style: TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4)),
           ),
         ],
       ),
@@ -245,29 +245,29 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           TextField(
             controller: nick,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
                 labelText: 'Nickname', helperText: 'Never sent to a cloud model'),
           ),
-          const SizedBox(height: 12),
-          TextField(controller: stage, decoration: const InputDecoration(labelText: 'Stage')),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
+          TextField(controller: stage, decoration: InputDecoration(labelText: 'Stage')),
+          SizedBox(height: 12),
           TextField(
-              controller: business, decoration: const InputDecoration(labelText: 'Work')),
-          const SizedBox(height: 12),
+              controller: business, decoration: InputDecoration(labelText: 'Work')),
+          SizedBox(height: 12),
           TextField(
             controller: goals,
             maxLines: 3,
-            decoration: const InputDecoration(labelText: 'Goals'),
+            decoration: InputDecoration(labelText: 'Goals'),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           TextField(
             controller: focus,
-            decoration: const InputDecoration(labelText: 'Help me most with'),
+            decoration: InputDecoration(labelText: 'Help me most with'),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save'),
+            child: Text('Save'),
           ),
         ],
       ),
@@ -336,15 +336,15 @@ class SettingsScreen extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete everything?'),
-        content: const Text(
+        title: Text('Delete everything?'),
+        content: Text(
             'Your profile, clients, logs, topics, drafts, conversation and your '
             'cloud key will all be removed from this device. This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: KoruColors.clay)),
+            child: Text('Delete', style: TextStyle(color: KoruColors.clay)),
           ),
         ],
       ),
@@ -500,19 +500,19 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
               decoration: InputDecoration(
                 labelText: 'Find a provider or model',
                 hintText: 'atria, glm, grok, claude, qwen...',
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                prefixIcon: Icon(Icons.search_rounded, size: 20),
                 suffixIcon: _cloudSearch.text.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18),
+                        icon: Icon(Icons.close_rounded, size: 18),
                         onPressed: () => setState(() => _cloudSearch.clear()),
                       ),
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             DropdownButtonFormField<String>(
               value: _providerId,
-              decoration: const InputDecoration(labelText: 'Provider'),
+              decoration: InputDecoration(labelText: 'Provider'),
               isExpanded: true,
               items: (CloudSearch.providersMatching(_cloudSearch.text))
                   .map((p) => DropdownMenuItem(value: p.id, child: Text(p.label)))
@@ -522,19 +522,19 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
               },
             ),
             if (provider.note != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 provider.note!,
-                style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
+                style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
               ),
             ],
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             if (provider.models.isNotEmpty)
               DropdownButtonFormField<String>(
                 value: provider.models.contains(_modelController.text)
                     ? _modelController.text
                     : provider.models.first,
-                decoration: const InputDecoration(labelText: 'Model'),
+                decoration: InputDecoration(labelText: 'Model'),
                 isExpanded: true,
                 items: provider.models
                     .map((m) => DropdownMenuItem(value: m, child: Text(m)))
@@ -546,9 +546,9 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
             else
               TextField(
                 controller: _modelController,
-                decoration: const InputDecoration(labelText: 'Model id'),
+                decoration: InputDecoration(labelText: 'Model id'),
               ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             TextField(
               controller: _controller,
               obscureText: !_revealed,
@@ -559,7 +559,7 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (hasKey)
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(right: 4),
                         child: Icon(Icons.lock_rounded, size: 16, color: KoruColors.leaf),
                       ),
@@ -576,24 +576,24 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
                 ),
               ),
             ),
-            const SizedBox(height: 6),
-            const Text(
+            SizedBox(height: 6),
+            Text(
               'Encrypted with the Android keystore, and kept per provider.',
               style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             Row(
               children: [
                 FilledButton(
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                  style: FilledButton.styleFrom(minimumSize: Size(0, 44)),
                   onPressed: _busy ? null : _test,
                   child: Text(_busy ? 'Testing...' : 'Test connection'),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 OutlinedButton(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                  style: OutlinedButton.styleFrom(minimumSize: Size(0, 44)),
                   onPressed: _busy ? null : _save,
-                  child: const Text('Save'),
+                  child: Text('Save'),
                 ),
                 if (hasKey)
                   TextButton(
@@ -603,15 +603,15 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
                       _controller.clear();
                       if (context.mounted) toast(context, 'Key removed');
                     },
-                    child: const Text('Remove'),
+                    child: Text('Remove'),
                   ),
               ],
             ),
             if (_status != null) ...[
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Text(
                 _status!,
-                style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
+                style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
               ),
             ],
           ],
@@ -633,10 +633,10 @@ class _Route extends StatelessWidget {
       children: [
         Expanded(
           child: Text(topic,
-              style: const TextStyle(fontSize: 13.5, color: KoruColors.ink)),
+              style: TextStyle(fontSize: 13.5, color: KoruColors.ink)),
         ),
         Text(where,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12.5, color: KoruColors.leaf, fontWeight: FontWeight.w700)),
       ],
     );
@@ -704,11 +704,11 @@ class _CalendarSyncCardState extends ConsumerState<_CalendarSyncCard> {
         onChanged: _loaded ? _set : null,
         activeColor: KoruColors.leaf,
         contentPadding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
-        title: const Text(
+        title: Text(
           'Copy new entries to my phone calendar',
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
-        subtitle: const Text(
+        subtitle: Text(
           'When you approve a calendar entry in Talk, Koru also writes it to '
           'the calendar your phone already uses. The copy is one way: deleting '
           'it in your phone calendar does not touch Koru\u2019s.',
@@ -746,17 +746,17 @@ class _EnginePicker extends ConsumerWidget {
                 activeColor: KoruColors.leaf,
                 title: Text(
                   option.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                 ),
                 subtitle: Text(
                   option.blurb,
-                  style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
+                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
                 ),
               ),
-              if (option != KoruEngine.values.last) const Divider(height: 4),
+              if (option != KoruEngine.values.last) Divider(height: 4),
             ],
-            const SizedBox(height: 8),
-            const Text(
+            SizedBox(height: 8),
+            Text(
               'Anything about a crisis, a diagnosis or a court date goes to a '
               'person instead, whichever engine is selected.',
               style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
@@ -859,7 +859,7 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('On-device model'),
+        SectionLabel('On-device model'),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -869,52 +869,52 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
                 TextField(
                   controller: _endpoint,
                   keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Server address',
                     hintText: 'http://127.0.0.1:8099',
                     helperText: 'Anything that speaks the OpenAI chat API',
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: _modelId,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Model id',
                     hintText: 'qwen2.5-0.5b-instruct',
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 const _BundledModelPanel(),
-                const SizedBox(height: 6),
-                const Divider(height: 24),
-                const Text(
+                SizedBox(height: 6),
+                Divider(height: 24),
+                Text(
                   'Or point Koru at a server you already run',
                   style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 Row(
                   children: [
                     FilledButton(
-                      style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                      style: FilledButton.styleFrom(minimumSize: Size(0, 44)),
                       onPressed: _checking ? null : _check,
                       child: Text(_checking ? 'Checking...' : 'Test connection'),
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: 10),
                     OutlinedButton(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                      style: OutlinedButton.styleFrom(minimumSize: Size(0, 44)),
                       onPressed: _save,
-                      child: const Text('Save'),
+                      child: Text('Save'),
                     ),
                   ],
                 ),
                 if (_status != null) ...[
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Text(
                     _status!,
-                    style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
+                    style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
                   ),
                 ],
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -922,7 +922,7 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: KoruColors.gold),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Measured on this phone: about 2.6 tokens a second once a '
                     'short answer starts, so expect roughly ten to twenty '
                     'seconds. Koru is built for short answers. It is not good '
@@ -1004,34 +1004,34 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text('Model',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             ),
             TextButton.icon(
               onPressed: _importModel,
-              icon: const Icon(Icons.upload_file_rounded, size: 16),
-              label: const Text('Add a model'),
+              icon: Icon(Icons.upload_file_rounded, size: 16),
+              label: Text('Add a model'),
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: 4),
         Text(
           models.length <= 1
               ? 'Only the bundled model is here. To add another, put a .gguf '
                   'file in this app\'s models folder under Android/data.'
               : 'A bigger model is sharper and slower. Switch when you need it, '
                   'not for everything.',
-          style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12),
+          style: TextStyle(color: KoruColors.inkFaint, fontSize: 12),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         for (final m in models)
           RadioListTile<String>(
             value: m.path,
             groupValue: chosen ?? '',
             dense: true,
             contentPadding: EdgeInsets.zero,
-            title: Text(m.label, style: const TextStyle(fontSize: 13.5)),
+            title: Text(m.label, style: TextStyle(fontSize: 13.5)),
             onChanged: (_) => _choose(m),
           ),
       ],
@@ -1100,59 +1100,59 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
         children: [
           Row(
             children: [
-              const Icon(Icons.memory_rounded, size: 19, color: KoruColors.leaf),
-              const SizedBox(width: 9),
-              const Expanded(
+              Icon(Icons.memory_rounded, size: 19, color: KoruColors.leaf),
+              SizedBox(width: 9),
+              Expanded(
                 child: Text(
                   'Bundled model',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
                 ),
               ),
               if (available == false)
-                const KoruPill(
+                KoruPill(
                   label: 'NOT IN THIS BUILD',
                   color: KoruColors.clay,
                   background: KoruColors.claySoft,
                 )
               else if (_ready)
-                const KoruPill(
+                KoruPill(
                   label: 'RUNNING',
                   color: KoruColors.leaf,
                   background: KoruColors.leafSoft,
                 ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Text(
+          SizedBox(height: 8),
+          Text(
             'A 0.5B model already inside this app. The first start copies it out '
             'of the package, so expect it to take a minute.',
             style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
           ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               _modelPicker(
                 ref.watch(availableModelsProvider).valueOrNull ?? const [],
                 ref.watch(chosenModelProvider).valueOrNull,
               ),
 
           if (_starting) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             ClipRRect(
               borderRadius: BorderRadius.circular(KoruRadius.pill),
               child: LinearProgressIndicator(
                 value: (progress ?? 0) / 100,
                 minHeight: 6,
                 backgroundColor: KoruColors.line,
-                valueColor: const AlwaysStoppedAnimation(KoruColors.leaf),
+                valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
               ),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(
               'Loading the model... ${progress ?? 0}%',
-              style: const TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+              style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
             ),
           ],
           if (_message != null) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Text(
               _message!,
               style: TextStyle(
@@ -1163,27 +1163,27 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
             ),
           ],
           if (!_starting && !_ready) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+              style: OutlinedButton.styleFrom(minimumSize: Size(0, 42)),
               onPressed: available == false ? null : _start,
-              icon: const Icon(Icons.play_arrow_rounded, size: 18),
-              label: const Text('Start the bundled model'),
+              icon: Icon(Icons.play_arrow_rounded, size: 18),
+              label: Text('Start the bundled model'),
             ),
           ],
           // When it is unavailable, say why. A bare "NOT IN THIS BUILD" is what
           // made this hard to diagnose: the binary was in the package.
           if (_message == null && status != null && !status.available) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Text(
               status.summary,
-              style: const TextStyle(fontSize: 12, color: KoruColors.clay, height: 1.4),
+              style: TextStyle(fontSize: 12, color: KoruColors.clay, height: 1.4),
             ),
             if (status.path != null) ...[
-              const SizedBox(height: 4),
+              SizedBox(height: 4),
               Text(
                 'looked in ${status.path}',
-                style: const TextStyle(fontSize: 11, color: KoruColors.inkFaint),
+                style: TextStyle(fontSize: 11, color: KoruColors.inkFaint),
               ),
             ],
           ],
@@ -1219,16 +1219,16 @@ class _CapacityCard extends ConsumerWidget {
           children: [
             Text(
               'You are carrying $underway.',
-              style: const TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
+              style: TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
             ),
-            const SizedBox(height: 4),
-            const Text(
+            SizedBox(height: 4),
+            Text(
               'Pick the most you can serve properly. Koru tells you when you are '
               'at it, so taking on a sixth client is a decision rather than an '
               'accident.',
               style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             Row(
               children: [
                 for (final n in _options) ...[
@@ -1294,15 +1294,15 @@ class _CurrencyCard extends ConsumerWidget {
           children: [
             Text(
               'Everything is counted in ${current.code}.',
-              style: const TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
+              style: TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
             ),
-            const SizedBox(height: 4),
-            const Text(
+            SizedBox(height: 4),
+            Text(
               'Only how amounts are written and what the model is told. Your '
               'figures stay exactly as they are.',
               style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,

@@ -8,6 +8,7 @@ import '../human_date.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../widgets.dart';
 
 /// What needs doing today.
 ///
@@ -20,7 +21,7 @@ import '../theme.dart';
 /// never disagree about what is urgent, and every write invalidates one
 /// provider rather than three computations.
 class TodayScreen extends ConsumerWidget {
-  const TodayScreen({super.key});
+  TodayScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,14 +29,17 @@ class TodayScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Today'),
+        title: Text('Today'),
         backgroundColor: KoruColors.cream,
         surfaceTintColor: Colors.transparent,
       ),
       backgroundColor: KoruColors.cream,
       body: items.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Could not work out what is due: $e')),
+        loading: () => Center(child: CircularProgressIndicator()),
+        error: (e, _) => KoruErrorView(
+          onRetry: () => ref.invalidate(attentionProvider),
+          what: 'work out what is due',
+        ),
         data: (list) {
           if (list.isEmpty) return const _AllClear();
           final overdue = list.where((i) => i.kind == AttentionKind.overdueMoney);
@@ -59,7 +63,7 @@ class TodayScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
                 _Summary(items: list),
-                const SizedBox(height: 18),
+                SizedBox(height: 18),
                 if (overdue.isNotEmpty) ...[
                   _Section(
                     label: 'Overdue',
@@ -96,7 +100,7 @@ class TodayScreen extends ConsumerWidget {
                     ],
                   ),
                 ],
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _ProjectGlance(),
               ],
             ),
@@ -134,7 +138,7 @@ class _Summary extends ConsumerWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: KoruColors.line),
+        side: BorderSide(color: KoruColors.line),
       ),
       color: KoruColors.surface,
       child: Padding(
@@ -145,13 +149,13 @@ class _Summary extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Still owed',
+                  Text('Still owed',
                       style: TextStyle(
                           fontSize: 12.5, color: KoruColors.inkFaint)),
-                  const SizedBox(height: 3),
+                  SizedBox(height: 3),
                   Text(
                     '${symbol} ${_plain(owed)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
                         color: KoruColors.ink),
@@ -168,7 +172,7 @@ class _Summary extends ConsumerWidget {
                 ),
                 child: Text(
                   '$overdue overdue',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                       color: KoruColors.clay),
@@ -203,17 +207,17 @@ class _Section extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(bottom: 2, left: 2),
           child: Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w700)),
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
           child: Text(hint,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, color: KoruColors.inkFaint)),
         ),
         ...children,
-        const SizedBox(height: 14),
+        SizedBox(height: 14),
       ],
     );
   }
@@ -243,11 +247,11 @@ class _AttentionRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(item.title,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14.5, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(item.detail,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12.5, color: KoruColors.inkFaint)),
         ],
       ),
@@ -274,16 +278,16 @@ class _ProjectGlance extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Projects going quiet',
+        Text('Projects going quiet',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 2),
+        SizedBox(height: 2),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
           child: Text(
             stalled.isEmpty
                 ? 'Nothing has gone stale.'
                 : 'Not touched in a while.',
-            style: const TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+            style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
           ),
         ),
         for (final p in shown)
@@ -304,13 +308,13 @@ class _ProjectGlance extends ConsumerWidget {
                   size: 16,
                   color: p.isPersonal ? KoruColors.clay : KoruColors.leaf,
                 ),
-                const SizedBox(width: 9),
+                SizedBox(width: 9),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(p.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w500)),
                       if (p.progressNote != null &&
                           p.progressNote!.isNotEmpty)
@@ -318,22 +322,22 @@ class _ProjectGlance extends ConsumerWidget {
                           p.progressNote!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12, color: KoruColors.inkFaint),
                         ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text('${(p.progress * 100).round()}%',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: KoruColors.inkSoft)),
               ],
             ),
           ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
       ],
     );
   }
@@ -360,17 +364,17 @@ class _AllClear extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle_outline,
+            Icon(Icons.check_circle_outline,
                 size: 44, color: KoruColors.leaf),
-            const SizedBox(height: 12),
-            const Text('Nothing needs you today',
+            SizedBox(height: 12),
+            Text('Nothing needs you today',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(
               'Nothing overdue, nothing due, no calls. Say "add client Bilal '
               'for 2000" in Talk when something comes in.',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: KoruColors.inkSoft),
+              style: TextStyle(fontSize: 14, color: KoruColors.inkSoft),
             ),
           ],
         ),

@@ -62,6 +62,64 @@ void main() {
     });
   });
 
+  group('the dark palette is measured too', () {
+    // Every dark value was chosen by running this arithmetic rather than by
+    // looking at it. A colour that clears 4.5:1 on cream fails badly on
+    // near-black, and the ink colours invert completely.
+    const dark = KoruPalette.dark;
+
+    test('every dark text colour clears 4.5:1 on the dark surface', () {
+      final colours = <String, Color>{
+        'ink': dark.ink,
+        'inkSoft': dark.inkSoft,
+        'inkFaint': dark.inkFaint,
+        'leaf': dark.leaf,
+        'clay': dark.clay,
+        'gold': dark.gold,
+      };
+      colours.forEach((name, colour) {
+        final r = ratio(colour, dark.surface);
+        expect(r, greaterThanOrEqualTo(4.5),
+            reason: 'dark $name is ${r.toStringAsFixed(2)}:1 on the surface');
+      });
+    });
+
+    test('light and dark really are different palettes', () {
+      // If these ever matched, the app would look the same in both and the
+      // whole set of dark values would be decoration.
+      expect(luminance(KoruPalette.dark.cream),
+          lessThan(luminance(KoruPalette.light.cream)),
+          reason: 'the background inverts');
+      expect(luminance(KoruPalette.dark.ink),
+          greaterThan(luminance(KoruPalette.light.ink)),
+          reason: 'the text inverts');
+    });
+
+    test('a soft fill stays lighter than the text on it in both modes', () {
+      expect(luminance(KoruPalette.light.leafSoft),
+          greaterThan(luminance(KoruPalette.light.leaf)));
+      expect(luminance(KoruPalette.dark.leafSoft),
+          greaterThan(luminance(KoruPalette.dark.leaf)));
+    });
+  });
+
+  group('the app-wide palette follows the system', () {
+    test('setBrightness switches what KoruColors hands out', () {
+      addTearDown(() => KoruColors.setBrightness(Brightness.light));
+      final lightInk = KoruColors.ink;
+      final lightCream = KoruColors.cream;
+
+      KoruColors.setBrightness(Brightness.dark);
+      expect(KoruColors.ink, isNot(lightInk));
+      expect(KoruColors.cream, isNot(lightCream));
+      // Light on dark. If this ever inverts, every screen reads as blank.
+      expect(luminance(KoruColors.ink), greaterThan(luminance(KoruColors.cream)));
+
+      KoruColors.setBrightness(Brightness.light);
+      expect(KoruColors.ink, lightInk);
+    });
+  });
+
   test('ink is still the highest contrast, so hierarchy survives', () {
     // Darkening the pale colours must not make them compete with the body text.
     expect(luminance(KoruColors.ink), lessThan(luminance(KoruColors.inkSoft)));

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../widgets.dart';
 
 /// Projects, and what has happened on them.
 ///
@@ -18,7 +19,7 @@ import '../theme.dart';
 /// a user with three personal projects and one client project calling them four
 /// different things.
 class ProjectsScreen extends ConsumerStatefulWidget {
-  const ProjectsScreen({super.key});
+  ProjectsScreen({super.key});
 
   @override
   ConsumerState<ProjectsScreen> createState() => _ProjectsScreenState();
@@ -33,7 +34,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Projects'),
+        title: Text('Projects'),
         backgroundColor: KoruColors.cream,
         surfaceTintColor: Colors.transparent,
       ),
@@ -42,12 +43,15 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
         backgroundColor: KoruColors.leaf,
         foregroundColor: Colors.white,
         onPressed: () => _edit(null),
-        icon: const Icon(Icons.add),
-        label: const Text('New project'),
+        icon: Icon(Icons.add),
+        label: Text('New project'),
       ),
       body: projects.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Could not load projects: $e')),
+        loading: () => Center(child: CircularProgressIndicator()),
+        error: (e, _) => KoruErrorView(
+          onRetry: () => ref.invalidate(projectsProvider),
+          what: 'load your projects',
+        ),
         data: (all) {
           final shown = _filter == null
               ? all
@@ -73,7 +77,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                 onChanged: (k) => setState(() => _filter = k),
               ),
               if (shown.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 40),
                   child: Center(child: Text('Nothing in this list yet.')),
                 ),
@@ -117,18 +121,18 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           controller: controller,
           autofocus: true,
           maxLines: 4,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'What happened since the last update?',
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Add'),
+            child: Text('Add'),
           ),
         ],
       ),
@@ -224,7 +228,7 @@ class _ProjectCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: KoruColors.line),
+        side: BorderSide(color: KoruColors.line),
       ),
       child: InkWell(
         onTap: onTap,
@@ -241,7 +245,7 @@ class _ProjectCard extends StatelessWidget {
                     size: 16,
                     color: personal ? KoruColors.clay : KoruColors.leaf,
                   ),
-                  const SizedBox(width: 6),
+                  SizedBox(width: 6),
                   Text(
                     personal ? 'Personal' : 'Client work',
                     style: TextStyle(
@@ -250,29 +254,29 @@ class _ProjectCard extends StatelessWidget {
                       color: personal ? KoruColors.clay : KoruColors.leaf,
                     ),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   Text('$pct%',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: KoruColors.inkSoft,
                       )),
                 ],
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               Text(project.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: KoruColors.ink,
                   )),
               if (project.target != null && project.target!.isNotEmpty) ...[
-                const SizedBox(height: 3),
+                SizedBox(height: 3),
                 Text('Done when ${project.target}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13, color: KoruColors.inkSoft)),
               ],
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
@@ -286,17 +290,17 @@ class _ProjectCard extends StatelessWidget {
               ),
               if (project.progressNote != null &&
                   project.progressNote!.isNotEmpty) ...[
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Text(project.progressNote!,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13, color: KoruColors.inkSoft)),
               ],
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
                   onPressed: onNote,
-                  icon: const Icon(Icons.note_add_outlined, size: 18),
-                  label: const Text('Add note'),
+                  icon: Icon(Icons.note_add_outlined, size: 18),
+                  label: Text('Add note'),
                 ),
               ),
             ],
@@ -315,7 +319,7 @@ class _ProjectCard extends StatelessWidget {
 /// the whole point: a number with no reason is the confident guess the rest of
 /// this app tries not to make.
 class ProjectSheet extends ConsumerStatefulWidget {
-  const ProjectSheet({super.key, this.project});
+  ProjectSheet({super.key, this.project});
 
   final Project? project;
 
@@ -370,9 +374,9 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(p == null ? 'New project' : 'Edit project',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             SegmentedButton<ProjectKind>(
               segments: const [
                 ButtonSegment(
@@ -389,46 +393,46 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
               selected: {_kind},
               onSelectionChanged: (s) => setState(() => _kind = s.first),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             TextField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: InputDecoration(labelText: 'Name'),
               textCapitalization: TextCapitalization.sentences,
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             TextField(
               controller: _target,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Done when',
                 hintText: 'the shop is open',
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             TextField(
               controller: _plan,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'How you get there',
                 hintText: 'photos first, then the build',
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Text('${(_progress * 100).round()}% along',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+                style: TextStyle(fontWeight: FontWeight.w600)),
             Slider(
               value: _progress.clamp(0, 1),
               onChanged: (v) => setState(() => _progress = v),
             ),
             TextField(
               controller: _note,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Why it is there',
                 hintText: 'two rooms left, both need wiring',
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Row(
               children: [
                 if (p != null)
@@ -436,9 +440,9 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
                     onPressed: _saving ? null : _delete,
                     style: TextButton.styleFrom(
                         foregroundColor: KoruColors.clay),
-                    child: const Text('Delete'),
+                    child: Text('Delete'),
                   ),
-                const Spacer(),
+                Spacer(),
                 FilledButton(
                   onPressed: _saving ? null : _save,
                   child: Text(p == null ? 'Add' : 'Save'),
@@ -511,14 +515,14 @@ class _Empty extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 44, color: KoruColors.inkFaint),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Text(title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(body,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 14, color: KoruColors.inkSoft)),
           ],
         ),

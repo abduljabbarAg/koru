@@ -36,7 +36,7 @@ enum KoruActivity {
   looking('Looking up your clients');
 
   final String label;
-  const KoruActivity(this.label);
+  KoruActivity(this.label);
 }
 
 /// The waiting indicator.
@@ -50,7 +50,7 @@ enum KoruActivity {
 /// One controller drives the whole cycle so the stages cannot drift apart, which
 /// is what happens when each stage owns its own animation.
 class KoruThinkingDots extends StatefulWidget {
-  const KoruThinkingDots({
+  KoruThinkingDots({
     super.key,
     this.activity = KoruActivity.thinking,
     this.size = 18,
@@ -77,7 +77,7 @@ class _KoruThinkingDotsState extends State<KoruThinkingDots>
     super.initState();
     _cycle = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: _cycleMs),
+      duration: Duration(milliseconds: _cycleMs),
     )..repeat();
   }
 
@@ -105,10 +105,10 @@ class _KoruThinkingDotsState extends State<KoruThinkingDots>
               if (i > 0) SizedBox(width: widget.size * 0.16),
               _dot(stage, within, i),
             ],
-            const SizedBox(width: 9),
+            SizedBox(width: 9),
             Text(
               widget.activity.label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: KoruColors.inkFaint,
                 fontSize: 12.5,
                 height: 1.2,

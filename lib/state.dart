@@ -729,6 +729,10 @@ class ChatNotifier extends Notifier<ChatState> {
     // app has already been bitten by a reply claiming a save that did not
     // happen. The app holds itself to the same rule as the model: no save is
     // reported that has not been looked at afterwards.
+    // Felt, not just shown. The card is gone by the time anyone reads a toast,
+    // and this is the only confirmation that survives looking away for a second.
+    HapticFeedback.mediumImpact();
+
     final problem = await write.verify(store);
 
     // A calendar entry can also go into the phone's own calendar. Opt-in from

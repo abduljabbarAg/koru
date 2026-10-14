@@ -33,22 +33,22 @@ class _EngineBanner extends StatelessWidget {
       child: Row(
         children: [
           if (!failed)
-            const SizedBox(
+            SizedBox(
               width: 14,
               height: 14,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           else
-            const Icon(Icons.error_outline_rounded,
+            Icon(Icons.error_outline_rounded,
                 size: 15, color: KoruColors.clay),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Expanded(
             child: Text(
               failed
                   ? 'The on-device model did not start. $problem'
                   : 'Waking the local model up, $p%. You can carry on in the '
                       'meanwhile.',
-              style: const TextStyle(fontSize: 12, height: 1.35),
+              style: TextStyle(fontSize: 12, height: 1.35),
             ),
           ),
         ],
@@ -58,7 +58,7 @@ class _EngineBanner extends StatelessWidget {
 }
 
 class ChatScreen extends ConsumerStatefulWidget {
-  const ChatScreen({super.key});
+  ChatScreen({super.key});
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
@@ -85,13 +85,13 @@ class _EngineBadge extends StatelessWidget {
           background: KoruColors.leafSoft,
           icon: Icons.memory_rounded,
         ),
-      KoruEngine.cloud => const KoruPill(
+      KoruEngine.cloud => KoruPill(
           label: 'CLOUD MODEL',
           color: KoruColors.gold,
           background: KoruColors.goldSoft,
           icon: Icons.cloud_outlined,
         ),
-      KoruEngine.builtIn => const KoruPill(
+      KoruEngine.builtIn => KoruPill(
           label: 'FROM YOUR RECORDS',
           color: KoruColors.leaf,
           background: KoruColors.leafSoft,
@@ -204,27 +204,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         title: Row(
           children: [
             KoruMascot(size: 30, controller: _mascot, busy: st.busy),
-            const SizedBox(width: 9),
-            const Text('Koru'),
+            SizedBox(width: 9),
+            Text('Koru'),
           ],
         ),
         actions: [
           if (st.messages.length > 1)
             IconButton(
               tooltip: 'Clear conversation',
-              icon: const Icon(Icons.restart_alt_rounded, size: 21, color: KoruColors.inkFaint),
+              icon: Icon(Icons.restart_alt_rounded, size: 21, color: KoruColors.inkFaint),
               onPressed: () async {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: const Text('Clear this conversation?'),
-                    content: const Text(
+                    title: Text('Clear this conversation?'),
+                    content: Text(
                         'Messages are stored on this device. This cannot be undone.'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel')),
                       TextButton(
                         onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Clear', style: TextStyle(color: KoruColors.clay)),
+                        child: Text('Clear', style: TextStyle(color: KoruColors.clay)),
                       ),
                     ],
                   ),
@@ -334,21 +334,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             semanticLabel: 'Koru, your helper. Tap to say hello.',
           ),
         ),
-        const SizedBox(height: 18),
-        const Text(
+        SizedBox(height: 18),
+        Text(
           'Ask me about your clients, your money and what is due.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: KoruColors.ink),
         ),
-        const SizedBox(height: 6),
-        const Text(
+        SizedBox(height: 6),
+        Text(
           'Those questions are answered here, on this phone. '
           'Faith, health, medicine and law go to a stronger model instead.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13.5, color: KoruColors.inkFaint, height: 1.45),
         ),
-        const SizedBox(height: 22),
-        const SectionLabel('Try'),
+        SizedBox(height: 22),
+        SectionLabel('Try'),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -356,8 +356,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               .map((s) => ActionChip(
                     label: Text(s),
                     backgroundColor: KoruColors.surface,
-                    side: const BorderSide(color: KoruColors.line),
-                    labelStyle: const TextStyle(color: KoruColors.inkSoft, fontSize: 13),
+                    side: BorderSide(color: KoruColors.line),
+                    labelStyle: TextStyle(color: KoruColors.inkSoft, fontSize: 13),
                     onPressed: () => _useSuggestion(s),
                   ))
               .toList(),
@@ -372,7 +372,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: KoruColors.cream,
-      shape: const RoundedRectangleBorder(
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (context) => Padding(
@@ -382,26 +382,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Edit message',
+            Text('Edit message',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            const SizedBox(height: 4),
-            const Text('Asking again drops the reply below it.',
+            SizedBox(height: 4),
+            Text('Asking again drops the reply below it.',
                 style: TextStyle(color: KoruColors.inkFaint, fontSize: 12.5)),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             TextField(
               controller: controller,
               autofocus: true,
               minLines: 1,
               maxLines: 5,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 contentPadding: EdgeInsets.all(14),
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(controller.text),
-              child: const Text('Ask again'),
+              child: Text('Ask again'),
             ),
           ],
         ),
@@ -418,7 +418,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Container(
       padding: EdgeInsets.fromLTRB(
           12, 10, 12, 10 + MediaQuery.of(context).padding.bottom * 0.2),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: KoruColors.cream,
         border: Border(top: BorderSide(color: KoruColors.line)),
       ),
@@ -433,18 +433,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               maxLines: 5,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Ask anything...',
                 contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
             ),
           ),
-          const SizedBox(width: 9),
+          SizedBox(width: 9),
           // While an answer is being written the same button stops it, rather
           // than sitting greyed out. A disabled button for fifteen seconds is
           // the app looking busy; a stop square is the app offering a way out.
           AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
+            duration: Duration(milliseconds: 180),
             width: 48,
             height: 48,
             decoration: BoxDecoration(
@@ -527,20 +527,20 @@ class _ChatBubbleState extends State<_ChatBubble> {
               padding: const EdgeInsets.only(bottom: 5, left: 2),
               child: Row(
                 children: [
-                  const KoruMark(size: 17),
-                  const SizedBox(width: 7),
+                  KoruMark(size: 17),
+                  SizedBox(width: 7),
                   _EngineBadge(
                     engine: m.engine,
                     tokensPerSecond: m.tokensPerSecond,
                   ),
                   if (m.why != null) ...[
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         m.why!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 11.5, color: KoruColors.inkFaint),
                       ),
                     ),
@@ -549,10 +549,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   // rather than taking a row of its own, so a long thread does
                   // not grow taller than it used to.
                   if (m.time != null) ...[
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     Text(
                       _clock(m.time!),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 10.5, color: KoruColors.inkFaint),
                     ),
                   ],
@@ -561,7 +561,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
             ),
           ],
           Container(
-            constraints: const BoxConstraints(maxWidth: 330),
+            constraints: BoxConstraints(maxWidth: 330),
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
             decoration: BoxDecoration(
               color: isUser ? KoruColors.leaf : KoruColors.surface,
@@ -605,14 +605,14 @@ class _ChatBubbleState extends State<_ChatBubble> {
                         children: [
                           Text(
                             m.text,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
                               height: 1.45,
                               color: Colors.white,
                             ),
                           ),
                           if (m.time != null) ...[
-                            const SizedBox(height: 3),
+                            SizedBox(height: 3),
                             Text(
                               _clock(m.time!),
                               style: TextStyle(
@@ -679,14 +679,14 @@ class _JumpToNewestButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: KoruColors.surface,
-      shape: const CircleBorder(side: BorderSide(color: KoruColors.line)),
+      shape: CircleBorder(side: BorderSide(color: KoruColors.line)),
       elevation: 2,
       child: InkWell(
-        customBorder: const CircleBorder(),
+        customBorder: CircleBorder(),
         onTap: onTap,
         // 28 plus the icon is the smallest comfortable target, and this is a
         // control people hit with a thumb while reading one-handed.
-        child: const Padding(
+        child: Padding(
           padding: EdgeInsets.all(14),
           child: Icon(Icons.keyboard_arrow_down_rounded,
               size: 22, color: KoruColors.inkSoft),
@@ -711,7 +711,7 @@ class _JumpToNewestButton extends StatelessWidget {
 /// app should have. A renderer this fussy about streaming is not something to
 /// verify only through a chat bubble.
 class RichReply extends StatelessWidget {
-  const RichReply({super.key, required this.text, required this.muted});
+  RichReply({super.key, required this.text, required this.muted});
 
   final String text;
   final bool muted;
@@ -737,7 +737,7 @@ class RichReply extends StatelessWidget {
     for (final line in lines) {
       final trimmed = line.trimRight();
       if (trimmed.trim().isEmpty) {
-        if (out.isNotEmpty) out.add(const SizedBox(height: 8));
+        if (out.isNotEmpty) out.add(SizedBox(height: 8));
         continue;
       }
 

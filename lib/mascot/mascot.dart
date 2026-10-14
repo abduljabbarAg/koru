@@ -57,7 +57,7 @@ class KoruMascotController {
 /// portrait if the atlas cannot be decoded, so a packaging mistake degrades to
 /// something that still looks deliberate rather than an empty box.
 class KoruMascot extends StatefulWidget {
-  const KoruMascot({
+  KoruMascot({
     super.key,
     this.size = 120,
     this.busy = false,

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'attention.dart';
@@ -18,11 +20,15 @@ import 'state.dart';
 import 'theme.dart';
 
 void main() {
-  runApp(const ProviderScope(child: KoruApp()));
+  // Read before the first frame rather than inside it, so nothing is ever
+  // painted light and then repainted dark a frame later.
+  WidgetsFlutterBinding.ensureInitialized();
+  KoruColors.setBrightness(PlatformDispatcher.instance.platformBrightness);
+  runApp(ProviderScope(child: KoruApp()));
 }
 
 class KoruApp extends ConsumerWidget {
-  const KoruApp({super.key});
+  KoruApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,7 +36,23 @@ class KoruApp extends ConsumerWidget {
       title: 'Koru',
       debugShowCheckedModeBanner: false,
       theme: buildKoruTheme(),
-      home: const RootGate(),
+      darkTheme: buildKoruTheme(brightness: Brightness.dark),
+      // Follows the system. A phone set to dark is telling the app something
+      // about the hour it is being used in, and making somebody override that
+      // every launch is friction for nobody.
+      themeMode: ThemeMode.system,
+      // Keeps [KoruColors] in step when the phone is switched while the app is
+      // open. The palette is app-wide state rather than something read from a
+      // context, so nothing else would notice the change.
+      builder: (context, child) {
+        KoruColors.setBrightness(
+          Theme.of(context).brightness == Brightness.dark
+              ? Brightness.dark
+              : Brightness.light,
+        );
+        return child ?? const SizedBox.shrink();
+      },
+      home: RootGate(),
     );
   }
 }
@@ -41,7 +63,7 @@ class KoruApp extends ConsumerWidget {
 /// himself, because the first thing a person sees should be the thing they are
 /// about to talk to.
 class RootGate extends ConsumerStatefulWidget {
-  const RootGate({super.key});
+  RootGate({super.key});
 
   @override
   ConsumerState<RootGate> createState() => _RootGateState();
@@ -114,13 +136,13 @@ class _RootGateState extends ConsumerState<RootGate> {
     // over to the app. Holding a copy in a field meant the last button on the
     // last screen did nothing at all.
     final onboarded = ref.watch(onboardedProvider);
-    if (!onboarded) return const OnboardingScreen();
+    if (!onboarded) return OnboardingScreen();
     // Watched from here so the notification is kept up to date for the whole
     // time the app is open, not only while a particular screen happens to be
     // mounted. Watching it inside the chat screen meant the badge went stale the
     // moment the user went to look at their clients.
     ref.watch(attentionPublisher);
-    return const HomeShell();
+    return HomeShell();
   }
 }
 
@@ -135,10 +157,10 @@ class _RootGateState extends ConsumerState<RootGate> {
 /// place to say so. Capped, so a model that never arrives still lets the user in
 /// to read the error rather than stranding them on a progress bar forever.
 class SplashScreen extends ConsumerStatefulWidget {
-  const SplashScreen({
+  SplashScreen({
     super.key,
     this.onDone,
-    this.minimum = const Duration(milliseconds: 1500),
+    this.minimum = Duration(milliseconds: 1500),
   });
 
   final VoidCallback? onDone;
@@ -158,7 +180,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     super.initState();
     _fade = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
+      duration: Duration(milliseconds: 420),
     )..addStatusListener((status) {
         if (status == AnimationStatus.completed) widget.onDone?.call();
       });
@@ -175,7 +197,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     // The splash now leaves on a timer that cannot be starved by any of it, and
     // the engine reports its progress inside the chat instead, where being slow
     // is fine because there is other work to do.
-    _timer = Timer(widget.minimum + const Duration(milliseconds: 250), _leave);
+    _timer = Timer(widget.minimum + Duration(milliseconds: 250), _leave);
   }
 
   Timer? _timer;
@@ -207,15 +229,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const KoruMascot(size: 148, semanticLabel: 'Koru, your helper'),
-              const SizedBox(height: 22),
+              KoruMascot(size: 148, semanticLabel: 'Koru, your helper'),
+              SizedBox(height: 22),
               Text('Koru', style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 6),
-              const Text(
+              SizedBox(height: 6),
+              Text(
                 'An assistant that knows your life',
                 style: TextStyle(color: KoruColors.inkFaint, fontSize: 14.5),
               ),
-              const SizedBox(height: 28),
+              SizedBox(height: 28),
               // Determinate when there is real progress to report, and honest
               // about what it is. The old bar swept forever regardless of
               // whether anything was happening, which is a bar that tells you
@@ -255,10 +277,10 @@ class _EngineLoadingBar extends StatelessWidget {
             // being reported yet and wrong once it is.
             value: p == null ? null : (p / 100).clamp(0.0, 1.0),
             backgroundColor: KoruColors.line,
-            valueColor: const AlwaysStoppedAnimation(KoruColors.leaf),
+            valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         SizedBox(
           height: 16,
           child: Text(
@@ -269,11 +291,11 @@ class _EngineLoadingBar extends StatelessWidget {
               <8 => 'Unpacking the model on this phone',
               _ => 'Waking the model up  $p%',
             },
-            style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12),
+            style: TextStyle(color: KoruColors.inkFaint, fontSize: 12),
           ),
         ),
         if (health != null && !health!.complete) ...[
-          const SizedBox(height: 18),
+          SizedBox(height: 18),
           // Named individually, because each of these can be refused on its own
           // and "something is not set up" gives the reader nothing to do.
           ...health!.problems.map(
@@ -282,13 +304,13 @@ class _EngineLoadingBar extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.info_outline_rounded,
+                  Icon(Icons.info_outline_rounded,
                       size: 13, color: KoruColors.gold),
-                  const SizedBox(width: 6),
+                  SizedBox(width: 6),
                   Flexible(
                     child: Text(
                       problem,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: KoruColors.inkSoft, fontSize: 11.5),
                     ),
                   ),
@@ -303,7 +325,7 @@ class _EngineLoadingBar extends StatelessWidget {
 }
 
 class HomeShell extends ConsumerStatefulWidget {
-  const HomeShell({super.key});
+  HomeShell({super.key});
 
   @override
   ConsumerState<HomeShell> createState() => _HomeShellState();
@@ -376,7 +398,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     return Scaffold(
       body: IndexedStack(index: _tab, children: _pages),
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: KoruColors.surface,
           border: Border(top: BorderSide(color: KoruColors.line)),
         ),
@@ -410,13 +432,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         button: true,
         label: label,
         child: InkWell(
-          onTap: () => setState(() => _tab = i),
+          onTap: () {
+            // A tick, not a buzz. It confirms the tap landed without becoming
+            // the thing you notice while switching tabs.
+            HapticFeedback.selectionClick();
+            setState(() => _tab = i);
+          },
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(sel ? on : off,
                   size: 21, color: sel ? KoruColors.leaf : KoruColors.inkFaint),
-              const SizedBox(height: 2),
+              SizedBox(height: 2),
               Text(
                 label,
                 maxLines: 1,

@@ -20,7 +20,7 @@ import 'client_detail.dart';
 /// settled flag cannot say it. Every figure on screen comes from that ledger,
 /// so a balance here and a balance in the store cannot drift apart.
 class BusinessScreen extends ConsumerWidget {
-  const BusinessScreen({super.key});
+  BusinessScreen({super.key});
 
   Color statusColor(String s) => switch (s) {
         'paid' => KoruColors.leaf,
@@ -34,8 +34,8 @@ class BusinessScreen extends ConsumerWidget {
         'paid' => KoruColors.leafSoft,
         'active' => KoruColors.goldSoft,
         'delivered' => KoruColors.claySoft,
-        'lost' => const Color(0xFFEFEBE7),
-        _ => const Color(0xFFEFEBE7),
+        'lost' => Color(0xFFEFEBE7),
+        _ => Color(0xFFEFEBE7),
       };
 
   Future<void> _edit(BuildContext context, WidgetRef ref, {Client? existing}) async {
@@ -71,8 +71,8 @@ class BusinessScreen extends ConsumerWidget {
         builder: (ctx, setSheetState) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(controller: name, decoration: const InputDecoration(labelText: 'Name or company')),
-          const SizedBox(height: 12),
+          TextField(controller: name, decoration: InputDecoration(labelText: 'Name or company')),
+          SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -83,12 +83,12 @@ class BusinessScreen extends ConsumerWidget {
                   decoration: InputDecoration(labelText: 'Invoiced', suffixText: currency.symbol),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(
                   value: status,
-                  decoration: const InputDecoration(labelText: 'Status'),
+                  decoration: InputDecoration(labelText: 'Status'),
                   items: kClientStatuses
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
@@ -97,7 +97,7 @@ class BusinessScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           TextField(
             controller: monthly,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -107,25 +107,25 @@ class BusinessScreen extends ConsumerWidget {
               helperText: 'Only if they pay you the same amount every month.',
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           TextField(
             controller: source,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
                 labelText: 'Lead source', hintText: 'referral, twitter, ads...'),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           TextField(
             controller: note,
             maxLines: 2,
-            decoration: const InputDecoration(labelText: 'Note', hintText: 'What was agreed?'),
+            decoration: InputDecoration(labelText: 'Note', hintText: 'What was agreed?'),
           ),
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 16),
-          const Text('Payment terms',
+          SizedBox(height: 16),
+          Divider(height: 1),
+          SizedBox(height: 16),
+          Text('Payment terms',
               style: TextStyle(
                   fontWeight: FontWeight.w700, fontSize: 13, color: KoruColors.inkSoft)),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           TextField(
             controller: deposit,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -135,7 +135,7 @@ class BusinessScreen extends ConsumerWidget {
               helperText: 'Only if they paid something up front.',
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -143,20 +143,20 @@ class BusinessScreen extends ConsumerWidget {
                   onPressed: () async {
                     final picked = await showDatePicker(
                       context: ctx,
-                      firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
-                      lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                      firstDate: DateTime.now().subtract(Duration(days: 365 * 2)),
+                      lastDate: DateTime.now().add(Duration(days: 365 * 3)),
                       initialDate: invoicedOn,
                       helpText: 'When did you invoice them?',
                     );
                     if (picked != null) setSheetState(() => invoicedOn = picked);
                   },
-                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  icon: Icon(Icons.receipt_long_outlined, size: 18),
                   label: Text('Invoiced ${_fmtDate(invoicedOn)}'),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Wrap(
             spacing: 8,
             children: [
@@ -175,13 +175,13 @@ class BusinessScreen extends ConsumerWidget {
                   }),
                 ),
               ChoiceChip(
-                label: const Text('Exact date'),
+                label: Text('Exact date'),
                 selected: overrideDue != null,
                 onSelected: (_) async {
                   final picked = await showDatePicker(
                     context: ctx,
-                    firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
-                    lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                    firstDate: DateTime.now().subtract(Duration(days: 365 * 2)),
+                    lastDate: DateTime.now().add(Duration(days: 365 * 3)),
                     initialDate: overrideDue ?? DateTime.now().add(Duration(days: terms)),
                   );
                   if (picked != null) {
@@ -191,7 +191,7 @@ class BusinessScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           // The date the rest of the app will use, shown rather than typed. A
           // figure the app worked out and the user can see is a figure they can
           // catch; a figure they had to type is one they will get wrong.
@@ -206,21 +206,21 @@ class BusinessScreen extends ConsumerWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.event_available_rounded, size: 18, color: KoruColors.leaf),
-                  const SizedBox(width: 10),
+                  Icon(Icons.event_available_rounded, size: 18, color: KoruColors.leaf),
+                  SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       overrideDue == null
                           ? 'Due ${_fmtDate(computed)} (${terms == 0 ? 'on completion' : 'net $terms days'})'
                           : 'Due ${_fmtDate(computed)}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
               ),
             );
           }),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(existing == null ? 'Save client' : 'Save changes'),
@@ -354,30 +354,30 @@ class BusinessScreen extends ConsumerWidget {
               helperText: 'Part payments are fine.',
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           TextField(
             controller: note,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
                 labelText: 'Note', hintText: 'Invoice 3, transfer, cash...'),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () async {
               final picked = await showDatePicker(
                 context: ctx,
-                firstDate: DateTime.now().subtract(const Duration(days: 365 * 3)),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
+                firstDate: DateTime.now().subtract(Duration(days: 365 * 3)),
+                lastDate: DateTime.now().add(Duration(days: 365)),
                 initialDate: date,
               );
               if (picked != null) date = picked;
             },
-            icon: const Icon(Icons.event_outlined, size: 18),
+            icon: Icon(Icons.event_outlined, size: 18),
             label: Text(_fmtDate(date)),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Record payment'),
+            child: Text('Record payment'),
           ),
         ],
       ),
@@ -421,7 +421,7 @@ class BusinessScreen extends ConsumerWidget {
   Future<void> _addDeadline(BuildContext context, WidgetRef ref, List<Client> clients) async {
     final title = TextEditingController();
     Client? client;
-    var date = DateTime.now().add(const Duration(days: 7));
+    var date = DateTime.now().add(Duration(days: 7));
 
     final ok = await showKoruSheet<bool>(
       context,
@@ -433,36 +433,36 @@ class BusinessScreen extends ConsumerWidget {
           TextField(
             controller: title,
             autofocus: true,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
                 labelText: 'What', hintText: 'Send invoice, deliver the site...'),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           if (clients.isNotEmpty)
             DropdownButtonFormField<Client>(
-              decoration: const InputDecoration(labelText: 'For which client'),
+              decoration: InputDecoration(labelText: 'For which client'),
               items: clients
                   .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
                   .toList(),
               onChanged: (v) => client = v,
             ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () async {
               final picked = await showDatePicker(
                 context: ctx,
-                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                firstDate: DateTime.now().subtract(Duration(days: 365)),
+                lastDate: DateTime.now().add(Duration(days: 365 * 3)),
                 initialDate: date,
               );
               if (picked != null) date = picked;
             },
-            icon: const Icon(Icons.event_outlined, size: 18),
+            icon: Icon(Icons.event_outlined, size: 18),
             label: Text(_fmtDate(date)),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Add deadline'),
+            child: Text('Add deadline'),
           ),
         ],
       ),
@@ -498,7 +498,7 @@ class BusinessScreen extends ConsumerWidget {
     }
     final when = DateTime(date.year, date.month, date.day, 12);
     final title = client == null ? d.title : '${d.title} — ${client.name}';
-    final ok = await const AttentionBridge().addToCalendar(title, when);
+    final ok = await AttentionBridge().addToCalendar(title, when);
     if (!context.mounted) return;
     toast(
       context,
@@ -540,17 +540,20 @@ class BusinessScreen extends ConsumerWidget {
     final guide = ref.watch(guideFactsProvider).valueOrNull;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Business')),
+      appBar: AppBar(title: Text('Business')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _edit(context, ref),
         backgroundColor: KoruColors.leaf,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Client'),
+        icon: Icon(Icons.add_rounded),
+        label: Text('Client'),
       ),
       body: clients.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: KoruColors.leaf)),
-        error: (e, _) => Center(child: Text('$e')),
+        loading: () => Center(child: CircularProgressIndicator(color: KoruColors.leaf)),
+        error: (e, _) => KoruErrorView(
+          onRetry: () => ref.invalidate(clientsProvider),
+          what: 'load your clients',
+        ),
         data: (list) {
           double balanceOf(Client c) => c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
           final outstanding = list.fold(0.0, (a, c) => a + balanceOf(c));
@@ -591,7 +594,7 @@ class BusinessScreen extends ConsumerWidget {
                       tintBg: KoruColors.claySoft,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   Expanded(
                     child: StatTile(
                       label: 'RECEIVED',
@@ -601,7 +604,7 @@ class BusinessScreen extends ConsumerWidget {
                       tintBg: KoruColors.leafSoft,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   Expanded(
                     child: StatTile(
                       label: 'OVERDUE',
@@ -614,7 +617,7 @@ class BusinessScreen extends ConsumerWidget {
                 ],
               ),
               if (overdue.isNotEmpty) ...[
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -624,55 +627,55 @@ class BusinessScreen extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.schedule_rounded, size: 19, color: KoruColors.clay),
-                      const SizedBox(width: 10),
+                      Icon(Icons.schedule_rounded, size: 19, color: KoruColors.clay),
+                      SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           '${money(overdue.fold(0.0, (a, c) => a + balanceOf(c)))} ${currency.code} is late: '
                           '${overdue.take(3).map((c) => c.name).join(', ')}',
-                          style: const TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
+                          style: TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
                         ),
                       ),
                     ],
                   ),
                 ),
               ],
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               _capacityBar(underway, capacity),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Expanded(child: SectionLabel('Deadlines')),
+                    Expanded(child: SectionLabel('Deadlines')),
                   TextButton.icon(
                     onPressed: () => _addDeadline(context, ref, list),
-                    icon: const Icon(Icons.add_rounded, size: 16),
-                    label: const Text('Add'),
+                    icon: Icon(Icons.add_rounded, size: 16),
+                    label: Text('Add'),
                   ),
                 ],
               ),
               if (deadlines.isEmpty)
-                const EmptyHint(
+                EmptyHint(
                   icon: Icons.event_available_rounded,
                   title: 'Nothing scheduled',
                   body: 'Add what has to happen next and it sorts itself by urgency.',
                 )
               else
                 ...deadlines.map((d) => _deadlineRow(context, ref, d, today, byId[d.clientId])),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Expanded(child: SectionLabel('Calendar')),
+                  Expanded(child: SectionLabel('Calendar')),
                   TextButton.icon(
                     onPressed: () => _addEventHint(context),
-                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 15),
-                    label: const Text('Ask Koru'),
+                    icon: Icon(Icons.chat_bubble_outline_rounded, size: 15),
+                    label: Text('Ask Koru'),
                   ),
                 ],
               ),
               if (events.isEmpty)
-                const EmptyHint(
+                EmptyHint(
                   icon: Icons.event_rounded,
                   title: 'Nothing on the calendar',
                   body: 'Say "schedule a call with Bilal tomorrow at 3pm" in '
@@ -681,21 +684,21 @@ Row(
                 )
               else
                 ...events.take(6).map((e) => _eventRow(context, ref, e)),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               if (payments.isNotEmpty) ...[
-                const SectionLabel('Recent payments'),
-                const SizedBox(height: 8),
+                SectionLabel('Recent payments'),
+                SizedBox(height: 8),
                 ...payments.map((p) => _paymentRow(ref, p, byId[p.clientId], currency)),
               ],
               if (pipeline.isNotEmpty) ...[
-                const SizedBox(height: 18),
+                SizedBox(height: 18),
                 SectionLabel('Pipeline (${pipeline.length})'),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 ...pipeline.map((c) => _pipelineRow(context, ref, c, today, currency)),
               ],
-              const SizedBox(height: 18),
-              const SectionLabel('Clients'),
-              const SizedBox(height: 8),
+              SizedBox(height: 18),
+              SectionLabel('Clients'),
+              SizedBox(height: 8),
               if (list.isEmpty)
                 EmptyHint(
                   icon: Icons.folder_open_rounded,
@@ -703,7 +706,7 @@ Row(
                   body: 'Add your first client to start tracking who owes you what.',
                   action: FilledButton(
                     onPressed: () => _edit(context, ref),
-                    child: const Text('Add a client'),
+                    child: Text('Add a client'),
                   ),
                 )
               else
@@ -753,7 +756,7 @@ Row(
           Row(
             children: [
               Icon(Icons.groups_rounded, size: 18, color: tint),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Text(
                 '$activeCount of $capacity',
                 style: TextStyle(
@@ -762,14 +765,14 @@ Row(
                   color: tint,
                 ),
               ),
-              const Spacer(),
+              Spacer(),
               Text(
                 full ? 'at capacity' : '$room free',
-                style: const TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+                style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Row(
             children: [
               for (var i = 0; i < capacity && i < 20; i++) ...[
@@ -787,10 +790,10 @@ Row(
               ],
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Text(
             message,
-            style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
+            style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
           ),
         ],
       ),
@@ -831,8 +834,8 @@ Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(c.name,
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
+                      style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+                  SizedBox(height: 2),
                   Text(
                     [
                       if (c.amount != null) '${money(c.amount!)} ${currency.code}',
@@ -848,7 +851,7 @@ Row(
             ),
           ),
           if (stale)
-            const KoruPill(
+            KoruPill(
               label: 'GOING COLD',
               color: KoruColors.gold,
               background: KoruColors.goldSoft,
@@ -879,7 +882,7 @@ Row(
         children: [
           IconButton(
             tooltip: 'Mark ${d.title} done',
-            icon: const Icon(Icons.radio_button_unchecked_rounded, color: KoruColors.inkFaint),
+            icon: Icon(Icons.radio_button_unchecked_rounded, color: KoruColors.inkFaint),
             onPressed: () => _completeDeadline(ref, d),
           ),
           Expanded(
@@ -889,8 +892,8 @@ Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label,
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 2),
+                      style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
+                  SizedBox(height: 2),
                   Text(
                     late
                         ? 'was due ${formatDate(d.due, DateTime.now())}'
@@ -906,12 +909,12 @@ Row(
           ),
           IconButton(
             tooltip: 'Put ${d.title} in the calendar',
-            icon: const Icon(Icons.event_outlined, size: 18, color: KoruColors.inkFaint),
+            icon: Icon(Icons.event_outlined, size: 18, color: KoruColors.inkFaint),
             onPressed: () => _toCalendar(context, ref, d, client),
           ),
           IconButton(
             tooltip: 'Delete ${d.title}',
-            icon: const Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
+            icon: Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
             onPressed: () => _deleteDeadline(ref, d),
           ),
         ],
@@ -942,34 +945,34 @@ Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(dayLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                         color: KoruColors.ink)),
                 Text(e.timeLabel,
                     style:
-                        const TextStyle(fontSize: 12, color: KoruColors.inkFaint)),
+                        TextStyle(fontSize: 12, color: KoruColors.inkFaint)),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(e.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 14.5, fontWeight: FontWeight.w500)),
                 if (e.location != null)
                   Text(e.location!,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12.5, color: KoruColors.inkFaint)),
                 if (e.durationMin != null || e.recurrence != null)
                   Text([
                     if (e.durationMin != null) '${e.durationMin} min',
                     if (e.recurrence != null) e.recurrence!.phrase,
                   ].join(' \u00b7 '),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12, color: KoruColors.inkFaint)),
               ],
             ),
@@ -987,13 +990,13 @@ Row(
           ),
           IconButton(
             tooltip: 'Change ${e.title}',
-            icon: const Icon(Icons.edit_outlined,
+            icon: Icon(Icons.edit_outlined,
                 size: 17, color: KoruColors.inkFaint),
             onPressed: () => _editEvent(context, ref, e),
           ),
           IconButton(
             tooltip: 'Delete ${e.title}',
-            icon: const Icon(Icons.close_rounded,
+            icon: Icon(Icons.close_rounded,
                 size: 18, color: KoruColors.inkFaint),
             onPressed: () => _deleteEvent(ref, e),
           ),
@@ -1037,7 +1040,7 @@ Row(
     final ok = await ref.read(calendarBridgeProvider).addEvent(
           title: e.title,
           start: starts,
-          end: starts.add(const Duration(hours: 1)),
+          end: starts.add(Duration(hours: 1)),
           location: e.location,
         );
     if (!context.mounted) return;
@@ -1104,19 +1107,19 @@ Row(
               children: [
                 Text(
                   '${money(p.amount)} ${currency.code}  ·  ${client?.name ?? 'unknown'}',
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500),
+                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   p.note == null ? p.date : '${p.date}  ·  ${p.note}',
-                  style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
+                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
                 ),
               ],
             ),
           ),
           IconButton(
             tooltip: 'Undo this payment',
-            icon: const Icon(Icons.undo_rounded, size: 18, color: KoruColors.inkFaint),
+            icon: Icon(Icons.undo_rounded, size: 18, color: KoruColors.inkFaint),
             onPressed: () => _undoPayment(ref, p),
           ),
         ],
@@ -1171,12 +1174,12 @@ Row(
                     children: [
                       Text(
                         c.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                       ),
-                      const SizedBox(height: 3),
+                      SizedBox(height: 3),
                       Text(
                         meta.join('  ·  '),
-                        style: const TextStyle(color: KoruColors.inkFaint, fontSize: 12.5),
+                        style: TextStyle(color: KoruColors.inkFaint, fontSize: 12.5),
                       ),
                     ],
                   ),
@@ -1204,7 +1207,7 @@ Row(
             ],
           ),
           if (balance > 0) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Row(
               children: [
                 KoruPill(
@@ -1213,8 +1216,8 @@ Row(
                   background: late ? KoruColors.claySoft : KoruColors.goldSoft,
                 ),
                 if (late) ...[
-                  const SizedBox(width: 8),
-                  const KoruPill(
+                  SizedBox(width: 8),
+                  KoruPill(
                     label: 'OVERDUE',
                     color: KoruColors.clay,
                     background: KoruColors.claySoft,
@@ -1225,28 +1228,28 @@ Row(
             ),
           ],
           if (c.note != null) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(c.note!,
-                style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4)),
+                style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4)),
           ],
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Row(
             children: [
               TextButton.icon(
                 onPressed: () => _edit(context, ref, existing: c),
-                icon: const Icon(Icons.edit_outlined, size: 16),
-                label: const Text('Edit'),
+                icon: Icon(Icons.edit_outlined, size: 16),
+                label: Text('Edit'),
               ),
               if (c.status != 'lost')
                 TextButton.icon(
                   onPressed: () => _recordPayment(context, ref, c, alreadyReceived),
-                  icon: const Icon(Icons.payments_outlined, size: 16),
+                  icon: Icon(Icons.payments_outlined, size: 16),
                   label: Text(alreadyReceived > 0 ? 'Add payment' : 'Mark paid'),
                 ),
-              const Spacer(),
+              Spacer(),
               IconButton(
                 tooltip: 'Delete ${c.name}',
-                icon: const Icon(Icons.delete_outline_rounded, size: 19, color: KoruColors.inkFaint),
+                icon: Icon(Icons.delete_outline_rounded, size: 19, color: KoruColors.inkFaint),
                 onPressed: () async {
                   final store = await ref.read(storeProvider.future);
                   await store.deleteClient(c.id!);
@@ -1324,68 +1327,68 @@ class _EventSheetState extends ConsumerState<_EventSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Change entry',
+            Text('Change entry',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             TextField(
               controller: _title,
-              decoration: const InputDecoration(labelText: 'Title'),
+              decoration: InputDecoration(labelText: 'Title'),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _date,
                     decoration:
-                        const InputDecoration(labelText: 'Date (YYYY-MM-DD)'),
+                        InputDecoration(labelText: 'Date (YYYY-MM-DD)'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: TextField(
                     controller: _time,
-                    decoration: const InputDecoration(labelText: 'Time (HH:mm)'),
+                    decoration: InputDecoration(labelText: 'Time (HH:mm)'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             TextField(
               controller: _location,
-              decoration: const InputDecoration(labelText: 'Where'),
+              decoration: InputDecoration(labelText: 'Where'),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             TextField(
               controller: _duration,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Length in minutes',
                 hintText: 'leave empty for the default',
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             DropdownButtonFormField<EventRecurrence?>(
               value: _recurrence,
-              decoration: const InputDecoration(labelText: 'Repeats'),
+              decoration: InputDecoration(labelText: 'Repeats'),
               items: [
-                const DropdownMenuItem(value: null, child: Text('Once')),
+                DropdownMenuItem(value: null, child: Text('Once')),
                 for (final r in EventRecurrence.values)
                   DropdownMenuItem(value: r, child: Text(_titleCase(r.phrase))),
               ],
               onChanged: (v) => setState(() => _recurrence = v),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Row(
               children: [
                 TextButton(
                   onPressed: _saving ? null : () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text('Cancel'),
                 ),
-                const Spacer(),
+                Spacer(),
                 FilledButton(
                   onPressed: _saving ? null : _save,
-                  child: const Text('Save'),
+                  child: Text('Save'),
                 ),
               ],
             ),

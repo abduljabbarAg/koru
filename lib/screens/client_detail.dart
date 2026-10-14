@@ -24,7 +24,7 @@ Client? _firstClient(Iterable<Client> xs) => xs.isEmpty ? null : xs.first;
 /// nowhere to show it, which is also why asking the model about a specific
 /// client was a guess.
 class ClientDetailScreen extends ConsumerWidget {
-  const ClientDetailScreen({super.key, required this.clientId});
+  ClientDetailScreen({super.key, required this.clientId});
 
   final int clientId;
 
@@ -46,8 +46,8 @@ class ClientDetailScreen extends ConsumerWidget {
       return Scaffold(
         appBar: AppBar(),
         body: clients == null
-            ? const Center(child: CircularProgressIndicator(color: KoruColors.leaf))
-            : const EmptyHint(
+            ? Center(child: CircularProgressIndicator(color: KoruColors.leaf))
+            : EmptyHint(
                 icon: Icons.person_off_outlined,
                 title: 'That client is gone',
                 body: 'They were deleted from the list.',
@@ -65,49 +65,49 @@ class ClientDetailScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           _statusPill(client, balance, currency),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           _moneySummary(client, balance, received[clientId] ?? 0, currency),
           if (client.isRetainer) ...[
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             _RetainerPanel(
               client: client,
               onAddNext: () => _addNextRetainerDeadline(context, ref, client),
             ),
           ],
           if (client.note != null && client.note!.trim().isNotEmpty) ...[
-            const SizedBox(height: 18),
-            const SectionLabel('Note'),
-            const SizedBox(height: 6),
+            SizedBox(height: 18),
+            SectionLabel('Note'),
+            SizedBox(height: 6),
             Text(
               client.note!,
-              style: const TextStyle(fontSize: 14, color: KoruColors.inkSoft, height: 1.5),
+              style: TextStyle(fontSize: 14, color: KoruColors.inkSoft, height: 1.5),
             ),
           ],
-          const SizedBox(height: 18),
+          SizedBox(height: 18),
           Row(
             children: [
-              const Expanded(child: SectionLabel('Payments')),
+              Expanded(child: SectionLabel('Payments')),
               if (payments.isNotEmpty)
                 Text(
                   '${payments.length} recorded',
-                  style: const TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+                  style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
                 ),
             ],
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           if (payments.isEmpty)
-            const Text(
+            Text(
               'Nothing recorded. Tap "Record payment" on the Business screen when '
               'money comes in.',
               style: TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4),
             )
           else
             ...payments.map((p) => _paymentRow(ref, p, currency)),
-          const SizedBox(height: 18),
-          const SectionLabel('Deadlines'),
-          const SizedBox(height: 4),
+          SizedBox(height: 18),
+          SectionLabel('Deadlines'),
+          SizedBox(height: 4),
           if (deadlines.isEmpty)
-            const Text(
+            Text(
               'Nothing scheduled for this client.',
               style: TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4),
             )
@@ -123,14 +123,14 @@ class ClientDetailScreen extends ConsumerWidget {
       'paid' => (KoruColors.leaf, KoruColors.leafSoft),
       'active' => (KoruColors.gold, KoruColors.goldSoft),
       'delivered' => (KoruColors.clay, KoruColors.claySoft),
-      _ => (KoruColors.inkSoft, const Color(0xFFEFEBE7)),
+      _ => (KoruColors.inkSoft, Color(0xFFEFEBE7)),
     };
     final late = c.isOverdueOn(DateTime.now());
     return Row(
       children: [
         KoruPill(label: c.status.toUpperCase(), color: color, background: background),
         if (balance > 0) ...[
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           KoruPill(
             label: '${money(balance)} ${currency.code} OUTSTANDING',
             color: late ? KoruColors.clay : KoruColors.gold,
@@ -138,8 +138,8 @@ class ClientDetailScreen extends ConsumerWidget {
           ),
         ],
         if (c.isRetainer) ...[
-          const SizedBox(width: 8),
-          const KoruPill(
+          SizedBox(width: 8),
+          KoruPill(
             label: 'RETAINER',
             color: KoruColors.leaf,
             background: KoruColors.leafSoft,
@@ -167,25 +167,25 @@ class ClientDetailScreen extends ConsumerWidget {
         children: [
           Text(
             balance > 0 ? money(balance) : money(received),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 30,
               fontWeight: FontWeight.w700,
               color: KoruColors.ink,
               letterSpacing: -0.8,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Text(
             balance > 0
                 ? '${currency.code} still owed'
                 : '${currency.code} received, nothing outstanding',
-            style: const TextStyle(fontSize: 13, color: KoruColors.inkFaint),
+            style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
           ),
           if (meta.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Text(
               meta.join('  ·  '),
-              style: const TextStyle(fontSize: 12.5, color: KoruColors.inkSoft),
+              style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft),
             ),
           ],
         ],
@@ -210,21 +210,21 @@ class ClientDetailScreen extends ConsumerWidget {
               children: [
                 Text(
                   '${money(p.amount)} ${currency.code}',
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   p.note == null
                       ? formatDate(p.date, DateTime.now())
                       : '${formatDate(p.date, DateTime.now())}  ·  ${p.note}',
-                  style: const TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
+                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
                 ),
               ],
             ),
           ),
           IconButton(
             tooltip: 'Undo this payment',
-            icon: const Icon(Icons.undo_rounded, size: 18, color: KoruColors.inkFaint),
+            icon: Icon(Icons.undo_rounded, size: 18, color: KoruColors.inkFaint),
             onPressed: () async {
               final store = await ref.read(storeProvider.future);
               await store.deletePayment(p.id!);
@@ -250,7 +250,7 @@ class ClientDetailScreen extends ConsumerWidget {
         children: [
           IconButton(
             tooltip: 'Mark ${d.title} done',
-            icon: const Icon(Icons.radio_button_unchecked_rounded, color: KoruColors.inkFaint),
+            icon: Icon(Icons.radio_button_unchecked_rounded, color: KoruColors.inkFaint),
             onPressed: () async {
               final store = await ref.read(storeProvider.future);
               await store.setDeadlineDone(d.id!, true);
@@ -262,8 +262,8 @@ class ClientDetailScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(d.title,
-                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 2),
+                    style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
+                SizedBox(height: 2),
                 Text(
                   late
                         ? 'was due ${formatDate(d.due, DateTime.now())}'
@@ -278,7 +278,7 @@ class ClientDetailScreen extends ConsumerWidget {
           ),
           IconButton(
             tooltip: 'Delete ${d.title}',
-            icon: const Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
+            icon: Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
             onPressed: () async {
               final store = await ref.read(storeProvider.future);
               await store.deleteDeadline(d.id!);
@@ -383,20 +383,20 @@ class _RetainerPanel extends ConsumerWidget {
                 size: 19,
                 color: late ? KoruColors.clay : KoruColors.leaf,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       '${money(client.monthly!)} ${currency.code} per month',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w600,
                         color: KoruColors.ink,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: TextStyle(
@@ -412,8 +412,8 @@ class _RetainerPanel extends ConsumerWidget {
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
                     onPressed: onAddNext,
-                    icon: const Icon(Icons.event_repeat_rounded, size: 17),
-                    label: const Text('Add next one to my list'),
+                    icon: Icon(Icons.event_repeat_rounded, size: 17),
+                    label: Text('Add next one to my list'),
                   ),
                 ),
             ],
