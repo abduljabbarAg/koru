@@ -780,7 +780,7 @@ class RichReply extends StatelessWidget {
 
   Widget _row(String marker, String body, TextStyle base, {required double indent}) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 3, left: 2),
+      padding: const EdgeInsets.only(bottom: 3, left: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
