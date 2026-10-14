@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/theme.dart';
@@ -12,8 +14,11 @@ void main() {
   /// WCAG relative luminance.
   double luminance(Color c) {
     double channel(double v) {
-      v /= 255.0;
-      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      final c = v / 255.0;
+      // Written out rather than as a ternary over `**`, which does not parse
+      // the way it reads.
+      if (c <= 0.04045) return c / 12.92;
+      return math.pow((c + 0.055) / 1.055, 2.4).toDouble();
     }
 
     return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);

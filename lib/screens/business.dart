@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../attention_bridge.dart';
 import '../currency.dart';
-import '../human_date.dart';
 import '../guide.dart';
+import '../human_date.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
