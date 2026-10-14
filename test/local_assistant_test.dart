@@ -308,4 +308,82 @@ void main() {
       expect(f.balanceOf(f.clients.single), 1500);
     });
   });
+
+  group('a typo still finds the client', () {
+    // People type names into speech and it comes out wrong far more often than
+    // it comes out right. "I do not have a client called Bial" is a
+    // confidently wrong answer to "how much does Bilal owe".
+    final facts = LocalFacts(clients: const [
+      Client(id: 1, name: 'Bilal', amount: 2000),
+      Client(id: 2, name: 'Acme Studio', amount: 900),
+    ]);
+    String ask(String q) =>
+        const LocalAssistant().answer(question: q, facts: facts).text;
+
+    test('a dropped letter still finds them', () {
+      expect(ask('how much does Bial owe'), contains('Bilal'));
+    });
+
+    test('a swapped pair still finds them', () {
+      expect(ask('how much does Biala owe'), contains('Bilal'));
+    });
+
+    test('the first part of a multi word name is enough', () {
+      expect(ask('how much does Acme owe'), contains('Acme Studio'));
+    });
+
+    test('a name that is simply not there is still refused', () {
+      // The bound is the point. An unbounded nearest-neighbour answers something
+      // for every input, so unrelated questions eventually return a balance.
+      final out = ask('how much does Zzzzzqqqq owe');
+      expect(out.toLowerCase(), anyOf(contains('do not have'), contains('no client')));
+    });
+
+    test('an exact match still wins over a near miss', () {
+      final two = LocalFacts(clients: const [
+        Client(id: 1, name: 'Bilal', amount: 100),
+        Client(id: 2, name: 'Bilal Jr', amount: 200),
+      ]);
+      final out = const LocalAssistant()
+          .answer(question: 'how much does Bilal owe', facts: two)
+          .text;
+      expect(out, contains('Bilal'));
+    });
+  });
+
+  group('a follow-up borrows the last question', () {
+    final facts = LocalFacts(
+      clients: const [Client(id: 1, name: 'Bilal', amount: 2000)],
+      deadlines: const [Deadline(id: 1, title: 'Invoice', due: '2026-10-20')],
+    );
+
+    String ask(String q, {String? previous}) => const LocalAssistant()
+        .answer(question: q, facts: facts, previousQuestion: previous).text;
+
+    test('a bare "what about next week" knows what it is about', () {
+      final out = ask('what about next week?', previous: 'how much does Bilal owe');
+      expect(out, contains('Bilal'));
+    });
+
+    test('without a previous turn there is no subject to borrow', () {
+      final out = ask('what about next week?');
+      expect(out, isNot(contains('Bilal')));
+    });
+
+    test('an explicit name in the new question still wins', () {
+      final two = LocalFacts(clients: const [
+        Client(id: 1, name: 'Bilal', amount: 100),
+        Client(id: 2, name: 'Acme', amount: 500),
+      ]);
+      final out = const LocalAssistant()
+          .answer(
+            question: 'how much does Acme owe',
+            facts: two,
+            previousQuestion: 'how much does Bilal owe',
+          )
+          .text;
+      expect(out, contains('Acme'));
+    });
+  });
+
 }

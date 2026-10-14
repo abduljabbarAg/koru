@@ -807,7 +807,20 @@ class ChatNotifier extends Notifier<ChatState> {
   /// Deterministic answers from the user's own records. No model, no network,
   /// no RAM. The default, because it works the instant the app opens.
   Future<Msg> _askBuiltIn(String q, RoutingDecision routing, ProfileStore store) async {
-    final answer = const LocalAssistant().answer(question: q, facts: await _facts(store));
+    // The last question before this one, so a follow-up that has no subject of
+    // its own can borrow one. Only the most recent user turn: the assistant
+    // never needs to reach further back, and looking further would let an
+    // unrelated old question supply the subject.
+    final priorUser = state.messages
+        .where((m) => m.role == MsgRole.user)
+        .map((m) => m.text)
+        .toList();
+    final previous = priorUser.length >= 2 ? priorUser[priorUser.length - 2] : null;
+    final answer = const LocalAssistant().answer(
+      question: q,
+      facts: await _facts(store),
+      previousQuestion: previous,
+    );
     return Msg(
       MsgRole.koru,
       answer.text,

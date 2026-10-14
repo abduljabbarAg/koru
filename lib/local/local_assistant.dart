@@ -28,8 +28,24 @@ class LocalAssistant {
   LocalAnswer answer({
     required String question,
     required LocalFacts facts,
+
+    /// The question before this one, if there was one.
+    ///
+    /// Needed because "what about next week?" has no subject of its own. It is
+    /// not passed in by the caller as a string of history because the assistant
+    /// only ever needs the one previous turn; threading a list through would
+    /// make every call site responsible for a rule that is not theirs.
+    String? previousQuestion,
   }) {
-    final q = RoutingDecisionNormaliser.fold(question);
+    final q = RoutingDecisionNormaliser.fold(
+      previousQuestion == null
+          ? question
+          // The previous subject is carried forward so "what about next week"
+          // still knows it was asked about Bilal, while the new question
+          // supplies the rest. Prepended, not appended, so an explicit name in
+          // the new question wins the match on word count.
+          : '$previousQuestion $question',
+    );
     // Arithmetic is matched against the raw words rather than the folded ones:
     // folding turns "2000 plus 500"'s operators into spaces and "15% of 2000"
     // into "15 of 2000", and a sum with its signs taken out is not a sum.
@@ -615,7 +631,80 @@ class LocalAssistant {
         bestWords = words.length;
       }
     }
+    if (best != null) return best;
+
+    // Nothing matched exactly. Before answering "I do not have a client called
+    // Bial", try to work out who was meant: people type names into speech and
+    // it comes out wrong far more often than it comes out right, and "no such
+    // client" is a confidently wrong answer to "how much does Bilal owe".
+    return _closestClient(q, list);
+  }
+
+  /// The client whose name is nearest to something in [q], if one is close
+  /// enough to be worth guessing.
+  ///
+  /// Bounded on purpose. An unbounded nearest-neighbour answers *something* for
+  /// every input, so "what is the weather" eventually returns a client's
+  /// balance. Past the threshold the honest answer is that no client matched.
+  static const _typoTolerance = 2;
+
+  Client? _closestClient(String q, List<Client> clients) {
+    if (clients.isEmpty) return null;
+    // Longest run of letters in the question, which is far more likely to be a
+    // name than any single word is.
+    final words = RegExp(r'[a-z]{3,}')
+        .allMatches(q.toLowerCase())
+        .map((m) => m.group(0)!)
+        .toList();
+    if (words.isEmpty) return null;
+
+    Client? best;
+    var bestDistance = 1 << 30;
+    for (final c in clients) {
+      final target = c.name.toLowerCase();
+      for (final w in words) {
+        // Compared against the whole name and each of its parts, because
+        // "acme" should find "Acme Studio" and not only an exact full match.
+        for (final candidate in [target, ...target.split(RegExp(r'\s+'))]) {
+          final d = _editDistance(w, candidate, _typoTolerance + 1);
+          if (d == null) continue;
+          if (d < bestDistance) {
+            bestDistance = d;
+            best = c;
+          }
+        }
+      }
+    }
+    // A total of zero was handled by the exact pass, so anything within the
+    // tolerance is a genuine near miss rather than a second look at a match.
+    if (best == null || bestDistance > _typoTolerance) return null;
     return best;
+  }
+
+  /// Levenshtein distance, or null once [limit] is exceeded.
+  ///
+  /// Bailing out early matters: this runs over every client for every word in
+  /// the question, and the full matrix for a long name is wasted work the
+  /// moment the answer is known to be "too far".
+  static int? _editDistance(String a, String b, int limit) {
+    if ((a.length - b.length).abs() > limit) return null;
+    var prev = List<int>.generate(b.length + 1, (i) => i);
+    var cur = List<int>.filled(b.length + 1, 0);
+    for (var i = 1; i <= a.length; i++) {
+      cur[0] = i;
+      var rowMin = cur[0];
+      for (var j = 1; j <= b.length; j++) {
+        final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
+        cur[j] = [cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost]
+            .reduce((x, y) => x < y ? x : y);
+        if (cur[j] < rowMin) rowMin = cur[j];
+      }
+      if (rowMin > limit) return null;
+      final t = prev;
+      prev = cur;
+      cur = t;
+    }
+    return prev[b.length] > limit ? null : prev[b.length];
   }
 
   /// Everything about one named client.
