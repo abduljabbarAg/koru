@@ -319,4 +319,34 @@ void main() {
     });
   });
 
+
+  group('an entry survives a round trip through storage', () {
+    test('the repeat rule is stored and read back', () async {
+      final store = await openTestStore();
+      final id = await store.addEvent(const CalendarEvent(
+        date: '2026-10-12',
+        time: '09:00',
+        title: 'Standup',
+        durationMin: 30,
+        recurrence: EventRecurrence.weekly,
+        created: '2026-10-01T00:00:00.000',
+      ));
+      final back = await store.event(id);
+      expect(back, isNotNull);
+      expect(back!.title, 'Standup');
+      expect(back.durationMin, 30);
+      expect(back.recurrence, EventRecurrence.weekly);
+    });
+
+    test('an entry with no repeat stays a single entry', () async {
+      final store = await openTestStore();
+      final id = await store.addEvent(const CalendarEvent(
+        date: '2026-10-12',
+        title: 'Once',
+        created: '2026-10-01T00:00:00.000',
+      ));
+      expect((await store.event(id))!.recurrence, isNull);
+    });
+  });
+
 }
