@@ -705,7 +705,7 @@ class WriteResolver {
           from: DateTime(today.year, today.month, today.day),
         );
         final hit = _matchEvent(events, intent.title);
-        if (hit == null) {
+        if (hit.isEmpty) {
           return WriteResolution.problem(
             'I do not have an entry called "${intent.title}". '
             'Say "schedule ${intent.title}" and I will.',
