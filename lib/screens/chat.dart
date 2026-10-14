@@ -754,7 +754,7 @@ class RichReply extends StatelessWidget {
         continue;
       }
 
-      final heading = RegExp(r'^(#{1,3})\s+(.*)\$').firstMatch(trimmed);
+      final heading = RegExp(r'^(#{1,3})\s+(.*)$').firstMatch(trimmed);
       if (heading != null) {
         final level = heading.group(1)!.length;
         out.add(Padding(

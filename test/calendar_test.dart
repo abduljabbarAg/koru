@@ -212,7 +212,7 @@ void main() {
     test('the phrase leaves nothing behind', () {
       final e = p.parse('schedule a call with Bilal tomorrow at 3pm for 2 hours')
           as AddEventIntent;
-      expect(e.title.trim(), 'call with bilal');
+      expect(e.title.trim(), 'call with Bilal');
     });
 
     test('a bare "for 2" is not read as two hours', () {

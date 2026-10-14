@@ -114,6 +114,9 @@ void main() {
   /// Scoped to the message list. Walking every Text in the tree picks up the
   /// "Koru" label in the chat bar, which is the kind of test that passes for
   /// the wrong reason and then fails for a real one.
+  /// "8:28 am", the shape a bubble timestamp takes.
+  final _clockPattern = RegExp(r"^\d{1,2}:\d{2}\s?(am|pm)$");
+
   String lastReply(WidgetTester tester) {
     final texts = tester
         .widgetList<Text>(find.descendant(
@@ -123,6 +126,11 @@ void main() {
         .map((t) => t.data)
         .whereType<String>()
         .where((t) => t.trim().isNotEmpty)
+        // A bubble now carries its time inside it, after the message, so the
+        // last Text is the clock rather than the reply. Matched by shape
+        // rather than dropped by length, so a short reply like "no" is still
+        // found.
+        .where((t) => !_clockPattern.hasMatch(t.trim()))
         .toList();
     return texts.isEmpty ? '' : texts.last;
   }
