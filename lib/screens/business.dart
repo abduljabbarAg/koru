@@ -1007,14 +1007,13 @@ Row(
     WidgetRef ref,
     CalendarEvent e,
   ) async {
-    final store = await ref.read(storeProvider.future);
     final changed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: KoruColors.surface,
       builder: (_) => _EventSheet(event: e),
     );
-    if (changed != true) return;
+    if (!context.mounted || changed != true) return;
     ref.invalidate(eventsProvider);
   }
 
@@ -1367,7 +1366,7 @@ class _EventSheetState extends ConsumerState<_EventSheet> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<EventRecurrence?>(
-              initialValue: _recurrence,
+              value: _recurrence,
               decoration: const InputDecoration(labelText: 'Repeats'),
               items: [
                 const DropdownMenuItem(value: null, child: Text('Once')),

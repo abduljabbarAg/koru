@@ -111,6 +111,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Attached to the controller rather than wrapped in a NotificationListener,
+    // because the controller is already here and one listener is fewer moving
+    // parts than a wrapper that has to forward notifications it does not use.
+    _scroll.addListener(_trackScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatProvider.notifier).load();
     });
@@ -118,6 +122,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _scroll.removeListener(_trackScroll);
     _input.dispose();
     _scroll.dispose();
     _focus.dispose();
@@ -244,10 +249,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? _intro()
                 : ListView.builder(
                     controller: _scroll,
-                    onNotification: (n) {
-                      if (n is ScrollUpdateNotification) _onScroll();
-                      return false;
-                    },
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     itemCount: st.messages.length,
                     itemBuilder: (_, i) => _ChatBubble(
@@ -299,7 +300,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// token should scroll the view or be left for later.
   bool _following = true;
 
-  void _onScroll() {
+  void _trackScroll() {
     if (!_scroll.hasClients) return;
     final pos = _scroll.position;
     // A finger tolerance, because "at the bottom" during a drag is never
@@ -622,7 +623,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                           ],
                         ],
                       )
-                    : _RichReply(
+                    : RichReply(
                         text: m.text,
                         muted: m.pending,
                       ),
@@ -683,9 +684,9 @@ class _JumpToNewestButton extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
+        // 28 plus the icon is the smallest comfortable target, and this is a
+        // control people hit with a thumb while reading one-handed.
         child: const Padding(
-          // 48 is the smallest comfortable touch target, and this is a target
-          // people hit with a thumb while reading one-handed.
           padding: EdgeInsets.all(14),
           child: Icon(Icons.keyboard_arrow_down_rounded,
               size: 22, color: KoruColors.inkSoft),
@@ -706,8 +707,11 @@ class _JumpToNewestButton extends StatelessWidget {
 /// time, so an unterminated "**" has to render as literal asterisks until the
 /// closing pair turns up, or the answer visibly flickers between two layouts as
 /// it is written. A pattern that does not close is therefore not styled at all.
-class _RichReply extends StatelessWidget {
-  const _RichReply({required this.text, required this.muted});
+/// Public because it is testable on its own and is the shape any reply in the
+/// app should have. A renderer this fussy about streaming is not something to
+/// verify only through a chat bubble.
+class RichReply extends StatelessWidget {
+  const RichReply({super.key, required this.text, required this.muted});
 
   final String text;
   final bool muted;
@@ -729,13 +733,11 @@ class _RichReply extends StatelessWidget {
   List<Widget> _blocks(String raw, TextStyle base) {
     final out = <Widget>[];
     final lines = raw.split('\n');
-    var ordered = 0;
 
     for (final line in lines) {
       final trimmed = line.trimRight();
       if (trimmed.trim().isEmpty) {
         if (out.isNotEmpty) out.add(const SizedBox(height: 8));
-        ordered = 0;
         continue;
       }
 
@@ -744,16 +746,13 @@ class _RichReply extends StatelessWidget {
 
       if (bullet != null) {
         out.add(_row('\u2022', trimmed.substring(bullet.end), base, indent: 16));
-        ordered = 0;
         continue;
       }
       if (numbered != null) {
         final n = RegExp(r'^\s*(\d+)').firstMatch(trimmed)!.group(1)!;
         out.add(_row('$n.', trimmed.substring(numbered.end), base, indent: 22));
-        ordered++;
         continue;
       }
-      ordered = 0;
 
       final heading = RegExp(r'^(#{1,3})\s+(.*)\$').firstMatch(trimmed);
       if (heading != null) {
@@ -761,10 +760,7 @@ class _RichReply extends StatelessWidget {
         out.add(Padding(
           padding: const EdgeInsets.only(top: 6, bottom: 2),
           child: _InlineText(
-            _inline(heading.group(2)!, base.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: level == 1 ? 16 : 15,
-            )),
+            _inline(heading.group(2)!),
             style: base.copyWith(
               fontWeight: FontWeight.w700,
               fontSize: level == 1 ? 16 : 15,
@@ -776,7 +772,7 @@ class _RichReply extends StatelessWidget {
 
       out.add(Padding(
         padding: const EdgeInsets.only(bottom: 2),
-        child: _InlineText(_inline(trimmed, base), style: base),
+        child: _InlineText(_inline(trimmed), style: base),
       ));
     }
     return out;
@@ -793,33 +789,31 @@ class _RichReply extends StatelessWidget {
             child: Text(marker,
                 style: base.copyWith(color: KoruColors.inkFaint)),
           ),
-          Expanded(child: _InlineText(_inline(body, base), style: base)),
+          Expanded(child: _InlineText(_inline(body), style: base)),
         ],
       ),
     );
   }
 
-  /// The one inline pass: **bold** and *italic*.
+  /// The one inline pass: **bold**, *italic* and `code`.
   ///
-  /// Bold is only applied when a closing pair exists on the same line. An
-  /// unclosed run while a reply is still streaming would otherwise restyle the
-  /// rest of the paragraph every token, which reads as the app breaking.
-  static String _inline(String s, TextStyle base) {
-    String styled(String input, String marker, TextStyle style) {
-      final escaped = RegExp.escape(marker);
-      final re = RegExp('$escaped([^$escaped]{1,200})$escaped');
-      return input.replaceAllMapped(re, (m) => '<b>${m.group(1)}</b>');
-    }
-
-    var out = s;
-    out = styled(out, '**', base.copyWith(fontWeight: FontWeight.w700));
-    // Single asterisks, but only where a double was not already consumed.
+  /// Rewrites the matched text to a tag the next pass knows how to style.
+  /// Anything with no closing pair is left alone: an unclosed run while a reply
+  /// is still streaming would otherwise restyle the rest of the paragraph on
+  /// every token, which reads as the app breaking.
+  static String _inline(String s) {
+    // The two passes cannot nest: bold is consumed first, and the italic
+    // pattern refuses to match anything still wrapped in asterisks.
+    var out = s.replaceAllMapped(
+      RegExp(r'\*\*([^*]{1,200}?)\*\*'),
+      (m) => '<b>${m.group(1)}</b>',
+    );
     out = out.replaceAllMapped(
-      RegExp(r'(?<!\*)\*([^*]{1,200})\*(?!\*)'),
+      RegExp(r'(?<!\*)\*([^*]{1,200}?)\*(?!\*)'),
       (m) => '<i>${m.group(1)}</i>',
     );
     out = out.replaceAllMapped(
-      RegExp(r'`([^`]{1,200})`'),
+      RegExp(r'`([^`]{1,200}?)`'),
       (m) => '<c>${m.group(1)}</c>',
     );
     return out;

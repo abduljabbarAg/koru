@@ -271,7 +271,7 @@ void main() {
 
   group('a repeating entry rolls forward', () {
     test('a weekly entry occurs on the right days', () {
-      final e = CalendarEvent(
+      const e = CalendarEvent(
         id: 1,
         date: '2026-10-12',
         time: '09:00',
@@ -288,7 +288,7 @@ void main() {
       // Adding 30 days to 31 January lands on 2 March, which is the wrong
       // meeting. This is the whole reason recurrence is a date arithmetic and
       // not a duration.
-      final e = CalendarEvent(
+      const e = CalendarEvent(
         id: 2,
         date: '2026-01-31',
         title: 'Rent',
@@ -300,13 +300,13 @@ void main() {
     });
 
     test('a non-recurring entry only occurs on its own day', () {
-      final e = CalendarEvent(id: 3, date: '2026-10-12', title: 'Once');
+      const e = CalendarEvent(id: 3, date: '2026-10-12', title: 'Once');
       expect(e.occurrences(DateTime(2026, 10, 1), DateTime(2026, 11, 1)).length, 1);
       expect(e.occurrences(DateTime(2026, 11, 1), DateTime(2026, 12, 1)), isEmpty);
     });
 
     test('the walk forward is capped so a daily entry cannot run away', () {
-      final e = CalendarEvent(
+      const e = CalendarEvent(
         id: 4,
         date: '2020-01-01',
         title: 'Daily',
