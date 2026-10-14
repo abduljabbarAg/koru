@@ -259,7 +259,12 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.0"
+          # 3.24 could not build this app. flutter_timezone 5.x needs meta
+          # ^1.16, which Flutter 3.24 does not carry, so dependency resolution
+          # failed before anything was compiled; and CardThemeData only exists
+          # from 3.27, so the theme was written against a newer Flutter than CI
+          # was running. 3.27.4 is the smallest version that satisfies both.
+          flutter-version: "3.27.4"
           channel: stable
           # Only the pub dependencies are cached, not the 763 MB Flutter SDK.
           #
