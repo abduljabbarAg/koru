@@ -118,18 +118,36 @@ void main() {
   final clockPattern = RegExp(r'^\d{1,2}:\d{2}\s?(am|pm)$');
 
   String lastReply(WidgetTester tester) {
-    final texts = tester
-        .widgetList<Text>(find.descendant(
+    final inList = find.descendant(
+      of: find.byType(ListView),
+      matching: find.byType(Text),
+    );
+    // A reply is rendered rather than printed, so it arrives as a Text.rich and
+    // its plain `data` is null. Both forms are read, or every reply in the app
+    // is invisible to this helper and it silently returns whatever badge text
+    // happened to be last.
+    final plain = tester.widgetList<Text>(inList).map((t) => t.data);
+    final rich = tester
+        .widgetList<RichText>(find.descendant(
           of: find.byType(ListView),
-          matching: find.byType(Text),
+          matching: find.byType(RichText),
         ))
-        .map((t) => t.data)
+        .map((r) => r.text.toPlainText());
+    // A reply is a rendered Text.rich, so its plain `data` is null. Reading
+    // both forms into one list would lose the on-screen order, so the rendered
+    // ones win outright: they *are* the reply, and the plain Texts around them
+    // are badges, engine names and the user's own bubbles.
+    final rendered = rich
+        .where((t) => t.trim().isNotEmpty)
+        .toList();
+    if (rendered.isNotEmpty) return rendered.last;
+
+    final texts = plain
         .whereType<String>()
         .where((t) => t.trim().isNotEmpty)
-        // A bubble now carries its time inside it, after the message, so the
-        // last Text is the clock rather than the reply. Matched by shape
-        // rather than dropped by length, so a short reply like "no" is still
-        // found.
+        // A bubble carries its time inside it, after the message. Matched by
+        // shape rather than dropped by length, so a reply as short as "no" is
+        // still found.
         .where((t) => !clockPattern.hasMatch(t.trim()))
         .toList();
     return texts.isEmpty ? '' : texts.last;
