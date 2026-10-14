@@ -1,12 +1,12 @@
 /// Domain models, kept out of the storage layer so the assistant and the UI can
 /// reason about them without importing sqflite.
-
-import 'local/write_intent.dart';
 ///
 /// Fitness is gone: the table survives for older installs, but nothing reads or
 /// writes it, and a freelancer tool that also tracks body measurements was two
 /// products in one.
 library;
+
+import 'local/write_intent.dart';
 
 const kClientStatuses = ['lead', 'active', 'delivered', 'paid', 'lost'];
 
@@ -325,21 +325,24 @@ class CalendarEvent {
           ? const []
           : [this];
     }
+    final start = DateTime.tryParse(date);
+    if (start == null) return const [];
     final out = <CalendarEvent>[];
-    var cursor = DateTime.tryParse(date);
-    if (cursor == null) return const [];
+    // Copied into a non-nullable local because it is reassigned inside the
+    // loop, which takes the null promotion off the original.
+    var at = start;
     // Guarded on both ends: a recurrence created in the past still has to be
     // walked forward, and the cap stops a daily meeting filling the list to the
     // end of time.
     var guard = 0;
-    while (cursor.isBefore(to) && guard < cap * 40) {
-      if (!cursor.isBefore(DateTime(from.year, from.month, from.day))) {
-        out.add(copyWith(date: _iso(cursor)));
+    while (at.isBefore(to) && guard < cap * 40) {
+      if (!at.isBefore(DateTime(from.year, from.month, from.day))) {
+        out.add(copyWith(date: _iso(at)));
         if (out.length >= cap) break;
       }
-      final nextDate = r.next(cursor);
+      final nextDate = r.next(at);
       if (nextDate == null) break;
-      cursor = nextDate;
+      at = nextDate;
       guard++;
     }
     return out;
@@ -349,6 +352,25 @@ class CalendarEvent {
       '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
+
+  /// A copy with [date] moved and everything else kept.
+  ///
+  /// Narrow on purpose. Occurrence expansion only ever changes the date, and a
+  /// general copyWith on a domain model is how two places end up disagreeing
+  /// about what the defaults are.
+  CalendarEvent copyWith({String? date}) => CalendarEvent(
+        id: id,
+        date: date ?? this.date,
+        time: time,
+        title: title,
+        location: location,
+        note: note,
+        clientId: clientId,
+        durationMin: durationMin,
+        recurrence: recurrence,
+        synced: synced,
+        created: created,
+      );
 
   Map<String, Object?> toMap() => {
         if (id != null) 'id': id,

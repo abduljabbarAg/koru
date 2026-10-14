@@ -232,7 +232,7 @@ class ProposedEvent extends ProposedWrite {
   String get summary {
     final at = time == null ? date : '$date at $time';
     final place = location == null ? '' : ', at $location';
-    final len = durationMin == null ? '' : ', for ${durationMin} min';
+    final len = durationMin == null ? '' : ', for $durationMin min';
     final every = recurrence == null ? '' : ', ${recurrence!.phrase}';
     return 'Add "$title" to your calendar, $at$place$len$every';
   }
@@ -311,7 +311,7 @@ class ProposedEditEvent extends ProposedWrite {
     final bits = <String>[];
     if (date != null) bits.add('to $date');
     if (time != null) bits.add('to $time');
-    if (durationMin != null) bits.add('length ${durationMin} min');
+    if (durationMin != null) bits.add('length $durationMin min');
     if (location != null) bits.add('place $location');
     if (recurrence != null) bits.add(recurrence!.phrase);
     return 'Change "${event.title}": ${bits.isEmpty ? 'nothing' : bits.join(', ')}';
@@ -737,7 +737,7 @@ class WriteResolver {
   List<CalendarEvent> _matchEvent(List<CalendarEvent> events, String typed) {
     final needle = typed.trim().toLowerCase();
     if (needle.isEmpty) return const [];
-    bool score(CalendarEvent e) {
+    int score(CalendarEvent e) {
       final t = e.title.toLowerCase();
       if (t == needle) return 3;
       if (t.startsWith(needle)) return 2;

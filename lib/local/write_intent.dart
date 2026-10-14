@@ -23,7 +23,7 @@
 ///
 /// Resolved by which cue appears earliest, not by trying one kind at a time and
 /// taking the first that matches.
-enum _Kind { deadline, event, payment, client, edit, delete, none }
+enum _Kind { deadline, event, eventEdit, payment, client, edit, delete, none }
 
 /// What the user appears to have asked to record.
 sealed class WriteIntent {
