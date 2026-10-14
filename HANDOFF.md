@@ -221,9 +221,17 @@ sentence that could plausibly write the wrong thing.
 
 ## Data model
 
-`schemaVersion = 4`. All migrations are additive, so existing installs migrate
-without data loss.
+`schemaVersion = 7`. All migrations are additive, so existing installs migrate
+without data loss. It was 4 for several releases and this file was never
+updated, which is exactly the kind of stale note that costs somebody an
+afternoon.
 
+- `projects(id, name, kind, client_id?, target?, plan?, progress,
+  progress_note?, status)` — client and personal work. `client_id` is always
+  null for a personal project.
+- `project_notes(id, project_id, body, created)`.
+- `events(id, client_id?, title, date, time?, location?, duration_min?, synced)`
+  — the calendar, mirrored one-way to the phone's own calendar when asked.
 - `payments(client_id, amount, date, note)` — the ledger.
 - `deadlines(client_id?, title, due, done)` — own table so they sort by urgency
   across all clients.

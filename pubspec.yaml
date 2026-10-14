@@ -1,7 +1,11 @@
 name: koru
 description: Koru - a local-first AI companion that knows your life and your business.
 publish_to: "none"
-version: 0.2.0+2
+# versionCode has to strictly increase for an update to install over an existing
+# build. It sat at 2 across every 1.x release, so no APK could ever upgrade
+# another in place and every install needed a manual uninstall first. 1.3.0 is
+# the next real release, so the code jumps past everything shipped so far.
+version: 1.3.0+13
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

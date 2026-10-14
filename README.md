@@ -22,8 +22,9 @@ chat bar who blinks, thinks and waves when you tap him.
 | Tab | What it is for |
 | --- | --- |
 | Talk | Ask questions, and say things like "add client Bilal for 2000". |
-| Business | Clients, balances, deadlines, the pipeline, and a capacity meter. |
-| Settings | Currency, client capacity, the cloud key, backup and deletion. |
+| Business | Clients, balances, deadlines, the calendar, the pipeline, and a capacity meter. |
+| Projects | Client and personal work, each with a target, progress and a running note. |
+| Settings | Currency, client capacity, the cloud key, the engine and model, backup and deletion. |
 
 Fitness, learning and drafts were removed. Each existed with zero writers, so
 the drafts screen showed nothing forever. The tables survive for older installs

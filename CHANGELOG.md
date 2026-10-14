@@ -1,6 +1,39 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
+
+Notifications now open something, and a release can no longer be signed with
+the debug key by accident.
+
+### Fixed
+
+- **Tapping a notification did nothing.** The link was parsed, decoded and
+  tested, and then never read: `takeLink` had no callers anywhere in the app, so
+  a tap started the process and dropped the request. Which the user cannot
+  distinguish from the notification never having fired. A link that was already
+  waiting is taken on cold start, and one that arrives while the app is open is
+  listened for; a client link opens that client's own screen.
+- **Three colours failed WCAG AA for body text.** Measured: gold 2.98:1 on
+  cream, `inkFaint` 3.68:1, clay 3.79:1, against 4.5:1 required. Gold was the
+  worst and it marks an active client, so the least legible colour in the app
+  was carrying the status people read to decide who to chase. All six text
+  colours now clear 4.5:1 on both backgrounds, with a test that runs the real
+  arithmetic.
+- **No release could be upgraded in place.** `versionCode` sat at 2 across every
+  1.x release, so Android refused every update and each new APK needed a manual
+  uninstall first. Now 1.3.0+13.
+- **A release signed with the debug key now fails the build** instead of
+  succeeding quietly. It used to fall back so CI stayed green, which meant an
+  APK called "release" could be debug-signed with nothing saying so.
+- **Koru's mascot is back to how it was.** The beard and glasses are gone from
+  both the generator and the fallback portrait, and the atlas, splash and crest
+  were regenerated: all three are byte-identical to their pre-beard form.
+
+### Docs
+
+- `schemaVersion` in HANDOFF said 4; it has been 7 for several releases. The
+  projects, project notes and events tables are now listed too.
+- The README feature table was missing Projects and the calendar section.
 
 ### Added
 
