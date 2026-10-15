@@ -111,7 +111,6 @@ class ProfileStore {
         due TEXT,
         lead_source TEXT,
         note TEXT,
-        phone TEXT,
         created TEXT NOT NULL
       )
     ''');

@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/models.dart';
+import 'package:koru/screens/today.dart';
 
 Client _c(String? phone) => Client(name: 'Acme', created: '', phone: phone);
 
 void main() {
+  _messages();
   group('Client.whatsappLink', () {
     test('builds a wa.me link with the message encoded', () {
       final link = _c('07700900123')
@@ -78,6 +80,33 @@ void main() {
       final back = Client.fromMap(_c(null).toMap());
       expect(back.phone, isNull);
       expect(back.name, 'Acme');
+    });
+  });
+}
+void _messages() {
+  group('followUpMessage', () {
+    test('names the client and the figure', () {
+      // The whole point of automating the wording. A chase that says "about the
+      // invoice" needs the user to go and look the figure up, and a chase that
+      // needs preparing never happens.
+      final c = _c('07700900123');
+      final m = followUpMessage(c, 1250.5);
+      expect(m, contains('Acme'));
+      expect(m, contains('1250.50'));
+    });
+
+    test('does not apologise for being owed money', () {
+      final m = followUpMessage(_c('07700900123'), 900);
+      expect(m.toLowerCase(), isNot(contains('sorry')));
+      expect(m.toLowerCase(), isNot(contains('apologi')));
+    });
+
+    test('degrades gracefully with no figure', () {
+      final m = followUpMessage(_c('07700900123'), null);
+      expect(m, contains('Acme'));
+      expect(m, contains('outstanding'));
+      expect(m, isNot(contains('null')));
+      expect(followUpMessage(_c('07700900123'), 0), isNot(contains('0.00')));
     });
   });
 }

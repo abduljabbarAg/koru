@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../attention.dart';
 import '../currency.dart';
@@ -224,13 +225,13 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _AttentionRow extends StatelessWidget {
+class _AttentionRow extends ConsumerWidget {
   const _AttentionRow({required this.item});
 
   final AttentionItem item;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final urgent = item.kind == AttentionKind.overdueMoney ||
         item.kind == AttentionKind.dueToday ||
         item.kind == AttentionKind.eventToday;
@@ -254,9 +255,90 @@ class _AttentionRow extends StatelessWidget {
           Text(item.detail,
               style: TextStyle(
                   fontSize: 12.5, color: KoruColors.inkFaint)),
+          if (_followUpLink(ref) != null) ...[
+            const SizedBox(height: 9),
+            _FollowUpButton(link: _followUpLink(ref)!),
+          ],
         ],
       ),
     );
+  }
+
+  /// The WhatsApp link for this item, or null when there is nothing to send.
+  Client? _client(AttentionItem i, WidgetRef ref) {
+    if (i.clientId == null) return null;
+    final list = ref.watch(clientsProvider).valueOrNull ?? const <Client>[];
+    for (final c in list) {
+      if (c.id == i.clientId) return c;
+    }
+    return null;
+  }
+
+  String? _followUpLink(WidgetRef ref) {
+    final c = _client(item, ref);
+    if (c == null) return null;
+    return c.whatsappLink(message: followUpMessage(c, item.owing));
+  }
+}
+
+/// The polite-but-clear message, built once so the wording is testable rather
+/// than living inside a widget.
+///
+/// Two rules. It names the figure, because "about the invoice" makes the user
+/// look it up and a chase that needs preparation never happens. And it does not
+/// apologise, because an apology for being owed money is a strange thing to send.
+String followUpMessage(Client c, double? owing) {
+  final who = c.name.trim();
+  if (owing == null || owing <= 0) {
+    return 'Hi $who, a quick one about an outstanding invoice.';
+  }
+  final money = owing.toStringAsFixed(2);
+  return 'Hi $who, a quick reminder that \u{00A3}$money is still outstanding. '
+      'Happy to resend the invoice if useful.';
+}
+
+class _FollowUpButton extends StatelessWidget {
+  const _FollowUpButton({required this.link});
+
+  /// Built by the row, which already has the client in hand.
+  final String link;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: () => _open(context, link),
+        icon: const Icon(Icons.chat_outlined, size: 17),
+        label: const Text('Follow up on WhatsApp'),
+        style: TextButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+
+  /// Opens WhatsApp with the message typed out; the user presses send.
+  ///
+  /// The app never sends anything itself. That is why this needs no API key,
+  /// no business account and no network permission of its own — the same deal
+  /// as tapping an email address.
+  Future<void> _open(BuildContext context, String link) async {
+    final uri = Uri.parse(link);
+    var launched = false;
+    try {
+      launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      launched = false;
+    }
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp is not installed on this device.')),
+      );
+    }
   }
 }
 

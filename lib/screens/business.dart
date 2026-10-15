@@ -45,6 +45,7 @@ class BusinessScreen extends ConsumerWidget {
     final name = TextEditingController(text: existing?.name ?? '');
     final amount = TextEditingController(text: existing?.amount?.toStringAsFixed(0) ?? '');
     final source = TextEditingController(text: existing?.leadSource ?? '');
+    final phone = TextEditingController(text: existing?.phone ?? '');
     final note = TextEditingController(text: existing?.note ?? '');
     final monthly = TextEditingController(text: existing?.monthly?.toStringAsFixed(0) ?? '');
     final deposit =
@@ -112,6 +113,17 @@ class BusinessScreen extends ConsumerWidget {
             controller: source,
             decoration: const InputDecoration(
                 labelText: 'Lead source', hintText: 'referral, twitter, ads...'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Phone',
+              hintText: '07700 900123',
+              helperText: 'Used only to open WhatsApp when you tap follow up.',
+              helperMaxLines: 2,
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -256,6 +268,7 @@ class BusinessScreen extends ConsumerWidget {
         amount: agreed,
         due: overrideDue == null ? null : _fmtDate(overrideDue!),
         leadSource: source.text.trim().isEmpty ? null : source.text.trim(),
+        phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
         note: note.text.trim().isEmpty ? null : note.text.trim(),
         created: existing?.created ?? DateTime.now().toIso8601String(),
         monthly: double.tryParse(monthly.text.trim()),

@@ -47,12 +47,28 @@ class AttentionItem {
   /// worst thing is always first.
   final double weight;
 
+  /// The client this item is about, when it is about one.
+  ///
+  /// Carried as plain data rather than looked up from the title, because the
+  /// row needs the client's phone number to offer a follow-up and there is no
+  /// reliable way back from "Acme owes you" to Acme. Null for everything that
+  /// is not client-shaped.
+  final int? clientId;
+
+  /// How much is outstanding, when the item is money.
+  ///
+  /// Kept alongside [clientId] so the follow-up message can name the figure
+  /// instead of saying "the invoice" and making the user look it up.
+  final double? owing;
+
   const AttentionItem({
     required this.kind,
     required this.title,
     required this.detail,
     required this.target,
     this.weight = 0.5,
+    this.clientId,
+    this.owing,
   });
 }
 
@@ -114,6 +130,8 @@ class Attention {
             '${overdueSince(c.parsedDue, now)}',
         target: AttentionTarget.client,
         weight: 1.0,
+        clientId: c.id,
+        owing: owing,
       ));
     }
 
