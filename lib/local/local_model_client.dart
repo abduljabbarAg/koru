@@ -85,8 +85,8 @@ class LocalModelClient {
 
   /// Whether something is answering on the other end.
   ///
-  /// Tries `/health` first because that is what glen exposes, then `/v1/models`
-  /// for servers that only speak the OpenAI surface.
+  /// Tries `/health` first — both glen and llama-server expose it — then
+  /// `/v1/models` for servers that only speak the OpenAI surface.
   Future<LocalModelResult> check(String endpoint) async {
     final base = normaliseEndpoint(endpoint);
     for (final path in const ['/health', '/v1/models']) {
@@ -112,10 +112,12 @@ class LocalModelClient {
   /// it only acts on at the end.
   ///
   /// [onProgress] covers the window before the first token. Prefill reads the
-  /// caller's records and takes seconds on a phone, and glen sends it as SSE
-  /// comments so the stream stays OpenAI compatible. Without this the user
-  /// watches a blank bubble for the entire prefill and then sees tokens arrive,
-  /// which reads as one long hang followed by a drip rather than as work.
+  /// caller's records and takes seconds on a phone. glen sent it as SSE
+  /// comments so the stream stayed OpenAI compatible; llama-server does not, so
+  /// on those builds the progress callback simply never fires and the user
+  /// watches a blank bubble for the whole prefill. That is a graceful
+  /// degradation, not a bug, but it is also the difference between "working"
+  /// and "working on glen" and should not be mistaken for one.
   Future<LocalModelResult> chatStream({
     required String endpoint,
     required String model,

@@ -880,7 +880,7 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
                   controller: _modelId,
                   decoration: const InputDecoration(
                     labelText: 'Model id',
-                    hintText: 'qwen2.5-0.5b-instruct',
+                    hintText: 'Bonsai-1.7B-Q1_0',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -961,13 +961,13 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
 
   /// Picks a different local model and restarts the engine on it.
   ///
-  /// The bundled 0.5B is not the best thing this phone can run, but it is the
-  /// fastest, and the choice depends on what you are asking: a sharper model
-  /// three times slower is a good trade for a hard question and a bad one for
-  /// everything. So both are offered and neither is removed.
+  /// The bundled Bonsai is not the only thing this phone can run, and the
+  /// choice depends on what you are asking: a sharper model several times
+  /// slower is a good trade for a hard question and a bad one for everything.
+  /// So both are offered and neither is removed.
   Future<void> _choose(LocalModelFile model) async {
     final store = await ref.read(storeProvider.future);
-    final isBundled = model.label.startsWith('Qwen2.5');
+    final isBundled = model.label.contains('(bundled)');
     await store.put('model_path', isBundled ? '' : model.path);
     if (mounted) {
       setState(() {
@@ -1065,9 +1065,9 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
         'local_model',
         jsonEncode(LocalModelConfig(
           endpoint: result.endpoint!,
-          modelId: 'qwen2.5-0.5b-instruct',
+          modelId: BundledEngine.bundledModelId,
           label: 'Bundled',
-          sizeBytes: 491400032,
+          sizeBytes: BundledEngine.bundledModelBytes,
         ).toMap()),
       );
       ref.invalidate(engineProvider);
@@ -1124,8 +1124,8 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
           ),
           const SizedBox(height: 8),
           Text(
-            'A 0.5B model already inside this app. The first start copies it out '
-            'of the package, so expect it to take a minute.',
+            'A 1-bit 1.7B model already inside this app. The first start copies '
+            'it out of the package, so expect it to take a minute.',
             style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
           ),
               const SizedBox(height: 14),

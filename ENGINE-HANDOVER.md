@@ -3,9 +3,11 @@
 Status as of `925a019` (pushed to `main`). This file covers **only** the
 engine swap. Everything else lives in `HANDOFF.md`.
 
-**Nothing here has been run end to end.** The code is written and committed; no
-APK has been built and the app has not been launched. Treat this as
-"ready to build", not "verified".
+**Partly verified, and the distinction matters.** Verified on this machine: the
+engine cross-compiles from llama.cpp b11574 into a static AArch64 binary with
+no glibc references, and the APK carrying both it and the model builds. Not yet
+verified: the app starting the engine *on the phone*. That check is the whole
+game and nothing below pretends it has been passed.
 
 ---
 
@@ -24,6 +26,9 @@ target phone, all three candidates on the same 231 MB
 llama.cpp answered *"The capital of France is"* with *Paris*, fluently, at
 roughly 15x the speed of the engine it replaced.
 
+`GGML_TYPE_Q1_0 = 41` is in stock ggml since before this tag — glen's
+"unknown dtype 41" was a missing case in glen, not an exotic format.
+
 **No new integration was needed.** Koru has never had an FFI surface. It execs
 a binary out of `nativeLibraryDir` via `ProcessBuilder` and talks to it over
 loopback HTTP/SSE. `lib/local/local_model_client.dart` already documented the
@@ -36,61 +41,72 @@ Files touched:
   `libllama-server.so --model … --port … --host 127.0.0.1 --threads 2
   --no-warmup`. All `Glen_*` environment variables removed.
 - `tool/build_engine_android.sh` — was `build_glen_android.sh`, rewritten for
-  llama.cpp + CMake + NDK.
-- `.github/workflows/apk.yml` — the `glen` job is now `engine`.
+  llama.cpp + CMake + NDK. Uses the NDK's own `android.toolchain.cmake`, not
+  the `ggml/android-ndk.cmake` that exists in no release, and builds
+  `BUILD_SHARED_LIBS=OFF`: one self-contained executable has no loader path
+  to get wrong. Stripped with `llvm-strip`: 187 MB unstripped → 13.8 MB.
+- `.github/workflows/apk.yml` — the `glen` job is now `engine`, clones
+  llama.cpp at b11574, and fetches the Bonsai model (sha256
+  `3d7c6c90…f7e3`) instead of Qwen.
 - `third_party/glen` and `third_party/portllm` — deleted.
+
+---
+
+## Build and install, from this machine
+
+```bash
+# engine (~3 min): NDK 28.2 at ~/Android/Sdk/ndk/28.2.13676358
+NDK_ROOT=~/Android/Sdk/ndk/28.2.13676358 \
+LLAMA_CPP_DIR=/tmp/opencode/llama.cpp \
+  ./tool/build_engine_android.sh
+# -> android/app/src/main/jniLibs/arm64-v8a/libllama-server.so (13.8 MB)
+
+# APK: the model must be at assets/models/Bonsai-1.7B-Q1_0.gguf first
+export JAVA_HOME=~/jdk21 ANDROID_HOME=~/Android/Sdk
+flutter build apk --release
+# -> build/app/outputs/flutter-apk/app-release.apk (~265 MB, model included)
+
+~/Android/Sdk/platform-tools/adb install -r build/app/outputs/flutter-apk/app-release.apk
+```
+
+The engine and the `.gguf` are gitignored. A fresh clone has to rebuild and
+redownload both, which is why both steps are scripted rather than remembered.
 
 ---
 
 ## Do these next
 
-### 1. Build the engine
+### 1. ~~Build the engine~~ Done. See above.
 
-```bash
-NDK_ROOT=/path/to/ndk ./tool/build_engine_android.sh
-```
+### 2. ~~Turn bundling on and build the APK~~ Done locally. `BUNDLE_LOCAL_ENGINE`
+stays `"false"` in `.github/workflows/apk.yml:23` because GitHub Actions quota
+is exhausted; a local build puts the same two files in the same places.
 
-Expects llama.cpp sources at `third_party/llama.cpp`, or set `LLAMA_CPP_DIR`.
-See the script's header — it is explicit about what it wants and why.
+### 3. ~~Confirm `llama-server` survives extraction and execs~~ **Still open.**
+This was the one risk the previous handover named and it has not been retired
+by anything done on this machine. What *has* been checked: the binary is
+AArch64, statically linked apart from `libm`/`libdl`/`libc`, and carries no
+glibc symbols — the failure modes that would stop an exec outright. The
+remaining unknown is Android's own refusal to exec, and only a phone can
+answer it. See "Build and install" above; the engine log lands in
+`filesDir/llama-server.log` and the Settings screen surfaces its tail.
 
-### 2. Turn bundling on and build the APK
-
-`BUNDLE_LOCAL_ENGINE` is `"false"` in `.github/workflows/apk.yml:23`. It gates
-downloading the engine into `jniLibs/arm64-v8a` and the model into
-`assets/models/`. Set it `"true"` for a local-engine build.
-
-### 3. The one thing I could not verify
-
-**Confirm `llama-server` survives extraction from `jniLibs` and execs.**
-Everything else is mechanical, but this is the actual risk:
-
-- Since Android 10 an app targeting API 29+ may not exec a file it wrote
-  itself. Files extracted from the APK into `nativeLibraryDir` remain
-  executable — that is the whole reason the engine ships as a native library.
-- `build.gradle.kts:75-79` already sets `useLegacyPackaging = true` for exactly
-  this, so the mechanism is in place. It has just never been exercised with
-  llama.cpp's binary.
-- Failure looks like `exec failed for …` in the engine log, which the Dart side
-  reports as "no bundled engine".
-
-I would bet on this working. I have not seen it work.
-
-### 4. Check the shared libraries travel
-
-The build script copies `libllama.so` and the ggml backends beside
-`libllama-server.so`. Verify the loader finds them at runtime; a missing
-`libggml-cpu-android_armv8.0_1.so` is the most likely silent failure.
+### 4. ~~Check the shared libraries travel~~ Moot.
+The build is static (`BUILD_SHARED_LIBS=OFF`): only `libm`, `libdl`, `libc`
+in NEEDED, no `libggml-*` to lose. readelf confirms AArch64 and zero glibc
+references.
 
 ### 5. Re-measure on device
 
 Through the app, not the CLI. Confirm roughly 4.6 t/s and that the answer is
 sensible. If generation is ~0.1 t/s, check `--threads 2` actually survived.
 
-### 6. Model choice
+### 6. ~~Model choice~~ Made.
 
-The shipped model is `qwen2.5-0.5b-instruct-q4_k_m.gguf` (491 MB). The
-benchmark above used Bonsai-1.7B-Q1_0 (231 MB). Decide which ships — the
-smaller Q1_0 is roughly half the size and was the reason for this work.
+`Bonsai-1.7B-Q1_0.gguf` (231 MB) ships, not `qwen2.5-0.5b-instruct-q4_k_m.gguf`
+(491 MB). Same resident size, sharper answers, half the download. The Qwen
+filename is still accepted by `modelFile()` so an install that already unpacked
+the old file keeps working; it is no longer bundled.
 
 ---
 

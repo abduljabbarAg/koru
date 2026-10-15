@@ -7,7 +7,7 @@ android/.gradle/
 *.iml
 .DS_Store
 
-# Built by CI, never committed: the arm64 glen binary and the model file.
+# Built by CI, never committed: the arm64 llama.cpp binary and the model file.
 # The directory itself is tracked, because pubspec points at it and Flutter
 # refuses to build when an asset directory does not exist.
 android/app/src/main/jniLibs/

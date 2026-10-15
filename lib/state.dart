@@ -359,9 +359,9 @@ class ChatNotifier extends Notifier<ChatState> {
           'local_model',
           jsonEncode(LocalModelConfig(
             endpoint: result.endpoint!,
-            modelId: 'qwen2.5-0.5b-instruct',
+            modelId: BundledEngine.bundledModelId,
             label: 'Bundled',
-            sizeBytes: 491400032,
+            sizeBytes: BundledEngine.bundledModelBytes,
           ).toMap()),
         );
         ref.invalidate(localModelProvider);
@@ -395,7 +395,7 @@ class ChatNotifier extends Notifier<ChatState> {
       );
       await client.chatStream(
         endpoint: endpoint,
-        model: 'qwen2.5-0.5b-instruct',
+        model: BundledEngine.bundledModelId,
         system: system,
         // Any question at all. Only the system prompt is what has to match.
         question: 'ready?',

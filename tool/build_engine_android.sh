@@ -40,24 +40,45 @@ if [ ! -d "$TOOLCHAIN" ]; then
   exit 1
 fi
 
-# NEON only. This phone is ARMv8.0 with no SDOT, and ggml's runtime CPU
-# detection picks the right variant from the shared libs we ship anyway.
-cmake -S "$SRC" -B "$BUILD" -DCMAKE_TOOLCHAIN_FILE="$SRC/ggml/android-ndk.cmake" \
+# The NDK's own toolchain file, not one inside llama.cpp: the script used to
+# point at ggml/android-ndk.cmake, which existed in no release we build
+# against, so the configure step could never have succeeded.
+#
+# Statically linked on purpose. An app that execs a shared-library binary from
+# nativeLibraryDir needs the loader to find libllama.so and the ggml backends
+# beside it, and the dynamic linker of a *separate exec'd process* does not
+# search the app's library directory the way the app process itself does. One
+# self-contained executable has no loader path to get wrong, which retires the
+# risk the handover called "confirm the shared libraries travel".
+cmake -S "$SRC" -B "$BUILD" \
+  -DCMAKE_TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM="android-$API" \
   -DCMAKE_BUILD_TYPE=Release \
   -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=ON \
-  -DLLAMA_CURL=OFF -DGGML_OPENMP=OFF -DLLAMA_BUILD_SHARED=ON >/dev/null
+  -DGGML_OPENMP=OFF -DBUILD_SHARED_LIBS=OFF >/dev/null
 
 cmake --build "$BUILD" --target llama-server -j"$(nproc)" >/dev/null
 
 mkdir -p "$(dirname "$OUT")"
-# The server links against libllama and the ggml backends, so those have to
-# travel in the APK too. Copying them beside it is what keeps the exec working;
-# nativeLibraryDir is already on the loader path for anything unpacked there.
 cp "$BUILD/bin/llama-server" "$OUT"
+# Shared libraries only if the build produced them; a static build is the
+# normal case now, and an unmatched glob under `set -e` used to be fatal.
 for so in "$BUILD"/bin/lib*.so; do
+  [ -e "$so" ] || continue
   cp "$so" "$(dirname "$OUT")/"
 done
+# Strip. The unstripped binary is 187 MB of debug symbols that Android will
+# never read and every install would carry; the same binary stripped is a
+# fraction of that. `llvm-strip` because NDK r28 dropped the per-target strip
+# names in favour of the LLVM one.
+STRIP="$TOOLCHAIN/bin/llvm-strip"
+if [ -x "$STRIP" ]; then
+  "$STRIP" --strip-unneeded "$OUT"
+  for so in "$(dirname "$OUT")"/*.so; do
+    [ -e "$so" ] || continue
+    "$STRIP" --strip-unneeded "$so"
+  done
+fi
 chmod +x "$OUT"
 
 echo "built $(wc -c < "$OUT") bytes -> $OUT"
