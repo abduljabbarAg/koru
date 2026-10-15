@@ -31,7 +31,7 @@ import javax.crypto.spec.GCMParameterSpec
  * Since Android 10, an app targeting API 29 or newer is not allowed to exec a
  * file it wrote itself. Anything unpacked into the app's data directory is off
  * limits. Files extracted from the APK into nativeLibraryDir are still
- * executable, which is why glen ships as a native library rather than as an
+ * executable, which is why the engine ships as a native library rather than as an
  * asset, and why it is launched from there instead of being copied somewhere
  * more convenient.
  *
@@ -179,14 +179,14 @@ class MainActivity : FlutterActivity() {
     // ---------------------------------------------------------------- engine
 
     /**
-     * The bundled glen binary.
+     * The bundled engine binary.
      *
      * Lives in nativeLibraryDir because that is the only place this app can
      * still exec from on a modern Android. null when the APK was built without
      * it, which the Dart side treats as "no bundled engine" rather than an error.
      */
     private fun engineBinary(): File? {
-        val candidate = File(applicationInfo.nativeLibraryDir, "libglen.so")
+        val candidate = File(applicationInfo.nativeLibraryDir, "libllama-server.so")
         return if (candidate.exists() && candidate.canExecute()) candidate else null
     }
 
@@ -199,7 +199,7 @@ class MainActivity : FlutterActivity() {
      * never created. A boolean cannot tell you that; these fields can.
      */
     private fun engineStatus(): Map<String, Any?> {
-        val candidate = File(applicationInfo.nativeLibraryDir, "libglen.so")
+        val candidate = File(applicationInfo.nativeLibraryDir, "libllama-server.so")
         val usable = candidate.exists() && candidate.canExecute()
         val model = modelFile()
         // modelFile() has already been called above, so a first run has
@@ -207,11 +207,11 @@ class MainActivity : FlutterActivity() {
         val reason = when {
             usable -> null
             !candidate.exists() ->
-                "libglen.so is not in ${applicationInfo.nativeLibraryDir}. " +
+                "libllama-server.so is not in ${applicationInfo.nativeLibraryDir}. " +
                     "Native libraries were probably not extracted, so there is " +
                     "nothing on disk to run."
             !candidate.canExecute() ->
-                "libglen.so is at ${candidate.absolutePath} but is not marked executable."
+                "libllama-server.so is at ${candidate.absolutePath} but is not marked executable."
             else -> "unknown"
         }
         return mapOf(
@@ -229,7 +229,7 @@ class MainActivity : FlutterActivity() {
      * The model, copied out of the APK's assets on first use.
      *
      * Assets cannot be mmapped directly out of the compressed APK, so the file is
-     * materialised into the app's own storage where glen's mmap loader can use
+     * materialised into the app's own storage where the engine's mmap loader can use
      * it.
      */
     /**
@@ -248,7 +248,7 @@ class MainActivity : FlutterActivity() {
     )
 
     /**
-     * Every model glen could be pointed at, bundled first.
+     * Every model the engine could be pointed at, bundled first.
      *
      * Listed rather than hardcoded because the bundled 0.5B is no longer the
      * best thing this phone can run: a 1.7B ternary model fits in about 600 MB
@@ -301,14 +301,14 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * Launches glen and reports whether the process is alive.
+     * Launches the engine and reports whether the process is alive.
      *
      * The first launch copies several hundred megabytes out of the APK, so it is
      * allowed to take a while. The Dart side polls /health rather than trusting
      * the return value, because a process can be alive and still be loading.
      */
     private fun startEngine(requestedPort: Int, chosenModel: String? = null): Boolean {
-        val log = File(filesDir, "glen.log")
+        val log = File(filesDir, "llama-server.log")
 
         // Every failure below writes why into the log. Returning a bare false
         // made "would not start" mean the same thing whether Android refused the
@@ -331,28 +331,31 @@ class MainActivity : FlutterActivity() {
             log.delete()
             val builder = ProcessBuilder(
                 binary.absolutePath,
-                "--serve",
+                "--port",
                 requestedPort.toString(),
+                "--host",
+                "127.0.0.1",
             )
             // The chosen model if it is one we listed, otherwise the bundled one.
         // Validated against the list rather than trusted, because this path comes
-        // from Dart and points at a file glen will mmap and execute maths over.
+        // from Dart and points at a file the engine will mmap and run maths over.
         val chosen = availableModels().firstOrNull { it.second.absolutePath == chosenModel }?.second
             ?: model
-        builder.environment()["Glen_MODEL"] = chosen.absolutePath
-            // Tools off: the bundled engine must not be able to run shell
-            // commands or reach the network on its own.
-            builder.environment()["Glen_TOOLS"] = "0"
-            builder.environment()["Glen_CTX"] = "1024"
-            // Measured on this phone with the bundled 0.5B, decoding one token:
-            // 1 thread 412ms, 2 threads 397ms, 4 threads 255-259ms across three
-            // runs, 8 threads anywhere between 213ms and 511ms. glen otherwise
-            // defaults to available_parallelism().min(8), and on this memory
-            // constrained device that pool contends with itself: fast on a good
-            // run, slow on a bad one, which is what a caller sees as the model
-            // being erratic. Four threads is both quicker on average and
-            // repeatable, which matters more than a lucky best case.
-            builder.environment()["Glen_THREADS"] = "4"
+            // The model goes on the command line rather than in the
+            // environment, validated against the list we enumerated. This path
+            // comes from Dart and points at a file the engine will mmap and run
+            // arithmetic over.
+        val chosen = availableModels().firstOrNull { it.second.absolutePath == chosenModel }?.second
+            ?: model
+        builder.command(binary.absolutePath, "--model", chosen.absolutePath,
+            "--port", requestedPort.toString(), "--host", "127.0.0.1",
+            // Two threads, and that is measured rather than guessed: on this
+            // phone, decoding one token of the 1.7B Bonsai runs 3.87 t/s on one
+            // thread and 4.65 t/s on two, then collapses to 0.13 t/s on four.
+            // The extra threads do not help this CPU; they contend for the same
+            // cores the model is already using.
+            "--threads", "2",
+            "--no-warmup")
             builder.redirectErrorStream(true)
             builder.redirectOutput(log)
             builder.directory(filesDir)
@@ -390,7 +393,7 @@ class MainActivity : FlutterActivity() {
             }
             engine = null
             return fail(
-                "glen exited immediately ($how).\n" +
+                "the engine exited immediately ($how).\n" +
                     "model: ${model.absolutePath} (${model.length()} bytes)\n" +
                     "stderr and stdout follow:\n${log.readText()}",
             )
@@ -415,7 +418,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun engineLog(): String {
-        val log = File(filesDir, "glen.log")
+        val log = File(filesDir, "llama-server.log")
         if (!log.exists()) return ""
         return try {
             log.readText().takeLast(4000)

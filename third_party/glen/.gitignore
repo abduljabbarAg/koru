@@ -1,7 +1,0 @@
-/target/
-models/
-*.gguf
-*.bin
-/tmp/
-.env
-.git-credentials

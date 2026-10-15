@@ -25,13 +25,13 @@ env:
 jobs:
   # Builds the on-device inference engine for Android arm64. Separate from the
   # APK job because it needs the NDK and a Rust toolchain, and because a failure
-  # here should say "glen would not build" rather than "the app would not build".
-  glen:
+  # here should say "the engine would not build" rather than "the app would not build".
+  engine:
     # Not required. If the cross-compile ever breaks, the app still ships: it
     # falls back to the built-in engine and Settings says the build has no
     # bundled model.
     #
-    # Note: continue-on-error makes needs.glen.result report "success" even when
+    # Note: continue-on-error makes needs.engine.result report "success" even when
     # the job failed, so the model step gates on this job's output instead, which
     # is only set when a binary was actually produced.
     continue-on-error: true
@@ -54,18 +54,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: build glen for android
+      - name: build the engine for android
         id: build
         run: |
           set -eu
-          chmod +x tool/build_glen_android.sh
-          # Builds from the copy vendored in third_party/glen, so no token and no
+          chmod +x tool/build_engine_android.sh
+          # Builds from the copy vendored in third_party/llama.cpp, so no token and no
           # public window on another repository is needed. The script locates the
           # NDK itself from the clang the setup action put on PATH.
-          ./tool/build_glen_android.sh
+          ./tool/build_engine_android.sh
           {
-            echo "path=android/app/src/main/jniLibs/arm64-v8a/libglen.so"
-            echo "size=$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libglen.so)"
+            echo "path=android/app/src/main/jniLibs/arm64-v8a/libllama-server.so"
+            echo "size=$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libllama-server.so)"
           } >> "$GITHUB_OUTPUT"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
 
@@ -73,19 +73,19 @@ jobs:
       # every SSE chunk, and the sampler that picks every token. Eight source
       # files and no test module meant a malformed stream could only be found
       # by watching a phone.
-      - name: test glen
-        run: cargo test --manifest-path third_party/glen/Cargo.toml
+      - name: test the engine
+        run: cargo test --manifest-path third_party/llama.cpp/Cargo.toml
 
       # Prove the binary is what we think it is.
       #
-      # There is no interpreter check here, because glen links statically and a
+      # There is no interpreter check here, because the engine links against its own
       # static binary has no PT_INTERP at all. The earlier version grepped for one
       # and failed every time. What actually matters is the architecture, and that
       # nothing pulled glibc in, which is what an Android device would reject.
       - name: confirm the binary is arm64 and not glibc linked
         run: |
           set -eu
-          FILE=android/app/src/main/jniLibs/arm64-v8a/libglen.so
+          FILE=android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
 
           readelf -h "$FILE" | grep -q 'AArch64' || {
             echo "not an aarch64 binary"; exit 1; }
@@ -114,8 +114,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: libglen-android-arm64
-          path: android/app/src/main/jniLibs/arm64-v8a/libglen.so
+          name: llama-server-android-arm64
+          path: android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
           retention-days: 7
 
       # Published first, so the APK job has an engine even when artifacts are
@@ -126,7 +126,7 @@ jobs:
         continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/src/main/jniLibs/arm64-v8a/libglen.so
+          files: android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
           fail_on_unmatched_files: false
           body: |
             The on-device inference engine. The APK job picks this up if the
@@ -134,31 +134,31 @@ jobs:
 
   apk:
     runs-on: ubuntu-latest
-    needs: [glen]
+    needs: [engine]
     steps:
       - uses: actions/checkout@v4
 
       - name: fetch the bundled engine from the artifact store
-        # Missing when the glen job could not produce or upload a binary, and
+        # Missing when the engine job could not produce or upload a binary, and
         # skipped entirely when the local engine is not being bundled. The APK
         # builds either way; the app then reports it has no bundled model.
         if: env.BUNDLE_LOCAL_ENGINE == 'true'
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: libglen-android-arm64
+          name: llama-server-android-arm64
           path: android/app/src/main/jniLibs/arm64-v8a
 
       # Second route to the same 450 KB file, and the one that works when the
       # artifact quota is full. Costs one API call and is why a tagged build
       # still gets a working engine.
       - name: fetch the engine from the release if the artifact is missing
-        if: ${{ env.BUNDLE_LOCAL_ENGINE == 'true' && startsWith(github.ref, 'refs/tags/v') && hashFiles('android/app/src/main/jniLibs/arm64-v8a/libglen.so') == '' }}
+        if: ${{ env.BUNDLE_LOCAL_ENGINE == 'true' && startsWith(github.ref, 'refs/tags/v') && hashFiles('android/app/src/main/jniLibs/arm64-v8a/libllama-server.so') == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          dest="android/app/src/main/jniLibs/arm64-v8a/libglen.so"
+          dest="android/app/src/main/jniLibs/arm64-v8a/libllama-server.so"
           # jniLibs is not in the checkout, because the binary is a build
           # product. Without this the write below fails with curl error 23.
           mkdir -p "$(dirname "$dest")"
@@ -176,7 +176,7 @@ jobs:
           for attempt in 1 2 3 4 5 6; do
             asset_id=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
               "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
-              | jq -r '.assets[]? | select(.name == "libglen.so") | .id' || true)
+              | jq -r '.assets[]? | select(.name == "libllama-server.so") | .id' || true)
             case "$asset_id" in
               ''|null) asset_id="" ;;
             esac
@@ -191,7 +191,7 @@ jobs:
           # step below decides that from the file on disk. Failing here instead
           # would take out the whole APK for a missing optional binary.
           if [ -n "$asset_id" ]; then
-            echo "fetching libglen.so as asset $asset_id"
+            echo "fetching libllama-server.so as asset $asset_id"
             if curl -fsSL --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
                  -H "Accept: application/octet-stream" \
                  "https://api.github.com/repos/${{ github.repository }}/releases/assets/$asset_id" \
@@ -209,7 +209,7 @@ jobs:
 
       # Checked on disk rather than trusted from the job output.
       #
-      # The glen job sets its output when the binary is *built*, which happens
+      # The engine job sets its output when the binary is *built*, which happens
       # before it is uploaded or fetched. When both routes fail, the output still
       # says yes, the model gets downloaded, and the result is a 464 MB APK
       # carrying a 491 MB model and no way to run it. A small app that admits it
@@ -219,7 +219,7 @@ jobs:
         id: engine
         run: |
           set -eu
-          if [ -f android/app/src/main/jniLibs/arm64-v8a/libglen.so ]; then
+          if [ -f android/app/src/main/jniLibs/arm64-v8a/libllama-server.so ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
@@ -344,12 +344,12 @@ jobs:
           # off a tag when artifact storage is full or unavailable.
           files: |
             build/app/outputs/flutter-apk/koru-arm64-v8a.apk
-            android/app/src/main/jniLibs/arm64-v8a/libglen.so
+            android/app/src/main/jniLibs/arm64-v8a/libllama-server.so
           generate_release_notes: true
           body: |
             ## Koru ${{ github.ref_name }}
 
-            This build bundles the glen inference engine and a 0.5B model, so the
+            This build bundles the llama.cpp inference engine and a 0.5B model, so the
             on-device model engine needs no separate setup.
 
             Install the arm64 APK. The debug signing key is still in use, so an
