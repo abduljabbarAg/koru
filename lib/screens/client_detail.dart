@@ -154,6 +154,10 @@ class ClientDetailScreen extends ConsumerWidget {
       if (c.amount != null) '${money(c.amount!)} ${currency.code} invoiced',
       if (received > 0) '${money(received)} received',
       if (c.leadSource != null) 'via ${c.leadSource}',
+      // Shown where the number can be checked. A phone number that only
+      // exists in the editor and appears nowhere else is indistinguishable
+      // from one that failed to save.
+      if (c.phone != null) c.phone!,
     ];
     return Container(
       padding: const EdgeInsets.all(16),
