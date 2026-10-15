@@ -37,6 +37,9 @@ class Client {
   /// When the work was invoiced. The anchor the terms count from.
   final String? invoicedOn;
 
+  /// Contact number, stored only to build a WhatsApp link. Never sent anywhere.
+  final String? phone;
+
   /// Money that arrives every month by standing agreement, rather than against
   /// a fresh invoice. Null means this is not a retainer.
   ///
@@ -59,7 +62,24 @@ class Client {
     this.deposit,
     this.termsDays,
     this.invoicedOn,
+    this.phone,
   });
+
+  /// A WhatsApp link for chasing this client, or null when there is no number.
+  ///
+  /// Built as `wa.me`, which opens WhatsApp with the message already typed.
+  /// The user still presses send — the app never sends anything, which is the
+  /// whole reason this works without an account, an API key or a business
+  /// profile. Same shape as tapping a mailto: link.
+  ///
+  /// Returns null unless the number looks like a real one. A number that fails
+  /// these checks would produce a link that opens WhatsApp and then goes
+  /// nowhere, which is worse than showing no button at all.
+  String? whatsappLink({required String message}) {
+    final digits = (phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 7 || digits.length > 15) return null;
+    return 'https://wa.me/$digits?text=${Uri.encodeComponent(message)}';
+  }
 
   bool get isRetainer => monthly != null && monthly! > 0;
 
@@ -76,6 +96,7 @@ class Client {
         if (deposit != null) 'deposit': deposit,
         if (termsDays != null) 'terms_days': termsDays,
         if (invoicedOn != null) 'invoiced_on': invoicedOn,
+        if (phone != null) 'phone': phone,
       };
 
   /// Row for an UPDATE.
@@ -110,6 +131,7 @@ class Client {
         deposit: (m['deposit'] as num?)?.toDouble(),
         termsDays: (m['terms_days'] as int?),
         invoicedOn: m['invoiced_on'] as String?,
+        phone: m['phone'] as String?,
       );
 
   Client copyWith({

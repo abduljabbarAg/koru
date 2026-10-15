@@ -31,7 +31,7 @@ class ProfileStore {
   /// than no test, so [transaction] and [close] refuse clearly instead.
   final Database? _root;
 
-  static const int schemaVersion = 8;
+  static const int schemaVersion = 9;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -47,6 +47,7 @@ class ProfileStore {
         if (v >= 6) await _migrateToV6(d);
         if (v >= 7) await _migrateToV7(d);
         if (v >= 8) await _migrateToV8(d);
+        if (v >= 9) await _migrateToV9(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
@@ -56,6 +57,7 @@ class ProfileStore {
         if (from < 6) await _migrateToV6(d);
         if (from < 7) await _migrateToV7(d);
         if (from < 8) await _migrateToV8(d);
+        if (from < 9) await _migrateToV9(d);
       },
     );
     return ProfileStore(db);
@@ -68,6 +70,17 @@ class ProfileStore {
   /// renumber what is already stored.
   static Future<void> _migrateToV8(Database d) async {
     await d.execute('ALTER TABLE events ADD COLUMN recurrence TEXT');
+  }
+
+  /// A phone number on the client.
+  ///
+  /// Nullable and additive, so a client added before this keeps working with no
+  /// number on file. It is only used to build a WhatsApp link — nothing is
+  /// uploaded, no account is connected, and the app never sends anything by
+  /// itself. The number goes into a link the user taps and finishes themselves,
+  /// which is the same deal as tapping an email address.
+  static Future<void> _migrateToV9(Database d) async {
+    await d.execute('ALTER TABLE business ADD COLUMN phone TEXT');
   }
 
   static Future<void> _createV1(Database d) async {
@@ -98,6 +111,7 @@ class ProfileStore {
         due TEXT,
         lead_source TEXT,
         note TEXT,
+        phone TEXT,
         created TEXT NOT NULL
       )
     ''');

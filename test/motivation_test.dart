@@ -20,6 +20,22 @@ void main() {
       );
     });
 
+    test('the list is a real library, not a placeholder', () {
+      // A quote that repeats after a fortnight makes the feature a joke.
+      final seen = <String>{};
+      for (var d = 0; d < 120; d++) {
+        seen.add(quoteFor(DateTime(2026, 1, 1).add(Duration(days: d))).text);
+      }
+      expect(seen.length, greaterThanOrEqualTo(100));
+    });
+
+    test('every day in a long run lands on a real quote', () {
+      for (var d = 0; d < 400; d++) {
+        expect(quoteFor(DateTime(2024, 1, 1).add(Duration(days: d))).text.trim(),
+            isNotEmpty);
+      }
+    });
+
     test('rotates rather than repeating one line forever', () {
       // A month of mornings on one quote is the failure mode when the index is
       // derived from something coarser than the day.
