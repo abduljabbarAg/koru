@@ -91,15 +91,10 @@ const List<Quote> _islamic = [
   Quote('The most beloved of deeds to Allah are the most consistent, even if small.', 'Prophet Muhammad ﷺ', tradition: 'al-Bukhari 6464; Muslim 783'),
   Quote('He is not one of us who does not feel compassion for our weaker brothers.', 'Prophet Muhammad ﷺ', tradition: 'Abridged, al-Bukhari 6013'),
   Quote('The strong man is not the one who overcomes people by his strength, but the one who controls himself while in anger.', 'Prophet Muhammad ﷺ', tradition: 'al-Bukhari 6114; Muslim 2609'),
-  Quote('Give the worker his wages before his sweat dries.', 'Prophet Muhammad ﷺ', tradition: 'Ibn Majah 2443'),
-  Quote('The best of you are those who are most useful to others.', 'Prophet Muhammad ﷺ', tradition: 'al-Tirmidhi 2410'),
   Quote('Do not envy what your brother has, for it was not given to you, and it was not denied from him either.', 'Prophet Muhammad ﷺ', tradition: 'al-Bukhari 5026'),
-  Quote('Take advantage of the five before five: your youth before your old age, your health before your illness, your wealth before your poverty, your free time before your busyness, and your life before your death.', 'Prophet Muhammad ﷺ', tradition: 'al-Hakim 1/56'),
   Quote('The reward of the good is the good itself.', 'Prophet Muhammad ﷺ', tradition: 'al-Bukhari 6571'),
   Quote('Whosoever believes in Allah and the Last Day, let him speak good or remain silent.', 'Prophet Muhammad ﷺ', tradition: 'al-Bukhari 6018; Muslim 47'),
   Quote('Tawbah is not for those who commit sin and then repent — tawbah is for those who commit sin and then *do not* repent.', 'Khaled ibn al-Zahdān, may Allah have mercy on him'),
-  Quote('Indeed, Allah loves that when one of you does a job he does it perfectly.', 'Prophet Muhammad ﷺ', tradition: 'Narrated in Musnad Ahmad 22997'),
-  Quote('Your body is a vessel. Fill it with knowledge or leave it empty.', 'Prophet Muhammad ﷺ', tradition: 'Weak chain — do not ship without review'),
 
 ];
 
