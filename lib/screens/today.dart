@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../attention.dart';
 import '../currency.dart';
 import '../models.dart';
+import '../motivation.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -60,6 +61,8 @@ class TodayScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
+                _MorningLine(),
+                const SizedBox(height: 14),
                 _Summary(items: list),
                 const SizedBox(height: 18),
                 if (overdue.isNotEmpty) ...[
@@ -376,6 +379,41 @@ class _AllClear extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The one quiet line at the top of the morning.
+///
+/// Below the summary rather than above it, on purpose: the reason to open this
+/// app is what is overdue, and a quote in first position pushes that down the
+/// screen. Italic and low-contrast so it reads as an aside rather than another
+/// task, and it carries no interaction because there is nothing to do with it.
+class _MorningLine extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final q = quoteFor(DateTime.now());
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            q.text,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontStyle: FontStyle.italic,
+                  color: KoruColors.inkSoft,
+                ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            q.by,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: KoruColors.inkSoft,
+                ),
+          ),
+        ],
       ),
     );
   }
