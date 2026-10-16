@@ -34,8 +34,8 @@ class BusinessScreen extends ConsumerWidget {
         'paid' => KoruColors.leafSoft,
         'active' => KoruColors.goldSoft,
         'delivered' => KoruColors.claySoft,
-        'lost' => const Color(0xFFEFEBE7),
-        _ => const Color(0xFFEFEBE7),
+        'lost' => KoruColors.surfaceAlt,
+        _ => KoruColors.surfaceAlt,
       };
 
   Future<void> _edit(BuildContext context, WidgetRef ref, {Client? existing}) async {
@@ -557,7 +557,7 @@ class BusinessScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _edit(context, ref),
         backgroundColor: KoruColors.leaf,
-        foregroundColor: Colors.white,
+        foregroundColor: KoruColors.onAccent,
         icon: const Icon(Icons.add_rounded),
         label: const Text('Client'),
       ),

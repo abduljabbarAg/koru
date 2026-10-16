@@ -454,7 +454,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: IconButton(
               icon: Icon(
                 busy ? Icons.stop_rounded : Icons.arrow_upward_rounded,
-                color: Colors.white,
+                color: KoruColors.onAccent,
                 size: busy ? 26 : 22,
               ),
               onPressed: busy
@@ -608,10 +608,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
                         children: [
                           Text(
                             m.text,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
                               height: 1.45,
-                              color: Colors.white,
+                              color: KoruColors.onAccent,
                             ),
                           ),
                           if (m.time != null) ...[
@@ -620,7 +620,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                               _clock(m.time!),
                               style: TextStyle(
                                 fontSize: 10.5,
-                                color: Colors.white.withValues(alpha: 0.75),
+                                color: KoruColors.onAccent.withValues(alpha: 0.75),
                               ),
                             ),
                           ],

@@ -29,6 +29,9 @@ class KoruColors {
   static Color get claySoft => _active.claySoft;
   static Color get gold => _active.gold;
   static Color get goldSoft => _active.goldSoft;
+  static Color get surfaceAlt => _active.surfaceAlt;
+  static Color get onAccent => _active.onAccent;
+  static Color get shadow => _active.shadow;
 
   /// Darkened from #8A7F78.
   ///
@@ -69,6 +72,9 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
     required this.claySoft,
     required this.gold,
     required this.goldSoft,
+    required this.surfaceAlt,
+    required this.onAccent,
+    required this.shadow,
   });
 
   final Color ink;
@@ -83,6 +89,9 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
   final Color claySoft;
   final Color gold;
   final Color goldSoft;
+  final Color surfaceAlt;
+  final Color onAccent;
+  final Color shadow;
 
   static const light = KoruPalette(
     ink: Color(0xFF14110F),
@@ -97,6 +106,9 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
     claySoft: Color(0xFFFAEAE2),
     gold: Color(0xFF8A641C),
     goldSoft: Color(0xFFFAF0D8),
+    surfaceAlt: Color(0xFFEFEBE7),
+    onAccent: Color(0xFFFFFFFF),
+    shadow: Color(0x14000000),
   );
 
   static const dark = KoruPalette(
@@ -112,6 +124,9 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
     claySoft: Color(0xFF2E1F18),
     gold: Color(0xFFDFAF55),
     goldSoft: Color(0xFF2C2415),
+    surfaceAlt: Color(0xFF2C2820),
+    onAccent: Color(0xFF14110F),
+    shadow: Color(0x40000000),
   );
 
   @override
@@ -128,6 +143,9 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
     Color? claySoft,
     Color? gold,
     Color? goldSoft,
+    Color? surfaceAlt,
+    Color? onAccent,
+    Color? shadow,
   }) =>
       KoruPalette(
         ink: ink ?? this.ink,
@@ -142,6 +160,9 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
         claySoft: claySoft ?? this.claySoft,
         gold: gold ?? this.gold,
         goldSoft: goldSoft ?? this.goldSoft,
+        surfaceAlt: surfaceAlt ?? this.surfaceAlt,
+        onAccent: onAccent ?? this.onAccent,
+        shadow: shadow ?? this.shadow,
       );
 
   @override
@@ -161,6 +182,9 @@ class KoruPalette extends ThemeExtension<KoruPalette> {
       claySoft: c(claySoft, other.claySoft),
       gold: c(gold, other.gold),
       goldSoft: c(goldSoft, other.goldSoft),
+      surfaceAlt: c(surfaceAlt, other.surfaceAlt),
+      onAccent: c(onAccent, other.onAccent),
+      shadow: c(shadow, other.shadow),
     );
   }
 }

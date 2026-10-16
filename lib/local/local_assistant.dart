@@ -1,4 +1,8 @@
 import '../models.dart';
+import 'facts.dart';
+import 'replies/advice.dart';
+
+export 'facts.dart';
 
 /// The on-device half of Koru.
 ///
@@ -23,6 +27,11 @@ import '../models.dart';
 /// string, so the whole thing is testable without a database or a widget tree.
 class LocalAssistant {
   const LocalAssistant();
+
+  /// The advice half, one domain per method. Kept out of this file so the
+  /// classifier can sit next to the answers it dispatches to and still leave
+  /// each body of advice readable on its own.
+  static const _advice = BusinessAdvice();
 
   /// The answer, plus whether it actually found something.
   LocalAnswer answer({
@@ -51,62 +60,250 @@ class LocalAssistant {
     // into "15 of 2000", and a sum with its signs taken out is not a sum.
     final raw = question.toLowerCase();
     if (_looksLikeMath(raw)) return LocalAnswer(_math(raw), usedData: false);
-    final intent = _classify(q, facts);
 
-    switch (intent) {
-      case _Intent.greeting:
-        return LocalAnswer(_greeting(facts, q), usedData: facts.hasProfile);
-      case _Intent.agree:
-        return LocalAnswer(_agree(facts, q), usedData: false);
-      case _Intent.disagree:
-        return LocalAnswer(_disagree(facts), usedData: false);
-      case _Intent.more:
-        return LocalAnswer(_more(facts), usedData: facts.hasRecords);
-      case _Intent.vagueFollowUp:
-        return LocalAnswer(_vagueFollowUp(facts, q), usedData: facts.hasRecords);
-      case _Intent.yesNoAboutRecords:
-        return LocalAnswer(_yesNoAboutRecords(facts, q), usedData: facts.hasRecords);
-      case _Intent.howAreYou:
-        return LocalAnswer(_howAreYou(facts), usedData: false);
-      case _Intent.thanks:
-        return LocalAnswer(_thanks(facts), usedData: false);
-      case _Intent.goodbye:
-        return LocalAnswer(_goodbye(facts), usedData: false);
-      case _Intent.praise:
-        return LocalAnswer(_praise(facts), usedData: false);
-      case _Intent.status:
-        return LocalAnswer(_status(facts), usedData: facts.hasRecords);
-      case _Intent.due:
-        return LocalAnswer(_due(facts), usedData: facts.hasRecords);
-      case _Intent.chase:
-        return LocalAnswer(_chase(facts), usedData: facts.clients.isNotEmpty);
-      case _Intent.clientLookup:
-        return LocalAnswer(
-          _clientDetail(facts, _clientNamedIn(q, facts)!),
-          usedData: true,
-        );      case _Intent.calendar:
-        return LocalAnswer(_calendar(facts), usedData: facts.hasRecords);
-      case _Intent.dateInfo:
-        return LocalAnswer(_dateInfo(facts, q), usedData: false);
-      case _Intent.business:
-        return LocalAnswer(_business(facts), usedData: facts.clients.isNotEmpty);
-      case _Intent.counts:
-        return LocalAnswer(_counts(facts), usedData: facts.hasRecords);
-      case _Intent.project:
-        return LocalAnswer(_projects(facts), usedData: facts.projects.isNotEmpty);
-      case _Intent.goals:
-        return LocalAnswer(_goals(facts), usedData: facts.goals.isNotEmpty);
-      case _Intent.identity:
-        return LocalAnswer(_identity(facts), usedData: true);
-      case _Intent.capabilities:
-        return LocalAnswer(_capabilities(), usedData: false);
-      case _Intent.unknown:
-        return LocalAnswer(
-          _fallback(facts),
-          usedData: facts.hasRecords,
-          suggestCloud: true,
-        );
+    // The folded question carries the previous turn; the raw one does not. Both
+    // are classified: a follow-up like "what about the VAT" has no subject of
+    // its own, and the subject it borrows must not drag the answer back to the
+    // previous topic when this turn names a new one.
+    final intent = raw == q ? _classify(q, facts) : _classifyTurn(q, raw, facts);
+
+    var text = switch (intent) {
+      _Intent.greeting => _greeting(facts, q),
+      _Intent.agree => _agree(facts, q),
+      _Intent.disagree => _disagree(facts),
+      _Intent.more => _more(facts, q),
+      _Intent.vagueFollowUp => _vagueFollowUp(facts, q),
+      _Intent.yesNoAboutRecords => _yesNoAboutRecords(facts, q),
+      _Intent.howAreYou => _howAreYou(facts),
+      _Intent.thanks => _thanks(facts),
+      _Intent.goodbye => _goodbye(facts),
+      _Intent.praise => _praise(facts),
+      _Intent.frustration => _frustration(facts, q),
+      _Intent.smallTalk => _smallTalk(facts, q),
+      _Intent.unclear => _unclear(facts, q),
+      _Intent.status => _status(facts),
+      _Intent.due => _due(facts),
+      _Intent.chase => _chase(facts),
+      _Intent.clientLookup => _clientDetail(facts, _clientNamedIn(q, facts)!),
+      _Intent.calendar => _calendar(facts),
+      _Intent.dateInfo => _dateInfo(facts, q),
+      _Intent.business => _business(facts),
+      _Intent.counts => _counts(facts),
+      _Intent.project => _projects(facts),
+      _Intent.goals => _goals(facts),
+      _Intent.identity => _identity(facts),
+      _Intent.capabilities => _capabilities(),
+      _Intent.appHelp => _appHelp(),
+      // The advice half. Each of these answers with a rule, a number and a
+      // sentence the user can send, and quotes their own records when the
+      // records say something about the question.
+      _Intent.quote => _advice.quote(facts, q),
+      _Intent.rate => _advice.rate(facts, q),
+      _Intent.invoiceAdvice => _advice.invoice(facts, q),
+      _Intent.latePay => _advice.latePayment(facts, q),
+      _Intent.vat => _advice.vat(facts, q),
+      _Intent.cashflow => _advice.cashflow(facts, q),
+      _Intent.deposit => _advice.deposit(facts, q),
+      _Intent.retainerAdvice => _advice.retainer(facts, q),
+      _Intent.scopeCreep => _advice.scopeCreep(facts, q),
+      _Intent.sayNo => _advice.sayNo(facts, q),
+      _Intent.negotiate => _advice.negotiate(facts, q),
+      _Intent.explainCharge => _advice.explainCharge(facts, q),
+      _Intent.refund => _advice.refund(facts, q),
+      _Intent.cancel => _advice.cancellation(facts, q),
+      _Intent.contract => _advice.contract(facts, q),
+      _Intent.onboard => _advice.onboarding(facts, q),
+      _Intent.timeline => _advice.timeline(facts, q),
+      _Intent.workload => _advice.workload(facts, q),
+      _Intent.hiring => _advice.hiring(facts, q),
+      _Intent.tools => _advice.tools(facts, q),
+      _Intent.messageDraft => _advice.draftMessage(facts, q),
+      _Intent.unknown => _fallback(facts),
+    };
+
+    // A question with two halves gets an answer with two halves: the primary
+    // intent in full, then one short note from the other domain it mentioned.
+    // "What should I charge, and should I take a deposit?" is one question to
+    // whoever typed it and must not be answered as one of the two.
+    final extra = _secondNote(q, intent, facts);
+    if (extra != null) text = '$text\n\n$extra';
+
+    // When the question names a client, the record comes with the advice —
+    // "what should I charge Bilal" wants the price talk and Bilal's figures.
+    if (_namesClientWith(intent)) {
+      final named = _clientNamedIn(q, facts);
+      if (named != null) {
+        text = '$text\n\nAbout ${named.name}: ${_clientDetail(facts, named)}';
+      }
     }
+
+    return LocalAnswer(
+      text,
+      usedData: _usedData(intent, facts),
+      suggestCloud: intent == _Intent.unknown,
+    );
+  }
+
+  /// Intents whose answer is built from the records, with the same conditions
+  /// the one-by-one dispatch used to spell out — a chip claiming "from your
+  /// records" on a reply that never opened them would be a small lie.
+  static const _adviceIntents = <_Intent>{
+    _Intent.quote, _Intent.rate, _Intent.invoiceAdvice, _Intent.latePay,
+    _Intent.vat, _Intent.cashflow, _Intent.deposit, _Intent.retainerAdvice,
+    _Intent.scopeCreep, _Intent.sayNo, _Intent.negotiate, _Intent.explainCharge,
+    _Intent.refund, _Intent.cancel, _Intent.contract, _Intent.onboard,
+    _Intent.timeline, _Intent.workload, _Intent.hiring, _Intent.tools,
+    _Intent.messageDraft,
+  };
+
+  /// Advice that actually quotes the files back when there are files to quote.
+  static const _adviceFromRecords = <_Intent>{
+    _Intent.quote, _Intent.invoiceAdvice, _Intent.latePay, _Intent.cashflow,
+    _Intent.retainerAdvice, _Intent.timeline, _Intent.workload,
+    _Intent.messageDraft,
+  };
+
+  /// Intents where naming the client in the question deserves their record
+  /// appended to the advice.
+  static bool _namesClientWith(_Intent i) =>
+      i == _Intent.quote ||
+      i == _Intent.negotiate ||
+      i == _Intent.explainCharge ||
+      i == _Intent.contract ||
+      i == _Intent.timeline;
+
+  bool _usedData(_Intent i, LocalFacts f) => switch (i) {
+        _Intent.greeting => f.hasProfile,
+        _Intent.status ||
+        _Intent.due ||
+        _Intent.calendar ||
+        _Intent.counts ||
+        _Intent.more ||
+        _Intent.vagueFollowUp ||
+        _Intent.yesNoAboutRecords ||
+        _Intent.unknown =>
+          f.hasRecords,
+        _Intent.chase || _Intent.business => f.clients.isNotEmpty,
+        _Intent.clientLookup || _Intent.identity => true,
+        _Intent.goals => f.goals.isNotEmpty,
+        _Intent.project => f.projects.isNotEmpty,
+        _ => _adviceFromRecords.contains(i) && f.hasRecords,
+      };
+
+  /// The second half of a multi-part question, as one short added note.
+  ///
+  /// Returns null unless the question genuinely carried two domains: the
+  /// primary intent, plus one other. Only the pairs people actually combine
+  /// are wired up, because a generic "also you asked about X" from a domain
+  /// nobody asked about would be worse than silence.
+  String? _secondNote(String q, _Intent primary, LocalFacts f) {
+    final matched = _matchedAdvice(q);
+    _Intent? second;
+    for (final i in matched) {
+      if (i != primary) {
+        second = i;
+        break;
+      }
+    }
+    if (second == null) return null;
+    return switch (second) {
+      _Intent.deposit =>
+        'Since you asked: take a deposit for new clients — half up front is '
+            'the usual split, and it separates the serious from the curious.',
+      _Intent.vat =>
+        'Since you asked about tax: move about a fifth of everything that '
+            'lands into a separate account the day it lands, and it stops '
+            'being a crisis in March.',
+      _Intent.invoiceAdvice =>
+        'Since you asked about invoicing: put the due date on the invoice '
+            'itself and diarise the follow-up for the morning after it falls '
+            'due.',
+      _Intent.contract =>
+        'Since you asked about paperwork: one email listing scope, price, '
+            'timeline and terms, replied to with "confirmed", does most of '
+            'the job a contract would.',
+      _Intent.latePay =>
+        'Since you asked about getting paid: the nudge that works is short, '
+            'friendly and asks for a date rather than apologising for '
+            'asking.',
+      _Intent.cashflow =>
+        'Since you asked about cash flow: keep two months of basic outgoings '
+            'aside and refill it whenever a large payment lands.',
+      _Intent.scopeCreep =>
+        'Since you asked about extras: price every one as a change order, '
+            'even the small ones — unpriced extras are how the edges go '
+            'soft.',
+      _Intent.retainerAdvice =>
+        'Since you asked about retainers: define the monthly unit in '
+            'writing, expire unused hours at month end, and review the '
+            'price every six months.',
+      _Intent.timeline =>
+        'Since you asked about dates: estimate from the day count, add a '
+            'buffer you do not mention, and send dates in halves.',
+      _Intent.rate =>
+        'Since you asked about rates: raise new-client prices first — it is '
+            'the cheapest raise you will ever give yourself.',
+      _Intent.sayNo =>
+        'Since you said no: keep it warm, keep it short, and send it in '
+            'reply to their thread rather than as silence.',
+      _Intent.messageDraft =>
+        'And if you want the actual words, say "draft a chase message" (or '
+            'price, deposit, decline) and I will write the whole thing for '
+            'you to copy.',
+      _ => null,
+    };
+  }
+
+  /// Every advice domain this question mentions, most specific first.
+  List<_Intent> _matchedAdvice(String q) {
+    bool has(List<String> phrases) => phrases.any(q.contains);
+    bool hasWord(List<String> words) =>
+        words.any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(q));
+    final out = <_Intent>[];
+    void add(bool matches, _Intent i) {
+      if (matches) out.add(i);
+    }
+
+    add(has(BusinessAdvice.draftPhrases), _Intent.messageDraft);
+    add(has(BusinessAdvice.quotePhrases) || hasWord(BusinessAdvice.quoteWords),
+        _Intent.quote);
+    add(has(BusinessAdvice.ratePhrases) || hasWord(BusinessAdvice.rateWords),
+        _Intent.rate);
+    add(has(BusinessAdvice.invoicePhrases), _Intent.invoiceAdvice);
+    add(has(BusinessAdvice.latePhrases), _Intent.latePay);
+    add(has(BusinessAdvice.vatPhrases) || hasWord(BusinessAdvice.vatWords),
+        _Intent.vat);
+    add(has(BusinessAdvice.cashflowPhrases), _Intent.cashflow);
+    add(has(BusinessAdvice.depositPhrases) ||
+        hasWord(BusinessAdvice.depositWords), _Intent.deposit);
+    add(has(BusinessAdvice.retainerPhrases), _Intent.retainerAdvice);
+    add(has(BusinessAdvice.scopePhrases), _Intent.scopeCreep);
+    add(has(BusinessAdvice.noPhrases), _Intent.sayNo);
+    add(has(BusinessAdvice.negotiatePhrases), _Intent.negotiate);
+    add(has(BusinessAdvice.explainPhrases), _Intent.explainCharge);
+    add(has(BusinessAdvice.refundPhrases) || hasWord(BusinessAdvice.refundWords),
+        _Intent.refund);
+    add(has(BusinessAdvice.cancelPhrases), _Intent.cancel);
+    add(has(BusinessAdvice.contractPhrases) ||
+        hasWord(BusinessAdvice.contractWords), _Intent.contract);
+    add(has(BusinessAdvice.onboardPhrases), _Intent.onboard);
+    add(has(BusinessAdvice.timelinePhrases), _Intent.timeline);
+    add(has(BusinessAdvice.workloadPhrases), _Intent.workload);
+    add(has(BusinessAdvice.hiringPhrases), _Intent.hiring);
+    add(has(BusinessAdvice.toolsPhrases), _Intent.tools);
+    return out;
+  }
+
+  /// Classifies a turn that has a previous question folded into it.
+  ///
+  /// The folded form decides everything except one thing: if this turn alone
+  /// raises a new piece of advice — "what about the VAT" — that is what was
+  /// asked, not the subject borrowed from the turn before.
+  _Intent _classifyTurn(String folded, String fresh, LocalFacts f) {
+    final primary = _classify(folded, f);
+    final alone = _classify(fresh, f);
+    if (alone != primary && _adviceIntents.contains(alone)) return alone;
+    return primary;
   }
 
   // -- talking, rather than answering ---------------------------------
@@ -156,18 +353,123 @@ class LocalAssistant {
       'Anytime$who. Ask again whenever.',
       'You are welcome. That is what I am here for.',
       'Of course. I am on this phone, so I am always here.',
+      'Glad it helped. I will keep the figures straight while you get on.',
     ], who.isEmpty ? 'thanks' : who);
   }
 
   String _goodbye(LocalFacts f) => _pick([
         'See you. Everything stays on this phone until you are back.',
         'Goodbye. I will be here, and nothing leaves the device.',
+        'Later. Your invoices and I will be waiting.',
       ], f.nickname);
 
   String _praise(LocalFacts f) => _pick([
         'Thank you. I will keep watching the invoices.',
         'That is kind. Ask me again when the money comes in.',
+        'Cheers. Flattery does not get anyone paid, but I will take it.',
       ], f.nickname);
+
+  /// Anger at something — the app, a client, the day.
+  ///
+  /// Acknowledged, never matched in tone. The useful move is to find out which
+  /// of the three it is and hand back the one thing that would help, so a
+  /// frustrated person gets a next step instead of a mirror.
+  String _frustration(LocalFacts f, String q) {
+    final isClient = f.clients.any((c) => c.name.toLowerCase().split(' ')
+        .any(q.contains));
+    final late = f.clients.where((c) => f.balanceOf(c) > 0).toList()
+      ..sort((a, b) => f.balanceOf(b).compareTo(f.balanceOf(a)));
+    if (isClient) {
+      return 'That sounds properly annoying. If it is a client being '
+          'difficult, tell me which one and we will deal with it '
+          'concretely — what they owe, what has been said, and what the '
+          'next message should be.';
+    }
+    if (late.isNotEmpty) {
+      return 'Fair enough — that is worth being annoyed about. On file '
+          '${late.first.name} is holding ${_num(f.balanceOf(late.first))}, '
+          'which is probably the largest single annoyance available to you. '
+          'Say "chase" and I will draft the message; or tell me what else '
+          'went wrong and we will take it from the top.';
+    }
+    return _pick([
+      'Understood, and I will not take it personally. Tell me what went '
+          'wrong — if it is the app, say what you were trying to do; if it '
+          'is a client or a job, name it and we will work out the next '
+          'move together.',
+      'Right. Deep breath, then: what actually went wrong? Half of these '
+          'have a five-minute fix once they are said out loud, and I am '
+          'good at the boring half of that.',
+      'Noted, without the defensiveness. If it is about this app, say what '
+          'you expected to happen; if it is about the work, say who it is '
+          'and I will pull up whatever we know about them.',
+    ], q);
+  }
+
+  /// Chat that is not a business question: weather, jokes, boredom.
+  ///
+  /// Answered as itself rather than bounced back with a menu, then steered —
+  /// gently, once — towards the thing on this phone that would actually be
+  /// useful. Redirecting everything to features is how an assistant sounds
+  /// like a settings screen.
+  String _smallTalk(LocalFacts f, String q) {
+    if (RegExp(r'weather|rain|sunny|cold outside').hasMatch(q)) {
+      return 'No idea — I live in this phone and the curtains are drawn. '
+          'What I can see is your diary: '
+          '${f.events.isEmpty ? 'nothing booked in the next week.' : '${f.events.length} thing${f.events.length == 1 ? '' : 's'} booked in, next one being ${f.events.first.title}.'}';
+    }
+    if (RegExp(r'joke|laugh|funny|riddle').hasMatch(q)) {
+      return _pick([
+        'A client who pays on time. ... Sorry, that is the only joke in '
+            'this business and you have heard it.',
+        'What is the difference between a freelancer and a large pizza? The '
+            'pizza can feed a family. Ask me something painful like "who '
+            'owes me money" and we will both feel better.',
+      ], q);
+    }
+    if (RegExp(r'bored|boring|nothing to do|procrastinat').hasMatch(q)) {
+      if (f.clients.where((c) => f.balanceOf(c) > 0).isNotEmpty) {
+        return 'Bored is fixable in one move: someone owes you money. Ask '
+            '"who should I chase" and you will have a job for the next '
+            'quarter of an hour.';
+      }
+      return 'Then let us spend five minutes on something that pays later: '
+          'tell me about a project you want, and I will help you price it — '
+          '"how much should I charge for a logo" is a fine place to start.';
+    }
+    return _pick([
+      'I am real enough to know your figures, which is more than most '
+          'assistants manage. The weather and my inner life are above my '
+          'pay grade, though — ask me about your clients, your money or '
+          'your deadlines and I will be genuinely useful.',
+      'Straight answer: I am a program on your phone, and quite happy '
+          'being one. What I am good at is the boring half of running a '
+          'business — who owes you what, what is due, what to charge next '
+          '— so point me at any of that.',
+      'Ha. Ask me whether you can afford to say yes to the next job and I '
+          'will give you a proper answer; ask me about my dreams and you '
+          'will get silence. I know which one pays.',
+    ], q);
+  }
+
+  /// Too little to go on. Never a dead end: the question comes back with the
+  /// options that fit the records, so a shrug becomes a menu.
+  String _unclear(LocalFacts f, String q) {
+    final options = <String>[
+      if (f.clients.isNotEmpty && f.clients.any((c) => f.balanceOf(c) > 0))
+        'who owes you money, and who to chase first',
+      if (f.clients.isNotEmpty) 'how ${f.clients.first.name} is doing',
+      if (f.deadlines.isNotEmpty || f.events.isNotEmpty) 'what is due today',
+      if (f.clients.isEmpty) 'adding your first client',
+      'advice on quoting, deposits or getting paid',
+      'a sum, like "what is 15% of 2000"',
+    ];
+    final list = options.take(3).map((o) => '"$o"').join(', ');
+    final said = q.trim();
+    return said.isEmpty
+        ? 'I did not get that. Try me on: $list?'
+        : 'I did not quite catch "$said". Did you mean one of these: $list?';
+  }
 
   // -- answers from records -------------------------------------------
 
@@ -208,9 +510,11 @@ class LocalAssistant {
       return _Intent.thanks;
     }
     if (has(const [
-      'goodbye', 'good bye', 'see you', 'catch you later', 'good night',
-      'goodnight', 'talk later', 'gotta go', 'got to go', 'bye for now',
-    ])) {
+      'goodbye', 'good bye', 'bye bye', 'see you', 'see ya', 'catch you later',
+      'good night', 'goodnight', 'talk later', 'gotta go', 'got to go',
+      'bye for now', 'ttyl', 'night night',
+    ]) ||
+        RegExp(r'\bbye\b').hasMatch(q)) {
       return _Intent.goodbye;
     }
     if (has(const [
@@ -227,6 +531,20 @@ class LocalAssistant {
     ])) {
       return _Intent.praise;
     }
+    // Frustration, before anything else can claim it. Someone typing "this is
+    // rubbish" does not want a business report; they want it acknowledged and
+    // a next step offered.
+    if (has(const [
+      'wtf', 'the hell', 'damn', 'dammit', 'damn it', 'useless', 'rubbish',
+      'hate this', 'hate you', 'stupid', 'waste of time', 'so annoying',
+      'annoying', 'ugh', 'this sucks', 'not helpful', 'shut up',
+      'are you stupid', 'bloody hell', "for god's sake", 'for gods sake',
+      'ffs', 'pissed off', 'fed up', 'sick of this', 'what a joke',
+      'ridiculous', 'doesnt work', "doesn't work", 'not working', 'broken',
+      'useless app', 'what is wrong with', 'whats wrong with',
+    ])) {
+      return _Intent.frustration;
+    }
     // Word boundaries, not substring: bare "hi" matches inside "this", which
     // would turn "is this working" into a greeting.
     if (RegExp(r'\b(hello|hi|hey|yo|salam|assalam)\b').hasMatch(q) ||
@@ -241,15 +559,21 @@ class LocalAssistant {
     // does not. Stripped of punctuation first so "Yes!" and "yes." land here too.
     final bare = q.replaceAll(RegExp(r'[^a-z\s]'), '').trim();
     if (RegExp(r'^(yes|yeah|yep|yup|sure|ok|okay|alright|right|will do|'
-                r'sounds good|please do|go ahead)$').hasMatch(bare)) {
+                r'sounds good|please do|go ahead|fine|cool|great|nice|'
+                r'perfect|exactly|indeed|of course|absolutely|'
+                r'yep i do|thats right)$').hasMatch(bare)) {
       return _Intent.agree;
     }
+    // "Don't invoice yet" is longer than this and reaches the advice half with
+    // its negation intact; a bare "don't" is just a no.
     if (RegExp(r'^(no|nope|nah|not now|maybe later|never mind|nevermind|'
-                r'cancel|stop)$').hasMatch(bare)) {
+                r'cancel|stop|dont|do not|leave it|not today|no thanks|'
+                r'ilpass|pass on it)$').hasMatch(bare)) {
       return _Intent.disagree;
     }
     if (RegExp(r'^(and then|what else|anything else|what now|what next|'
-                r'what should i do|where do i start|anything|go on|keep going)$')
+                r'what should i do|where do i start|anything|go on|keep going|'
+                r'what do i do|so what do i do|im stuck|now what)$')
         .hasMatch(bare)) {
       return _Intent.more;
     }
@@ -261,6 +585,16 @@ class LocalAssistant {
       return _Intent.vagueFollowUp;
     }
 
+    // The advice half, before the record queries: quoting, invoicing, VAT,
+    // scope, contracts and the rest all mention words the generic intents
+    // also claim ("rate", "charge", "deposit", "late"), and a person asking
+    // "should I take a deposit" must not get a pipeline report. It also comes
+    // before the yes/no half, because "they haven't paid me, what do I do?"
+    // contains an auxiliary and the word paid and is a plea, not a yes/no.
+    // The cue lists live next to the replies in replies/advice.dart.
+    final advice = _matchedAdvice(q);
+    if (advice.isNotEmpty) return advice.first;
+
     // Yes/no questions about the records. Answerable, and refusing them is what
     // makes an assistant feel like a search box.
     if (RegExp(r'\b(is|are|was|were|does|do|did|has|have|am)\b').hasMatch(q) &&
@@ -270,14 +604,42 @@ class LocalAssistant {
       return _Intent.yesNoAboutRecords;
     }
 
-    if (has(const ['who are you', 'what are you', 'your name', 'about you'])) {
+    if (has(const ['who are you', 'what are you', 'your name', 'about you',
+        'who is koru', 'what is koru'])) {
       return _Intent.identity;
     }
     if (has(const [
       'what can you do', 'help me with', 'how do i use', 'what do you know',
       'commands', 'what should i ask', 'what questions', 'menu',
+      'help me', 'how does this app', 'how does this work', 'app features',
+      'what features', 'what is this app',
     ])) {
       return _Intent.capabilities;
+    }
+    // Operating the app rather than asking what it does: adding, editing,
+    // exporting, changing engines. A person who asks "how do I add a client"
+    // wants the button, not the philosophy.
+    if (has(const [
+      'how do i add', 'how to add', 'how do i record', 'how do i edit',
+      'how do i delete', 'how do i change', 'where do i find',
+      'how do i export', 'export my', 'back up', 'backup', 'import my',
+      'notification', 'engine', 'settings', 'how do i turn',
+      'how do i set', 'where is the', 'how do i get',
+    ])) {
+      return _Intent.appHelp;
+    }
+
+    // Chat that is not about the records: weather, jokes, boredom, the
+    // occasional probe at whether there is anyone in there.
+    if (has(const [
+      'whats the weather', 'what is the weather', 'the weather',
+      'weather forecast', 'tell me a joke', 'make me laugh',
+      'are you real', 'are you human', 'are you a bot', 'do you dream',
+      'i am bored', 'im bored', 'bored', 'what should i eat', 'love you',
+      'miss you', 'how old are you', 'your favourite', 'your favorite',
+      'keep me company',
+    ])) {
+      return _Intent.smallTalk;
     }
 
     // The date and the clock, asked the way people actually ask.
@@ -313,6 +675,7 @@ class LocalAssistant {
         'how are things', 'how is everything', 'my business'])) {
       return _Intent.status;
     }
+
     // Due-specific questions come first because the sentence usually also
     // contains a word the business intent matches: "what is due today" contains
     // neither 'client' nor 'money', so it used to fall all the way through to
@@ -336,11 +699,20 @@ class LocalAssistant {
         ])) {
       return _Intent.clientLookup;
     }
-    if (has(const [
-      'who should i chase', 'who to chase', 'chase first', 'chasing',
-      'biggest debt', 'worst payer', 'who hasnt paid', 'who has not paid',
-      'who owes the most', 'whos late', 'not paying', 'nudging',
-    ])) {
+    // "should I hold off on chasing them?" is a question about whether to
+    // chase, not a request for the list, and the negation reaches the advice
+    // half intact.
+    final negatedChase =
+        RegExp(r"\b(hold off|hold it|wait|stop|dont|don't|do not|not|pause|"
+                r'leave it)\b')
+            .hasMatch(q) &&
+        RegExp(r'\b(chase|chasing|remind|nudge)\b').hasMatch(q);
+    if (!negatedChase &&
+        has(const [
+          'who should i chase', 'who to chase', 'chase first', 'chasing',
+          'biggest debt', 'worst payer', 'who hasnt paid', 'who has not paid',
+          'who owes the most', 'whos late', 'not paying', 'nudging',
+        ])) {
       return _Intent.chase;
     }
     // The calendar, claimed before the general business intent so "what is on
@@ -368,6 +740,10 @@ class LocalAssistant {
     if (has(const ['goal', 'goals', 'target', 'plan for', 'three months'])) {
       return _Intent.goals;
     }
+
+    // Too little to go on: a lone "huh", a question mark, something typed and
+    // abandoned. A clarifying question beats a fallback nobody reads.
+    if (bare.replaceAll(' ', '').length <= 4) return _Intent.unclear;
     return _Intent.unknown;
   }
 
@@ -905,6 +1281,12 @@ class LocalAssistant {
       '  - sums like "what is 15% of 2000", and what the date is\n'
       '  - the goals you set in onboarding\n'
       '\n'
+      'I also give the business talk itself, no model needed: quoting and '
+      'rate-setting, deposits, payment terms, VAT and tax, scope creep, '
+      'contracts, negotiation, saying no, cash flow, workload. Ask me '
+      '"should I take a deposit?" or "how do I chase a late payer" and you '
+      'get the rule, the number and a sentence you can send.\n'
+      '\n'
       'I can also record things for you. Say "add client Bilal for 2000", '
       '"Bilal paid 500", or "schedule a call with Bilal tomorrow at 3pm" and '
       'I will show you exactly what I understood before anything is saved.\n'
@@ -912,16 +1294,56 @@ class LocalAssistant {
       'Anything about faith, health, medicine or law goes to a stronger model '
       'instead, and anything urgent goes to a person.';
 
+  /// Operating the app, rather than describing it: the buttons, the phrasing,
+  /// where things live. Distinct from [_capabilities], which is the tour.
+  String _appHelp() => 'The working parts:\n'
+      '\n'
+      '  - add a client: "add client Bilal for 2000"\n'
+      '  - money in: "Bilal paid 500" — partial payments count, the balance '
+      'works itself out\n'
+      '  - a deadline: "send invoice due Friday"\n'
+      '  - an appointment: "schedule a call with Bilal tomorrow at 3pm"\n'
+      '  - a project: add it in the Projects tab; progress and notes live '
+      'there\n'
+      '  - who owes what: the Business tab, or just ask me here\n'
+      '  - profile, currency, backup and any cloud key: Settings\n'
+      '\n'
+      'Every instruction comes back as a card to approve first, so nothing '
+      'saves by accident. And since everything lives on this phone, an '
+      'occasional export from Settings is the one chore worth doing. Ask '
+      '"what can you do?" for the short tour instead.';
+
   /// A yes. There is never a question on screen when this is said, so the
   /// honest answer is to take it as "go on" and offer the next useful thing
   /// rather than to pretend something was asked.
-  String _agree(LocalFacts f, String q) => _pick([
+  String _agree(LocalFacts f, String q) =>
+      _pick([
         'Good.',
         'Will do.',
         'Okay.',
         'Right.',
+        'Done when you say so.',
       ], q) +
-      (f.hasRecords ? ' What would you like to do next?' : _capabilities());
+      (f.hasRecords ? ' ${_nextMove(f)}' : _capabilities());
+
+  /// The single most useful thing on the records right now, in one sentence.
+  String _nextMove(LocalFacts f) {
+    final late = f.clients.where((c) => f.balanceOf(c) > 0).toList()
+      ..sort((a, b) => f.balanceOf(b).compareTo(f.balanceOf(a)));
+    if (late.isNotEmpty) {
+      return 'Biggest lever right now: ${late.first.name} and '
+          '${_num(f.balanceOf(late.first))} — say "chase" and I will draft '
+          'the message.';
+    }
+    if (f.deadlines.isNotEmpty) {
+      return 'What would you like next — what is due, or a status check?';
+    }
+    if (f.clients.any((c) => c.status == 'lead')) {
+      return 'There is a lead still waiting on a number: say "quote" and I '
+          'will walk you through pricing it.';
+    }
+    return 'What would you like to do next?';
+  }
 
   /// A no. Taken at face value and left alone.
   String _disagree(LocalFacts f) => _pick([
@@ -929,32 +1351,53 @@ class LocalAssistant {
         'No problem.',
         'Fair enough.',
         'Understood.',
+        'Noted — nothing sent, nothing saved.',
       ], 'no');
 
-  /// "anything else". Offers the thing that is actually true right now rather
-  /// than a menu, because a menu is a form and the person is talking.
-  String _more(LocalFacts f) {
+  /// "anything else", "what should I do". Offers the thing that is actually
+  /// true right now rather than a menu, because a menu is a form and the
+  /// person is talking. The priority is deliberate: late money first, because
+  /// it is the only item here that is costing something by waiting.
+  String _more(LocalFacts f, String q) {
     final lines = <String>[];
     final late = f.clients.where((c) => f.balanceOf(c) > 0).toList()
       ..sort((a, b) => f.balanceOf(b).compareTo(f.balanceOf(a)));
     if (late.isNotEmpty) {
-      lines.add(
-          '${late.first.name} is still holding ${_num(f.balanceOf(late.first))}, which is the largest outstanding.');
+      lines.add('${late.first.name} is still holding '
+          '${_num(f.balanceOf(late.first))}, which is the largest '
+          'outstanding.');
+      lines.add('Next move: say "chase" and I will draft the follow-up, or '
+          'ask "who should I chase" for the whole list in order.');
     }
     if (f.deadlines.isNotEmpty) {
       lines.add('You have ${f.deadlines.length} deadline'
-          '${f.deadlines.length == 1 ? '' : 's'} on file.');
+          '${f.deadlines.length == 1 ? '' : 's'} on file'
+          '${f.deadlines.where((d) => !d.done).length == f.deadlines.length
+              ? ', none of them done yet'
+              : ''}.');
     }
     if (f.events.isNotEmpty) {
       lines.add('Next up: ${f.events.first.title}.');
     }
-    if (lines.isEmpty) {
-      return 'There is nothing waiting on you that I can see. Ask me anything '
-          'about your clients, your money, your calendar or your deadlines, '
-          'and I will answer from what is on this phone.';
+    final leads = f.clients.where((c) => c.status == 'lead').toList();
+    if (leads.isNotEmpty) {
+      lines.add('${leads.first.name} is still a lead with no number against '
+          'it — a quote is the thing that moves that.');
     }
-    return '${lines.take(3).join('\n')}\n\nAsk me about any of those, or say '
-        '"chase" and I will draft the follow-ups.';
+    if (lines.isEmpty) {
+      if (f.clients.isEmpty) {
+        return 'Nothing is on file yet, so there is nothing waiting — which '
+            'is the good version of an empty afternoon. Say "add client '
+            'Bilal for 2000" and I start tracking what they owe, or ask me '
+            '"should I take a deposit?" for something useful in the '
+            'meantime.';
+      }
+      return 'Nothing is waiting on you that I can see: nobody owes you, and '
+          'no deadline is close. That is the quiet kind of good news. Ask me '
+          'for a status check, or get ahead of the next job — "how much '
+          'should I charge for a website?" is a fine use of five minutes.';
+    }
+    return lines.take(4).join('\n');
   }
 
   /// "and him?" with no name in it.
@@ -1014,29 +1457,37 @@ class LocalAssistant {
         'Say "chase" and I will draft the follow-ups.';
   }
 
+  /// The honest miss: nothing matched, and no part of it is guessed at.
+  ///
+  /// Still a dead end only on the question — never on the conversation. It
+  /// names what this half of the assistant is good at, offers the three most
+  /// relevant next questions from the records, and points at the cloud key for
+  /// the rest, so the reply always contains somewhere to go.
   String _fallback(LocalFacts f) {
     final suggestions = <String>[
       if (f.clients.isNotEmpty) '"who owes me money?"',
       if (f.deadlines.isNotEmpty || f.events.isNotEmpty) '"what is due today?"',
       if (f.projects.isNotEmpty) '"what am I working on?"',
+      if (f.clients.where((c) => c.status == 'lead').isNotEmpty)
+        '"how much should I charge?"',
       '"what can you do?"',
     ];
-    final tail = suggestions.isEmpty
-        ? '"what can you do?"'
-        : suggestions.take(3).join(', ');
+    final tail = suggestions.take(3).join(', ');
+    const advice = 'I do answer the business talk itself, though — quoting, '
+        'deposits, payment terms, VAT, scope creep, contracts, chasing '
+        'money. Try "should I take a deposit?"';
     if (!f.hasRecords) {
-      return 'I could not answer that from what is on this phone. On device I '
-          'answer questions about your clients, your money, your calendar and '
-          'your deadlines, and I do sums like "what is 15% of 2000". Try one '
-          'of: $tail\n\n'
-          'For anything else, add a cloud key in Settings and I will send it '
-          'upstream with a pseudonymous summary.';
+      return 'I could not answer that one from what is on this phone, and I '
+          'would rather say so than improvise. On device I cover your '
+          'clients, money, calendar and deadlines, plus sums like "what is '
+          '15% of 2000". Try one of: $tail\n\n$advice\n\n'
+          'For anything outside that, add a cloud key in Settings and the '
+          'question goes upstream with a pseudonymous summary.';
     }
-    return 'I could not match that to anything I keep locally. I can answer '
-        'from your clients, your money, your calendar and your deadlines, and '
-        'I do sums. Try one of: $tail\n\n'
-        'For anything else, add a cloud key in Settings and I will send a '
-        'pseudonymous summary with the question.';
+    return 'I could not match that to anything I keep locally, so I am not '
+        'going to invent an answer about your business. What I do have: '
+        '$tail\n\n$advice\n\nFor the rest, add a cloud key in Settings and '
+        'it goes upstream with a pseudonymous summary.';
   }
 
   /// Deterministic variation: the same question always gives the same answer,
@@ -1106,6 +1557,7 @@ class _ExprParser {
 }
 
 enum _Intent {
+  // Talking and turn-taking.
   greeting,
   agree,
   disagree,
@@ -1116,8 +1568,13 @@ enum _Intent {
   thanks,
   goodbye,
   praise,
+  frustration,
+  smallTalk,
+  unclear,
+  // From the records.
   identity,
   capabilities,
+  appHelp,
   status,
   due,
   chase,
@@ -1128,6 +1585,29 @@ enum _Intent {
   counts,
   project,
   goals,
+  // The advice half: running the business rather than reading the database.
+  quote,
+  rate,
+  invoiceAdvice,
+  latePay,
+  vat,
+  cashflow,
+  deposit,
+  retainerAdvice,
+  scopeCreep,
+  sayNo,
+  negotiate,
+  explainCharge,
+  refund,
+  cancel,
+  contract,
+  onboard,
+  timeline,
+  workload,
+  hiring,
+  tools,
+  messageDraft,
+  // Nothing matched.
   unknown,
 }
 
@@ -1138,70 +1618,4 @@ class RoutingDecisionNormaliser {
 
   static String fold(String input) =>
       input.toLowerCase().replaceAll(RegExp(r"[^a-z0-9' ]"), ' ');
-}
-
-class LocalAnswer {
-  const LocalAnswer(this.text, {this.usedData = false, this.suggestCloud = false});
-
-  final String text;
-
-  /// True when the answer was built from the user's own records rather than from
-  /// a canned reply. The chat screen uses this to decide whether to say so.
-  final bool usedData;
-
-  /// True when the local assistant gave up, so the UI can point at the cloud key
-  /// instead of pretending this was a complete answer.
-  final bool suggestCloud;
-}
-
-/// Everything the assistant is allowed to know, gathered once by the caller.
-class LocalFacts {
-  LocalFacts({
-    this.nickname = '',
-    this.lifeStage = '',
-    this.goals = '',
-    this.clients = const [],
-    this.received = const {},
-    this.deadlines = const [],
-    this.projects = const [],
-    this.projectNotes = const {},
-    this.events = const [],
-    DateTime? today,
-  }) : today = today ?? DateTime.now();
-
-  final String nickname;
-  final String lifeStage;
-  final String goals;
-
-  /// Newest first, which is the order the store already returns.
-  final List<Client> clients;
-
-  /// Money received per client id, so the built-in assistant quotes the same
-  /// balances the screen shows rather than summing invoice amounts.
-  final Map<int, double> received;
-  final List<Deadline> deadlines;
-
-  /// Projects and their latest note.
-  ///
-  /// Added for the same reason as in [LocalEngineFacts]: the assistant could
-  /// answer "who owes me" and could not answer "what am I working on", which is
-  /// the other half of the question people actually ask.
-  final List<Project> projects;
-  final Map<int, String> projectNotes;
-
-  /// Calendar entries, which is what "what is on today" is asking about.
-  final List<CalendarEvent> events;
-
-  final DateTime today;
-
-  bool get hasProfile => nickname.isNotEmpty || lifeStage.isNotEmpty || goals.isNotEmpty;
-  bool get hasRecords =>
-      clients.isNotEmpty ||
-      deadlines.isNotEmpty ||
-      received.isNotEmpty ||
-      projects.isNotEmpty ||
-      events.isNotEmpty;
-
-  double balanceOf(Client c) =>
-      c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
 }

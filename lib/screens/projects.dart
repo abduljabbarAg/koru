@@ -41,7 +41,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       backgroundColor: KoruColors.cream,
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: KoruColors.leaf,
-        foregroundColor: Colors.white,
+        foregroundColor: KoruColors.onAccent,
         onPressed: () => _edit(null),
         icon: const Icon(Icons.add),
         label: const Text('New project'),

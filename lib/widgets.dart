@@ -20,20 +20,29 @@ class KoruMark extends StatelessWidget {
         color: KoruColors.leaf,
         borderRadius: BorderRadius.circular(size * 0.32),
       ),
-      child: Icon(Icons.spa_rounded, color: Colors.white, size: size * 0.6),
+      child: Icon(Icons.spa_rounded, color: KoruColors.onAccent, size: size * 0.6),
     );
   }
 }
 
 class SectionLabel extends StatelessWidget {
-  const SectionLabel(this.text, {super.key});
+  const SectionLabel(
+    this.text, {
+    super.key,
+    this.padding = const EdgeInsets.only(bottom: 10, left: 2),
+  });
 
   final String text;
+
+  /// The default nudges the label two pixels inside whatever it heads, which
+  /// is what reads correctly over a card. A label with no card under it — a
+  /// date line above a greeting, say — passes its own spacing instead.
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10, left: 2),
+      padding: padding,
       child: Text(
         text.toUpperCase(),
         style: TextStyle(
@@ -43,6 +52,193 @@ class SectionLabel extends StatelessWidget {
           color: KoruColors.inkFaint,
         ),
       ),
+    );
+  }
+}
+
+/// The block that opens a screen: a date line, a display line, and one
+/// sentence of where things stand.
+///
+/// Type does the work here rather than colour or chrome. A header that is
+/// decorated — gradients, banners, coloured panels — announces itself louder
+/// than the list underneath it, which is exactly the wrong order for a screen
+/// whose job is to be read. [eyebrow] is uppercased by [SectionLabel] so every
+/// screen shouts in the same voice, and [trailing] exists for the one thing a
+/// header sometimes wants beside its words, such as a face.
+class KoruScreenHeader extends StatelessWidget {
+  const KoruScreenHeader({
+    super.key,
+    required this.title,
+    this.eyebrow,
+    this.subtitle,
+    this.trailing,
+  });
+
+  /// The display line, kept sentence case: "Good morning".
+  final String title;
+
+  /// The small line above [title], such as today's date.
+  final String? eyebrow;
+
+  /// One line under [title] saying where things stand. Null leaves it out
+  /// rather than reserving the space for it.
+  final String? subtitle;
+
+  /// Anything that sits to the right of the text.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (eyebrow != null)
+                  SectionLabel(
+                    eyebrow!,
+                    padding: const EdgeInsets.only(bottom: 10),
+                  ),
+                Text(
+                  title,
+                  style: text.headlineMedium?.copyWith(
+                    color: KoruColors.ink,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.9,
+                    height: 1.12,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 9),
+                  Text(
+                    subtitle!,
+                    style: text.titleSmall?.copyWith(
+                      color: KoruColors.inkSoft,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 12),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: trailing,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A titled run of rows, grouped on one surface and separated by hairlines.
+///
+/// Grouping is the whole point. Five bordered cards stacked eight pixels apart
+/// read as five separate decisions; the same five rows behind one border, under
+/// one heading, read as one list. The heading carries the explanation so a row
+/// never has to, and [dividerIndent] lets the separators line up under the text
+/// rather than under whatever icon leads the row.
+class KoruSection extends StatelessWidget {
+  const KoruSection({
+    super.key,
+    required this.label,
+    required this.children,
+    this.hint,
+    this.dividerIndent = 0,
+  });
+
+  final String label;
+
+  /// The rows. They bring their own padding; the surface brings the border.
+  final List<Widget> children;
+
+  /// One line under the label saying what this section is for.
+  final String? hint;
+
+  /// How far the separator between two rows starts from the left edge.
+  final double dividerIndent;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionLabel(label),
+          if (hint != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 2, bottom: 10),
+              child: Text(
+                hint!,
+                style: text.bodySmall?.copyWith(
+                  color: KoruColors.inkFaint,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          Card(
+            margin: EdgeInsets.zero,
+            elevation: 0,
+            color: KoruColors.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(KoruRadius.card),
+              side: BorderSide(color: KoruColors.line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < children.length; i++) ...[
+                  if (i > 0) Divider(indent: dividerIndent),
+                  children[i],
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small tinted square of icon that says what kind of thing a row is about.
+///
+/// The colour pair comes from the caller rather than being decided inside,
+/// because the same icon means different things on different screens and the
+/// palette has already been measured for contrast on both brightnesses.
+class KoruIconBadge extends StatelessWidget {
+  const KoruIconBadge({
+    super.key,
+    required this.icon,
+    required this.color,
+    required this.background,
+    this.size = 34,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color background;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(size * 0.3),
+      ),
+      child: Icon(icon, size: size * 0.5, color: color),
     );
   }
 }
@@ -113,6 +309,8 @@ class EmptyHint extends StatelessWidget {
     required this.title,
     required this.body,
     this.action,
+    this.tint,
+    this.tintBg,
   });
 
   final IconData icon;
@@ -120,8 +318,15 @@ class EmptyHint extends StatelessWidget {
   final String body;
   final Widget? action;
 
+  /// The colour of the icon, and behind it when [tintBg] is set. Both default
+  /// to the quiet grey, which is right for "there is nothing here" and wrong
+  /// for "you are all clear", so the caller says which.
+  final Color? tint;
+  final Color? tintBg;
+
   @override
   Widget build(BuildContext context) {
+    final ink = tint ?? KoruColors.inkFaint;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
@@ -132,7 +337,14 @@ class EmptyHint extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(icon, size: 30, color: KoruColors.inkFaint),
+          if (tintBg == null)
+            Icon(icon, size: 30, color: ink)
+          else
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: tintBg, shape: BoxShape.circle),
+              child: Icon(icon, size: 24, color: ink),
+            ),
           const SizedBox(height: 10),
           Text(title,
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: KoruColors.ink)),
@@ -146,6 +358,92 @@ class EmptyHint extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// The quiet version of a spinner: a ring in the brand green, and one line
+/// naming the work being waited on.
+///
+/// A bare spinner answers "is something happening" and nothing else, which on a
+/// screen that lives or dies by one list is not the question. Naming the work
+/// turns a wait into an explanation, and costs nothing when there is nothing
+/// more to say.
+class KoruLoading extends StatelessWidget {
+  const KoruLoading({super.key, this.label = 'One moment'});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: KoruColors.leaf,
+              backgroundColor: KoruColors.line,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: KoruColors.inkFaint,
+                  letterSpacing: 0.2,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A gentle fade and settle the first time something appears.
+///
+/// The motion is doing one job: saying "this is the screen arriving". It is a
+/// few pixels of rise and a crossfade on an ease-out curve, it runs once per
+/// appearance rather than on every rebuild, and it stands aside completely when
+/// the system has asked for reduced motion. Anything more than this reads as
+/// decoration, and decoration on a work screen is noise.
+class KoruSettle extends StatelessWidget {
+  const KoruSettle({
+    super.key,
+    required this.child,
+    this.duration = const Duration(milliseconds: 420),
+    this.rise = 10,
+  });
+
+  final Widget child;
+
+  final Duration duration;
+
+  /// How far the content rises from, in logical pixels.
+  final double rise;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        final settled = t.clamp(0.0, 1.0);
+        return Opacity(
+          opacity: settled,
+          child: Transform.translate(
+            offset: Offset(0, (1 - settled) * rise),
+            child: child,
+          ),
+        );
+      },
+      child: child,
     );
   }
 }
@@ -545,11 +843,11 @@ class KoruGuideBanner extends StatelessWidget {
                   bottomRight: Radius.circular(16),
                 ),
                 border: Border.all(color: KoruColors.line),
-                boxShadow: const [
+                boxShadow: [
                   BoxShadow(
-                    color: Color(0x14000000),
+                    color: KoruColors.shadow,
                     blurRadius: 8,
-                    offset: Offset(0, 2),
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),

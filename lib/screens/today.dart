@@ -4,11 +4,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../attention.dart';
 import '../currency.dart';
+import '../human_date.dart';
+import '../mascot/mascot.dart';
 import '../models.dart';
 import '../motivation.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+
+/// How far a row's separators start from the left edge, so they line up under
+/// the text rather than under the icon beside it: row padding, badge, gap.
+const double _rowTextInset = 16 + 34 + 12;
 
 /// What needs doing today.
 ///
@@ -20,6 +26,12 @@ import '../widgets.dart';
 /// feeds the notification, the widget and the launcher badge, so the three can
 /// never disagree about what is urgent, and every write invalidates one
 /// provider rather than three computations.
+///
+/// The shape is the shape of the morning: a greeting and the date, what the
+/// day is worth in money, then the work in the order it should be done, then
+/// the projects that have gone quiet, and one line to close on. Every state —
+/// waiting, broken, empty, full — keeps the same frame so the screen never
+/// rearranges itself under the reader.
 class TodayScreen extends ConsumerWidget {
   const TodayScreen({super.key});
 
@@ -34,86 +46,170 @@ class TodayScreen extends ConsumerWidget {
         surfaceTintColor: Colors.transparent,
       ),
       backgroundColor: KoruColors.cream,
-      body: items.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => KoruErrorView(
-          onRetry: () => ref.invalidate(attentionProvider),
-          what: 'work out what is due',
-        ),
-        data: (list) {
-          if (list.isEmpty) return const _AllClear();
-          final overdue = list.where((i) => i.kind == AttentionKind.overdueMoney);
-          final dueToday = list.where((i) => i.kind == AttentionKind.dueToday);
-          final events = list.where((i) => i.kind == AttentionKind.eventToday);
-          final rest = list
-              .where((i) =>
-                  i.kind != AttentionKind.overdueMoney &&
-                  i.kind != AttentionKind.dueToday &&
-                  i.kind != AttentionKind.eventToday)
-              .toList();
+      body: KoruSettle(
+        child: items.when(
+          loading: () => _scroll(ref, const [
+            _HeroHeader(),
+            _Waiting(),
+          ]),
+          error: (e, _) => _scroll(ref, [
+            const _HeroHeader(),
+            _Broken(onRetry: () => ref.invalidate(attentionProvider)),
+          ]),
+          data: (list) {
+            if (list.isEmpty) {
+              return _scroll(ref, [_HeroHeader(items: list), const _AllClear()]);
+            }
+            final overdue =
+                list.where((i) => i.kind == AttentionKind.overdueMoney);
+            final dueToday = list.where((i) => i.kind == AttentionKind.dueToday);
+            final events =
+                list.where((i) => i.kind == AttentionKind.eventToday);
+            final rest = list
+                .where((i) =>
+                    i.kind != AttentionKind.overdueMoney &&
+                    i.kind != AttentionKind.dueToday &&
+                    i.kind != AttentionKind.eventToday)
+                .toList();
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref
-                ..invalidate(attentionProvider)
-                ..invalidate(clientsProvider)
-                ..invalidate(openDeadlinesProvider);
-            },
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                _MorningLine(),
-                const SizedBox(height: 14),
-                _Summary(items: list),
-                const SizedBox(height: 18),
-                if (overdue.isNotEmpty) ...[
-                  _Section(
-                    label: 'Overdue',
-                    hint: 'Past its date and still unpaid.',
-                    children: [
-                      for (final i in overdue) _AttentionRow(item: i),
-                    ],
-                  ),
-                ],
-                if (dueToday.isNotEmpty) ...[
-                  _Section(
-                    label: 'Due today',
-                    hint: 'Finish these today.',
-                    children: [
-                      for (final i in dueToday) _AttentionRow(item: i),
-                    ],
-                  ),
-                ],
-                if (events.isNotEmpty) ...[
-                  _Section(
-                    label: 'Happening today',
-                    hint: 'Places to be.',
-                    children: [
-                      for (final i in events) _AttentionRow(item: i),
-                    ],
-                  ),
-                ],
-                if (rest.isNotEmpty) ...[
-                  _Section(
-                    label: 'Coming up',
-                    hint: 'Not urgent yet.',
-                    children: [
-                      for (final i in rest) _AttentionRow(item: i),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 8),
-                const _ProjectGlance(),
-              ],
-            ),
-          );
-        },
+            return _scroll(ref, [
+              _HeroHeader(items: list),
+              _Summary(items: list),
+              const SizedBox(height: 24),
+              if (overdue.isNotEmpty)
+                KoruSection(
+                  label: 'Overdue',
+                  hint: 'Past its date and still unpaid.',
+                  dividerIndent: _rowTextInset,
+                  children: [
+                    for (final i in overdue) _AttentionRow(item: i),
+                  ],
+                ),
+              if (dueToday.isNotEmpty)
+                KoruSection(
+                  label: 'Due today',
+                  hint: 'Finish these today.',
+                  dividerIndent: _rowTextInset,
+                  children: [
+                    for (final i in dueToday) _AttentionRow(item: i),
+                  ],
+                ),
+              if (events.isNotEmpty)
+                KoruSection(
+                  label: 'Happening today',
+                  hint: 'Places to be.',
+                  dividerIndent: _rowTextInset,
+                  children: [
+                    for (final i in events) _AttentionRow(item: i),
+                  ],
+                ),
+              if (rest.isNotEmpty)
+                KoruSection(
+                  label: 'Coming up',
+                  hint: 'Not urgent yet.',
+                  dividerIndent: _rowTextInset,
+                  children: [
+                    for (final i in rest) _AttentionRow(item: i),
+                  ],
+                ),
+              const _ProjectGlance(),
+              const _MorningLine(),
+            ]);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// The one scroll view, so every state pulls down to refresh the same way.
+  ///
+  /// Always scrollable even when the content is short, because a list that
+  /// fits on the screen cannot otherwise be dragged far enough to reach the
+  /// refresh — and the empty morning is exactly when a pull to check again is
+  /// most likely.
+  Widget _scroll(WidgetRef ref, List<Widget> children) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref
+          ..invalidate(attentionProvider)
+          ..invalidate(clientsProvider)
+          ..invalidate(openDeadlinesProvider);
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+        children: children,
       ),
     );
   }
 }
 
-/// The one line at the top: how much is late and how much is owed.
+/// The greeting, the date, and where the day stands.
+///
+/// The header is the one part of the screen that does not change between
+/// states, which is the point: the date is known while the list is still being
+/// worked out, so the screen arrives whole and the data catches up underneath
+/// it. The brief under the greeting is the same sentence the notification uses,
+/// so what the user was told outside the app and what they read inside it can
+/// never disagree.
+class _HeroHeader extends StatelessWidget {
+  const _HeroHeader({this.items});
+
+  /// Null while the attention list is still loading.
+  final List<AttentionItem>? items;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final known = items;
+    final brief = known == null ? '' : Attention.headline(known);
+    return KoruScreenHeader(
+      eyebrow: formatDay(now, now, style: DateStyle.short),
+      title: _greetingFor(now),
+      subtitle: brief.isEmpty ? null : brief,
+      trailing: const KoruMascot(size: 54),
+    );
+  }
+
+  /// Time of day, in the register the rest of the app talks in.
+  static String _greetingFor(DateTime at) {
+    if (at.hour < 12) return 'Good morning';
+    if (at.hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+}
+
+/// The wait, said out loud rather than shown as a bare ring.
+class _Waiting extends StatelessWidget {
+  const _Waiting();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(top: 56),
+      child: KoruLoading(label: 'Working out what is due'),
+    );
+  }
+}
+
+/// A failure the user can retry from, with the same retry the error view has
+/// always had — plus the pull-down, which now reaches every state.
+class _Broken extends StatelessWidget {
+  const _Broken({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 36),
+      child: KoruErrorView(onRetry: onRetry, what: 'work out what is due'),
+    );
+  }
+}
+
+/// The one figure worth looking at before anything else: what is still owed,
+/// and how much of it is late.
 class _Summary extends ConsumerWidget {
   const _Summary({required this.items});
 
@@ -135,50 +231,51 @@ class _Summary extends ConsumerWidget {
       if (balance > 0) owed += balance;
     }
     final symbol = ref.watch(currencyProvider).valueOrNull?.symbol ?? 'AED';
+    final text = Theme.of(context).textTheme;
 
     return Card(
+      margin: EdgeInsets.zero,
       elevation: 0,
+      color: KoruColors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(KoruRadius.card),
         side: BorderSide(color: KoruColors.line),
       ),
-      color: KoruColors.surface,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
         child: Row(
           children: [
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Still owed',
-                      style: TextStyle(
-                          fontSize: 12.5, color: KoruColors.inkFaint)),
-                  const SizedBox(height: 3),
+                  Text(
+                    'STILL OWED',
+                    style: text.labelSmall?.copyWith(
+                      color: KoruColors.inkFaint,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Text(
                     '$symbol ${_plain(owed)}',
-                    style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: KoruColors.ink),
+                    style: text.headlineSmall?.copyWith(
+                      color: KoruColors.ink,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.6,
+                      height: 1.15,
+                    ),
                   ),
                 ],
               ),
             ),
             if (overdue > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: KoruColors.claySoft,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '$overdue overdue',
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: KoruColors.clay),
-                ),
+              KoruPill(
+                label: '$overdue overdue',
+                color: KoruColors.clay,
+                background: KoruColors.claySoft,
+                icon: Icons.error_outline,
               ),
           ],
         ),
@@ -190,41 +287,14 @@ class _Summary extends ConsumerWidget {
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 }
 
-class _Section extends StatelessWidget {
-  const _Section({
-    required this.label,
-    required this.hint,
-    required this.children,
-  });
-
-  final String label;
-  final String hint;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 2, left: 2),
-          child: Text(label,
-              style: const TextStyle(
-                  fontSize: 15, fontWeight: FontWeight.w700)),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 2),
-          child: Text(hint,
-              style: TextStyle(
-                  fontSize: 12, color: KoruColors.inkFaint)),
-        ),
-        ...children,
-        const SizedBox(height: 14),
-      ],
-    );
-  }
-}
-
+/// One thing that needs doing, and the way to do it.
+///
+/// Rows sit on one surface with hairlines between them rather than each in a
+/// box of its own: a stack of outlined cards makes every item look like a
+/// separate decision, and a morning with six of them reads as six problems
+/// instead of one list. The icon says what kind of thing it is — late money in
+/// clay, today's work in gold, a place to be in leaf, and the quiet greys for
+/// anything that can wait — so the eye can sort the list before reading it.
 class _AttentionRow extends ConsumerWidget {
   const _AttentionRow({required this.item});
 
@@ -232,37 +302,99 @@ class _AttentionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final urgent = item.kind == AttentionKind.overdueMoney ||
-        item.kind == AttentionKind.dueToday ||
-        item.kind == AttentionKind.eventToday;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(
-          color: urgent ? KoruColors.clay.withValues(alpha: 0.35) : KoruColors.line,
-        ),
-      ),
+    final text = Theme.of(context).textTheme;
+    final tone = _toneFor(item.kind);
+    final link = _followUpLink(ref);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(item.title,
-              style: const TextStyle(
-                  fontSize: 14.5, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
-          Text(item.detail,
-              style: TextStyle(
-                  fontSize: 12.5, color: KoruColors.inkFaint)),
-          if (_followUpLink(ref) != null) ...[
-            const SizedBox(height: 9),
-            _FollowUpButton(link: _followUpLink(ref)!),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              KoruIconBadge(
+                icon: tone.icon,
+                color: tone.tint,
+                background: tone.fill,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      style: text.titleMedium?.copyWith(
+                        color: KoruColors.ink,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      item.detail,
+                      style: text.bodyMedium?.copyWith(
+                        color: KoruColors.inkSoft,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (link != null) ...[
+            const SizedBox(height: 4),
+            // Indented to the text, not the icon, so the button reads as part
+            // of this row's words rather than as a new item in the list.
+            Padding(
+              padding: const EdgeInsets.only(left: 46),
+              child: _FollowUpButton(link: link),
+            ),
           ],
         ],
       ),
     );
   }
+
+  /// What a row of this kind looks like: the icon and the pair of colours
+  /// behind it. Measured pairs from the palette, so both brightnesses hold.
+  static ({IconData icon, Color tint, Color fill}) _toneFor(
+          AttentionKind kind) =>
+      switch (kind) {
+        AttentionKind.overdueMoney => (
+            icon: Icons.account_balance_wallet_outlined,
+            tint: KoruColors.clay,
+            fill: KoruColors.claySoft,
+          ),
+        AttentionKind.dueToday => (
+            icon: Icons.flag_outlined,
+            tint: KoruColors.gold,
+            fill: KoruColors.goldSoft,
+          ),
+        AttentionKind.eventToday => (
+            icon: Icons.event_outlined,
+            tint: KoruColors.leaf,
+            fill: KoruColors.leafSoft,
+          ),
+        AttentionKind.dueSoon => (
+            icon: Icons.schedule,
+            tint: KoruColors.inkSoft,
+            fill: KoruColors.surfaceAlt,
+          ),
+        AttentionKind.eventSoon => (
+            icon: Icons.event_outlined,
+            tint: KoruColors.inkSoft,
+            fill: KoruColors.surfaceAlt,
+          ),
+        AttentionKind.stalledProject => (
+            icon: Icons.work_outline,
+            tint: KoruColors.inkSoft,
+            fill: KoruColors.surfaceAlt,
+          ),
+      };
 
   /// The WhatsApp link for this item, or null when there is nothing to send.
   Client? _client(AttentionItem i, WidgetRef ref) {
@@ -305,16 +437,21 @@ class _FollowUpButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton.icon(
-        onPressed: () => _open(context, link),
-        icon: const Icon(Icons.chat_outlined, size: 17),
-        label: const Text('Follow up on WhatsApp'),
-        style: TextButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+    return TextButton.icon(
+      onPressed: () => _open(context, link),
+      icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+      label: const Text('Follow up on WhatsApp'),
+      style: TextButton.styleFrom(
+        backgroundColor: KoruColors.leafSoft,
+        foregroundColor: KoruColors.leaf,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        visualDensity: VisualDensity.compact,
+        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(KoruRadius.pill),
         ),
       ),
     );
@@ -358,69 +495,12 @@ class _ProjectGlance extends ConsumerWidget {
     final stalled = projects.where((p) => _isStalled(p)).toList();
     final shown = stalled.isEmpty ? projects.take(3).toList() : stalled.take(3).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return KoruSection(
+      label: 'Projects going quiet',
+      hint: stalled.isEmpty ? 'Nothing has gone stale.' : 'Not touched in a while.',
+      dividerIndent: _rowTextInset,
       children: [
-        const Text('Projects going quiet',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 2),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 2),
-          child: Text(
-            stalled.isEmpty
-                ? 'Nothing has gone stale.'
-                : 'Not touched in a while.',
-            style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
-          ),
-        ),
-        for (final p in shown)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
-            decoration: BoxDecoration(
-              color: KoruColors.surface,
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: KoruColors.line),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  p.isPersonal
-                      ? Icons.favorite_outline
-                      : Icons.work_outline,
-                  size: 16,
-                  color: p.isPersonal ? KoruColors.clay : KoruColors.leaf,
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(p.name,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w500)),
-                      if (p.progressNote != null &&
-                          p.progressNote!.isNotEmpty)
-                        Text(
-                          p.progressNote!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 12, color: KoruColors.inkFaint),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text('${(p.progress * 100).round()}%',
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: KoruColors.inkSoft)),
-              ],
-            ),
-          ),
-        const SizedBox(height: 8),
+        for (final p in shown) _ProjectRow(project: p),
       ],
     );
   }
@@ -436,64 +516,134 @@ class _ProjectGlance extends ConsumerWidget {
   }
 }
 
-class _AllClear extends StatelessWidget {
-  const _AllClear();
+/// One project on the glance: what it is, the last note, how far along.
+class _ProjectRow extends StatelessWidget {
+  const _ProjectRow({required this.project});
+
+  final Project project;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle_outline,
-                size: 44, color: KoruColors.leaf),
-            const SizedBox(height: 12),
-            const Text('Nothing needs you today',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(
-              'Nothing overdue, nothing due, no calls. Say "add client Bilal '
-              'for 2000" in Talk when something comes in.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: KoruColors.inkSoft),
+    final text = Theme.of(context).textTheme;
+    final personal = project.isPersonal;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          KoruIconBadge(
+            icon: personal ? Icons.favorite_outline : Icons.work_outline,
+            color: personal ? KoruColors.clay : KoruColors.leaf,
+            background: personal ? KoruColors.claySoft : KoruColors.leafSoft,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  project.name,
+                  style: text.titleMedium?.copyWith(
+                    color: KoruColors.ink,
+                    fontWeight: FontWeight.w600,
+                    height: 1.3,
+                  ),
+                ),
+                if (project.progressNote != null &&
+                    project.progressNote!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    project.progressNote!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodyMedium?.copyWith(
+                      color: KoruColors.inkFaint,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              '${(project.progress * 100).round()}%',
+              style: text.labelLarge?.copyWith(
+                color: KoruColors.inkSoft,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// The one quiet line at the top of the morning.
+/// The all-clear, on the same surface the rest of the app uses for an empty
+/// state, and in the green that means settled rather than the grey that means
+/// nothing was ever here.
+class _AllClear extends StatelessWidget {
+  const _AllClear();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: EmptyHint(
+        icon: Icons.check_circle_outline,
+        tint: KoruColors.leaf,
+        tintBg: KoruColors.leafSoft,
+        title: 'Nothing needs you today',
+        body: 'Nothing overdue, nothing due, no calls. Say "add client Bilal '
+            'for 2000" in Talk when something comes in.',
+      ),
+    );
+  }
+}
+
+/// The one quiet line at the foot of the morning.
 ///
-/// Below the summary rather than above it, on purpose: the reason to open this
-/// app is what is overdue, and a quote in first position pushes that down the
-/// screen. Italic and low-contrast so it reads as an aside rather than another
-/// task, and it carries no interaction because there is nothing to do with it.
+/// Last rather than first, on purpose. The reason to open this app is what is
+/// overdue, and a quote in the opening position pushes that down the screen;
+/// down here it reads as a closing thought, seen once the work has been. Italic
+/// and low-contrast so it reads as an aside rather than another task, and it
+/// carries no interaction because there is nothing to do with it.
 class _MorningLine extends StatelessWidget {
+  const _MorningLine();
+
   @override
   Widget build(BuildContext context) {
     final q = quoteFor(DateTime.now());
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+    final text = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 2),
+      padding: const EdgeInsets.only(top: 20),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: KoruColors.line)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             q.text,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontStyle: FontStyle.italic,
-                  color: KoruColors.inkSoft,
-                ),
+            style: text.bodyMedium?.copyWith(
+              fontStyle: FontStyle.italic,
+              color: KoruColors.inkSoft,
+              height: 1.55,
+            ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 6),
           Text(
             q.by,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: KoruColors.inkSoft,
-                ),
+            style: text.labelSmall?.copyWith(
+              color: KoruColors.inkFaint,
+              letterSpacing: 0.3,
+            ),
           ),
         ],
       ),

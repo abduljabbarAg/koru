@@ -123,7 +123,7 @@ class ClientDetailScreen extends ConsumerWidget {
       'paid' => (KoruColors.leaf, KoruColors.leafSoft),
       'active' => (KoruColors.gold, KoruColors.goldSoft),
       'delivered' => (KoruColors.clay, KoruColors.claySoft),
-      _ => (KoruColors.inkSoft, const Color(0xFFEFEBE7)),
+      _ => (KoruColors.inkSoft, KoruColors.surfaceAlt),
     };
     final late = c.isOverdueOn(DateTime.now());
     return Row(
