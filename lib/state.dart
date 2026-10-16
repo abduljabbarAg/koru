@@ -17,6 +17,7 @@ import 'guide.dart';
 import 'handoff.dart';
 import 'local/bulk_import.dart';
 import 'local/bundled_engine.dart';
+import 'local/engine_warm.dart';
 import 'local/local_assistant.dart';
 import 'local/local_model_client.dart';
 import 'local/write_intent.dart';
@@ -124,6 +125,17 @@ class Msg {
   }
 }
 
+/// Tells [ChatState.copyWith] to leave a field alone.
+///
+/// The engine fields have to be settable *back* to null — a start finished, a
+/// failure was dealt with, nothing is happening right now — and `?? this.x`
+/// cannot express that. It silently kept the last progress value after a
+/// successful start, so the banner above the composer went on saying the model
+/// was waking up long after it was answering, and the engine badge would have
+/// claimed the same thing on every reply.
+const _keep = Object();
+
+/// What the chat is showing right now.
 class ChatState {
   final List<Msg> messages;
   final bool busy;
@@ -159,17 +171,22 @@ class ChatState {
     List<Msg>? messages,
     bool? busy,
     bool? loaded,
-    int? engineProgress,
-    String? engineProblem,
-    String? activity,
+    Object? engineProgress = _keep,
+    Object? engineProblem = _keep,
+    Object? activity = _keep,
   }) =>
       ChatState(
         messages: messages ?? this.messages,
         busy: busy ?? this.busy,
         loaded: loaded ?? this.loaded,
-        engineProgress: engineProgress ?? this.engineProgress,
-        engineProblem: engineProblem ?? this.engineProblem,
-        activity: activity ?? this.activity,
+        engineProgress: identical(engineProgress, _keep)
+            ? this.engineProgress
+            : engineProgress as int?,
+        engineProblem: identical(engineProblem, _keep)
+            ? this.engineProblem
+            : engineProblem as String?,
+        activity:
+            identical(activity, _keep) ? this.activity : activity as String?,
       );
 }
 
@@ -299,13 +316,96 @@ class ChatNotifier extends Notifier<ChatState> {
     ));
   }
 
+  /// The start that is already under way, so two callers cannot launch two
+  /// servers onto one port.
+  Future<bool>? _starting;
+
+  /// Brings the on-device engine up, and says how it is getting on.
+  ///
+  /// Public because choosing "model on this phone" from the chat has to start it
+  /// there and then. The complaint behind this was having to pick the engine,
+  /// walk to Settings, press start there and walk back, with nothing on the way
+  /// saying which of those steps had already happened. The same method serves
+  /// that and the launch warm-up below, so the two can never start the engine
+  /// differently.
+  ///
+  /// Returns whether something is answering when it finishes. Progress and any
+  /// reason for a failure land in the chat state, which is what the banner, the
+  /// badge and the switcher all read: one source, so none of them can claim a
+  /// model is running while it is not.
+  ///
+  /// A second call while one is under way queues behind it rather than running
+  /// beside it. Two engines on one port is not a thing, and the second would be
+  /// answered by the first anyway — so a person who picks their own model
+  /// halfway through a cold start gets a real restart on that model instead.
+  Future<bool> ensureEngineRunning({String? modelPath}) {
+    final inFlight = _starting;
+    final next = inFlight == null
+        ? _startEngine(modelPath: modelPath)
+        : inFlight.then((_) => _startEngine(modelPath: modelPath));
+    _starting = next;
+    return next.whenComplete(() => _starting = null);
+  }
+
+  Future<bool> _startEngine({String? modelPath}) async {
+    final store = await ref.read(storeProvider.future);
+    final client = ref.read(localModelClientProvider);
+    // The launch warm-up runs this without awaiting it, so anything thrown here
+    // would become an error with nobody watching. Turned into a failure the
+    // banner, the badge and the switcher can all show instead.
+    late final LocalEngineOutcome outcome;
+    try {
+      outcome = await LocalEngineRunner(
+        engine: ref.read(bundledEngineProvider),
+        client: client,
+        store: store,
+      ).start(
+        modelPath: modelPath,
+        onProgress: (percent) {
+          if (_gone) return;
+          state = state.copyWith(engineProgress: percent, engineProblem: null);
+        },
+      );
+    } catch (e) {
+      outcome = LocalEngineOutcome(
+        running: false,
+        problem: 'The model on this phone did not start: $e',
+      );
+    }
+    if (_gone) return outcome.running;
+
+    if (!outcome.running) {
+      state = state.copyWith(
+        engineProgress: null,
+        engineProblem: outcome.problem,
+      );
+      return false;
+    }
+
+    ref.invalidate(localModelProvider);
+    if (outcome.started && outcome.endpoint != null) {
+      // Warm the real prompt, once, in the background.
+      //
+      // glen's own warm() encodes the word "warm" into a scratch cache it then
+      // throws away, so it shares no prefix with an actual question and helps
+      // nothing. The engine reuses the longest common token prefix between
+      // turns, which means one throwaway request carrying the real system
+      // prompt fills that cache, and the user's first question then starts
+      // from a prefix hit instead of prefilling it cold.
+      //
+      // Measured on this phone: a 222 token prompt cold is about 14.5 seconds,
+      // and the same prompt warm is 1.2. That gap is the whole cold start.
+      unawaited(_warmPrefix(ref, client, outcome.endpoint!, store));
+    }
+    state = state.copyWith(engineProgress: null, engineProblem: null);
+    return true;
+  }
+
   /// Brings the chosen engine up without being asked.
   ///
-  /// Choosing "on-device model" used to mean choosing it AND then going to
-  /// Settings and pressing start, every launch, with no indication anywhere
-  /// else in the app that anything needed doing. The model is bundled, so
-  /// nothing about starting it is a user decision, and the answer is already
-  /// stored: if they picked the local engine they want the local engine.
+  /// Choosing "on-device model" means wanting the local engine, so the app starts
+  /// it rather than making that a second job for the person: the model is inside
+  /// the APK, and there is nothing about starting it that is their decision.
   ///
   /// Deliberately not awaited by load(). A cold start copies about half a
   /// gigabyte out of the APK and takes tens of seconds, and blocking the chat
@@ -313,65 +413,7 @@ class ChatNotifier extends Notifier<ChatState> {
   void _warmEngine(ProfileStore store) {
     unawaited(() async {
       if (KoruEngine.parse(await store.get('engine')) != KoruEngine.onDevice) return;
-      final engine = ref.read(bundledEngineProvider);
-      final client = ref.read(localModelClientProvider);
-
-      // Already answering from a previous run of the app, so leave it alone.
-      final healthy = await client
-          .check('http://127.0.0.1:${BundledEngine.defaultPort}')
-          .then((r) => r is LocalReply)
-          .catchError((_) => false);
-      if (healthy) return;
-
-      state = state.copyWith(engineProgress: 0);
-      // The model the user chose, if any. Null means the bundled default, which
-      // is the right answer for most people and the fast one.
-      final chosen = await store.get('model_path');
-      final result = await engine.start(
-        modelPath: (chosen == null || chosen.isEmpty) ? null : chosen,
-        onProgress: (percent) {
-          if (_gone) return;
-          state = state.copyWith(engineProgress: percent);
-        },
-        isHealthy: () async {
-          final check =
-              await client.check('http://127.0.0.1:${BundledEngine.defaultPort}');
-          return check is LocalReply;
-        },
-      );
-
-      if (_gone) return;
-      if (result.started && result.endpoint != null) {
-        // Warm the real prompt, once, in the background.
-        //
-        // glen's own warm() encodes the word "warm" into a scratch cache it then
-        // throws away, so it shares no prefix with an actual question and helps
-        // nothing. The engine reuses the longest common token prefix between
-        // turns, which means one throwaway request carrying the real system
-        // prompt fills that cache, and the user's first question then starts
-        // from a prefix hit instead of prefilling it cold.
-        //
-        // Measured on this phone: a 222 token prompt cold is about 14.5 seconds,
-        // and the same prompt warm is 1.2. That gap is the whole cold start.
-        unawaited(_warmPrefix(ref, client, result.endpoint!, store));
-
-        await store.put(
-          'local_model',
-          jsonEncode(LocalModelConfig(
-            endpoint: result.endpoint!,
-            modelId: BundledEngine.bundledModelId,
-            label: 'Bundled',
-            sizeBytes: BundledEngine.bundledModelBytes,
-          ).toMap()),
-        );
-        ref.invalidate(localModelProvider);
-        state = state.copyWith(engineProgress: null, engineProblem: null);
-      } else {
-        state = state.copyWith(
-          engineProgress: null,
-          engineProblem: result.reason,
-        );
-      }
+      await ensureEngineRunning();
     }());
   }
 

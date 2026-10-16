@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Added
+
+- **The engine badge in the chat opens the engine picker.** Tap the pill on a
+  reply — or on the chat's opening screen, before anything has been asked — and
+  it lists the three engines with what each one costs: the same three Settings
+  offers, written to the same key. Nothing about the engine is a trip to Settings
+  any more.
+- **Choosing "model on this phone" starts it there and then.** One tap, in the
+  sheet: the model is written, the engine is launched, and the sheet stays up
+  showing real progress until the server answers. On a cold install that is a
+  231 MB copy out of the APK, so the wait is reported rather than guessed at —
+  "Copying the model out of the app", then "Waking the server up 42%".
+- **Cloud and model sub-pickers.** Choosing cloud opens the provider list, with
+  the ones that already have a key marked; choosing on-device opens the .gguf
+  models on this phone, the bundled one first and ticked, plus anything added
+  with the file picker. Picking a different model while a cold start is still
+  running restarts the engine on that one rather than joining the start in
+  flight and quietly serving the other.
+- **A failed start says what failed, in the sheet, with a retry.** The reason
+  comes from the engine's own log. It used to fall back to the built-in
+  assistant, which answers in milliseconds and is indistinguishable from a model
+  being fast.
+
 ### Changed
 
 - **The on-device model is now Bonsai-1.7B-Q1_0, not Qwen2.5-0.5B.** A 1-bit
@@ -19,9 +42,18 @@
 - The CI engine job cloned nothing, ran `cargo test` on a C++ project, and
   installed a Rust toolchain it did not use. It now clones llama.cpp at the
   pinned b11574 and fetches Bonsai with its checksum.
+- The bundled-engine panel in Settings starts through the same code path as the
+  chat rather than carrying its own copy, which was writing the model id and
+  file size of a model this build no longer ships. It also stopped telling people
+  to drop a .gguf into `Android/data` by hand: there is a file picker.
 
 ### Fixed
 
+- **The chat's engine banner never went away.** `ChatState.copyWith` could not
+  set a field back to null, so `engineProgress: null` silently kept the last
+  value and the banner above the composer went on saying the model was waking
+  up long after it was answering. The engine badge now reports from the same
+  state, and would have inherited the same lie.
 - **`MainActivity.kt` did not compile.** A merge left `val chosen` declared
   twice in the same scope, so no APK containing the engine could have been
   built from the committed tree. Found while building the first one.

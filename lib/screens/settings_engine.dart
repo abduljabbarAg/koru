@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine.dart';
+import '../engine_switch.dart';
 import '../local/bundled_engine.dart';
 import '../local/local_model_client.dart';
 import '../state.dart';
@@ -53,11 +54,11 @@ class _EnginePicker extends ConsumerWidget {
               RadioListTile<KoruEngine>(
                 value: option,
                 groupValue: engine,
-                onChanged: (value) async {
-                  if (value == null) return;
-                  final store = await ref.read(storeProvider.future);
-                  await store.put('engine', value.name);
-                  ref.invalidate(engineProvider);
+                // Through the shared writer, the same one the chat's badge
+                // uses. Two copies of this write is how Settings and the chat
+                // end up showing different engines on the same install.
+                onChanged: (value) {
+                  if (value != null) selectEngine(ref, value);
                 },
                 contentPadding: EdgeInsets.zero,
                 activeColor: KoruColors.leaf,
@@ -87,9 +88,12 @@ class _EnginePicker extends ConsumerWidget {
 
 /// Says so when the on-device engine cannot run.
 ///
-/// Since 1.0.0 the APK ships no engine and no model. Choosing the on-device
-/// engine then found nothing to start, fell back to the built-in assistant and
-/// answered in a few milliseconds, which reads exactly like a model being fast.
+/// It used to be a permanent condition: the APK shipped no engine and no model,
+/// so choosing the on-device engine found nothing to start, fell back to the
+/// built-in assistant and answered in a few milliseconds, which reads exactly
+/// like a model being fast. Bundled builds no longer hit this, and a build where
+/// the engine could not be fetched still does — so it is stated when it is true
+/// rather than left in as a warning nobody can act on.
 class _EngineAbsentNotice extends ConsumerWidget {
   const _EngineAbsentNotice();
 
@@ -272,27 +276,27 @@ class _BundledModelPanel extends ConsumerStatefulWidget {
 
 class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
   bool _starting = false;
-  int? _progress;
   String? _message;
   bool _ready = false;
 
-  /// Picks a different local model and restarts the engine on it.
+  /// Picks a different local model.
   ///
   /// The bundled 0.5B is not the best thing this phone can run, but it is the
   /// fastest, and the choice depends on what you are asking: a sharper model
   /// three times slower is a good trade for a hard question and a bad one for
   /// everything. So both are offered and neither is removed.
+  ///
+  /// Goes through the shared writer, so picking a model here and picking one in
+  /// the chat's switcher are the same act rather than two writes that could
+  /// disagree.
   Future<void> _choose(LocalModelFile model) async {
-    final store = await ref.read(storeProvider.future);
-    final isBundled = model.label.startsWith('Qwen2.5');
-    await store.put('model_path', isBundled ? '' : model.path);
-    if (mounted) {
-      setState(() {
-        _message = isBundled
-            ? 'Using the bundled model. It is the fast one.'
-            : 'Switched. It will start on ${model.label} next time.';
-      });
-    }
+    await selectLocalModel(ref, model);
+    if (!mounted) return;
+    setState(() {
+      _message = isBundledModel(model)
+          ? 'Using the bundled model. It is the fast one.'
+          : 'Switched. It will start on ${model.label} next time.';
+    });
     // Invalidate so the engine restarts against the new file.
     ref.invalidate(availableModelsProvider);
     ref.invalidate(chosenModelProvider);
@@ -335,8 +339,8 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
         const SizedBox(height: 4),
         Text(
           models.length <= 1
-              ? 'Only the bundled model is here. To add another, put a .gguf '
-                  'file in this app\'s models folder under Android/data.'
+              ? 'Only the bundled model is here. Use "Add a model" to bring '
+                  'your own .gguf onto this phone.'
               : 'A bigger model is sharper and slower. Switch when you need it, '
                   'not for everything.',
           style: TextStyle(color: KoruColors.inkFaint, fontSize: 12),
@@ -355,47 +359,26 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
     );
   }
 
+  /// Starts the bundled engine through the same path the chat's switcher uses.
+  ///
+  /// It used to run its own copy of the start, which meant writing the model id
+  /// and size of a model this build no longer ships and starting on a different
+  /// address than the one the chat would have used. One call now, so the two
+  /// screens cannot disagree about whether the engine is up.
   Future<void> _start() async {
     setState(() {
       _starting = true;
-      _progress = 0;
       _message = null;
     });
 
-    final engine = ref.read(bundledEngineProvider);
-    final client = ref.read(localModelClientProvider);
-    final result = await engine.start(
-      onProgress: (percent) {
-        if (mounted) setState(() => _progress = percent);
-      },
-      isHealthy: () async {
-        final check = await client.check('http://127.0.0.1:${BundledEngine.defaultPort}');
-        return check is LocalReply;
-      },
-    );
-
+    final ok = await ref.read(chatProvider.notifier).ensureEngineRunning();
     if (!mounted) return;
-    if (result.started && result.endpoint != null) {
-      final store = await ref.read(storeProvider.future);
-      await store.put('engine', KoruEngine.onDevice.name);
-      await store.put(
-        'local_model',
-        jsonEncode(LocalModelConfig(
-          endpoint: result.endpoint!,
-          modelId: 'qwen2.5-0.5b-instruct',
-          label: 'Bundled',
-          sizeBytes: 491400032,
-        ).toMap()),
-      );
-      ref.invalidate(engineProvider);
-      ref.invalidate(localModelProvider);
-    }
     setState(() {
       _starting = false;
-      _ready = result.started;
-      _message = result.started
+      _ready = ok;
+      _message = ok
           ? 'Model running on this phone. It is now the active engine.'
-          : result.reason;
+          : ref.read(chatProvider).engineProblem ?? 'The model did not start.';
     });
   }
 
@@ -403,7 +386,10 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
   Widget build(BuildContext context) {
     final status = ref.watch(bundledEngineStatusProvider).valueOrNull;
     final available = status?.available;
-    final progress = _progress;
+    // Read from the chat state rather than a field of this panel: the engine
+    // can also be started from the chat, and two progress bars reading two
+    // copies of the same number is how one of them ends up stuck.
+    final progress = ref.watch(chatProvider).engineProgress;
 
     return Container(
       padding: const EdgeInsets.all(14),

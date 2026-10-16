@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../currency.dart';
+import '../engine.dart';
 import '../guide.dart';
 import '../human_date.dart';
 import '../mascot/mascot.dart';
@@ -12,6 +13,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import '../widgets/thinking_dots.dart';
 import 'chat_reply.dart';
+import 'engine_sheet.dart';
 
 /// The reply renderer lives beside this file and is re-exported, so a reply can
 /// still be driven on its own through `package:koru/screens/chat.dart`.
@@ -79,6 +81,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _input.selection = TextSelection.collapsed(offset: text.length);
     _send();
   }
+
+  /// Where the engine is changed from the chat.
+  Future<void> _openEngineSwitcher() => showEngineSwitcher(context);
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +179,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               children: [
                 Positioned.fill(
                   child: st.messages.length <= 1
-                      ? _intro()
+                      ? _intro(st)
                       : ListView.builder(
                           controller: _scroll,
                           padding: const EdgeInsets.fromLTRB(
@@ -205,6 +210,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               // which is the one place a reader loses their
                               // bearings.
                               dayDivider: _dayDivider(above, m),
+                              // The badge is also the control: it is the one
+                              // place on this screen that says which engine is
+                              // answering, so it is where that gets changed.
+                              engineStarting: st.engineProgress != null,
+                              engineProgress: st.engineProgress,
+                              engineProblem: st.engineProblem,
+                              onEngineTap: _openEngineSwitcher,
                               onEdit: (text) => _editMessage(context, i, text),
                               onApprove: () => ref
                                   .read(chatProvider.notifier)
@@ -342,10 +354,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// the first thing a new user learns is what to ask rather than that they are
   /// looking at a text box.
   ///
+  /// The engine badge sits here as well as on every reply. It is the only way to
+  /// change who answers before asking anything, and a control that appears only
+  /// once there is a conversation to change the middle of is a control nobody
+  /// finds while they are still deciding who they are talking to.
+  ///
   /// The questions sit on a card rather than floating loose, because they are
   /// the one thing on this screen the reader can act on before they have typed
   /// anything, and a card says so where a scattered run of pills does not.
-  Widget _intro() {
+  Widget _intro(ChatState st) {
     const suggestions = [
       'How am I doing?',
       'Who owes me money?',
@@ -366,7 +383,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           child: KoruMascot(
             size: 132,
             controller: _mascot,
-            busy: ref.watch(chatProvider).busy,
+            busy: st.busy,
             semanticLabel: 'Koru, your helper. Tap to say hello.',
           ),
         ),
@@ -383,6 +400,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           textAlign: TextAlign.center,
           style: KoruType.bodySmall,
         ),
+        const SizedBox(height: KoruSpace.md),
+        Center(child: _introBadge(st)),
         const SizedBox(height: KoruSpace.xxl),
         KoruCard(
           child: Column(
@@ -403,6 +422,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Who is answering, and the only control for changing it.
+  ///
+  /// Carries what the banner under a thread carries, so the two cannot claim
+  /// different things about the same engine. It adds one thing they cannot know
+  /// on their own: a build with no model on the phone has no model to announce,
+  /// and "MODEL ON THIS PHONE" over an APK that never shipped one is the exact
+  /// claim this badge must not make.
+  Widget _introBadge(ChatState st) {
+    final engine = ref.watch(engineProvider).valueOrNull ?? KoruEngine.builtIn;
+    final onDevice = engine == KoruEngine.onDevice;
+    // Null while the platform is being asked, which is deliberately not treated
+    // as an absence: a build that does have a model must not flash "not
+    // running" on every open while one platform call goes out.
+    final present = ref.watch(localEnginePresentProvider).valueOrNull;
+    final nothingToRun = onDevice && present == false;
+
+    return KoruEngineBadge(
+      engine: engine,
+      starting: st.engineProgress != null,
+      progress: st.engineProgress,
+      failed: st.engineProblem != null || nothingToRun,
+      onTap: _openEngineSwitcher,
     );
   }
 
@@ -457,6 +501,10 @@ class _ChatBubble extends StatefulWidget {
     required this.onEdit,
     required this.onApprove,
     required this.onDiscard,
+    required this.onEngineTap,
+    required this.engineStarting,
+    required this.engineProgress,
+    required this.engineProblem,
     required this.grouped,
     required this.dayDivider,
   });
@@ -472,6 +520,14 @@ class _ChatBubble extends StatefulWidget {
 
   /// Set when this turn opens a new day in the thread.
   final String? dayDivider;
+
+  /// Opens the engine switcher from the badge.
+  final VoidCallback onEngineTap;
+
+  /// Whether the on-device engine is being brought up right now, and how far.
+  final bool engineStarting;
+  final int? engineProgress;
+  final String? engineProblem;
 
   final void Function(String text) onEdit;
   final VoidCallback onApprove;
@@ -516,6 +572,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
               badge: KoruEngineBadge(
                 engine: m.engine,
                 tokensPerSecond: m.tokensPerSecond,
+                starting: widget.engineStarting,
+                progress: widget.engineProgress,
+                failed: widget.engineProblem != null,
+                onTap: widget.onEngineTap,
               ),
               why: m.why,
               clock: time == null ? null : _clock(time),

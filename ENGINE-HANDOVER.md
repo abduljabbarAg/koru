@@ -78,9 +78,10 @@ redownload both, which is why both steps are scripted rather than remembered.
 
 ### 1. ~~Build the engine~~ Done. See above.
 
-### 2. ~~Turn bundling on and build the APK~~ Done locally. `BUNDLE_LOCAL_ENGINE`
-stays `"false"` in `.github/workflows/apk.yml:23` because GitHub Actions quota
-is exhausted; a local build puts the same two files in the same places.
+### 2. ~~Turn bundling on and build the APK~~ Done. `BUNDLE_LOCAL_ENGINE` is
+`"true"` in `.github/workflows/apk.yml`, so CI fetches the engine binary and
+Bonsai and every APK carries both. A local build still has to put the same two
+files in the same places first.
 
 ### 3. ~~Confirm `llama-server` survives extraction and execs~~ **Still open.**
 This was the one risk the previous handover named and it has not been retired

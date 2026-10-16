@@ -139,26 +139,71 @@ class KoruMessageMeta extends StatelessWidget {
   }
 }
 
-/// Says which engine answered.
+/// Says which engine answered, and is how the engine is changed.
 ///
 /// The whole point of the app is that you can see where an answer came from, and
 /// a local model is slow enough that an unexplained pause would look like a hang.
+///
+/// Tappable, because the badge is the only place on this screen that knows which
+/// engine is selected and the answer to "who is answering" is the first question
+/// most people have once they have asked one. Reaching Settings to change it made
+/// the badge a label; making it the control is what makes it the answer.
+///
+/// Honest about a starting engine, which is the part that has to be right: a pill
+/// saying a model is on this phone while it is still being copied out of the APK
+/// is the one thing this widget must never say, because the person acts on it.
 class KoruEngineBadge extends StatelessWidget {
-  const KoruEngineBadge({super.key, required this.engine, this.tokensPerSecond});
+  const KoruEngineBadge({
+    super.key,
+    required this.engine,
+    this.tokensPerSecond,
+    this.starting = false,
+    this.progress,
+    this.failed = false,
+    this.onTap,
+  });
 
   final KoruEngine? engine;
   final double? tokensPerSecond;
 
+  /// The engine is being brought up right now.
+  ///
+  /// Only consulted for the on-device engine: the other two have nothing to
+  /// start, so a "starting" line on either of them would be noise.
+  final bool starting;
+
+  /// How far the start has got, 0 to 100, while it is in one.
+  final int? progress;
+
+  /// The last attempt to start it did not work.
+  final bool failed;
+
+  /// Opens the switcher. Null leaves the pill as a label, which is what a badge
+  /// on a message nobody is choosing anything needs to be.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
+    final engine = this.engine;
+    if (engine == null) return const SizedBox.shrink();
+
     final speed = tokensPerSecond;
-    return switch (engine) {
+    final pill = switch (engine) {
+      // The three states that are not "running" come first inside this case,
+      // because a start that failed has already been through the branch that
+      // reported it starting, and a stale progress value must not keep a dead
+      // engine looking like it is on its way up.
       KoruEngine.onDevice => KoruPill(
-          label: speed == null
-              ? 'MODEL ON THIS PHONE'
-              : 'THIS PHONE  ${speed.toStringAsFixed(1)} TOK/S',
-          color: KoruColors.leaf,
-          background: KoruColors.leafSoft,
+          label: switch ((failed, starting, progress)) {
+            (true, _, _) => 'THIS PHONE  NOT RUNNING',
+            (false, true, final int percent?) => 'THIS PHONE  $percent%',
+            (false, true, _) => 'THIS PHONE  STARTING',
+            _ => speed == null
+                ? 'MODEL ON THIS PHONE'
+                : 'THIS PHONE  ${speed.toStringAsFixed(1)} TOK/S',
+          },
+          color: failed ? KoruColors.clay : KoruColors.leaf,
+          background: failed ? KoruColors.claySoft : KoruColors.leafSoft,
           icon: Icons.memory_rounded,
         ),
       KoruEngine.cloud => KoruPill(
@@ -173,8 +218,38 @@ class KoruEngineBadge extends StatelessWidget {
           background: KoruColors.leafSoft,
           icon: Icons.storage_rounded,
         ),
-      null => const SizedBox.shrink(),
     };
+
+    final tap = onTap;
+    if (tap == null) return pill;
+
+    // The chevron is the affordance. A pill that looks like a label and opens
+    // something is how a control ends up being a label for six months.
+    return Semantics(
+      button: true,
+      label: 'Change who answers',
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: tap,
+          borderRadius: BorderRadius.circular(KoruRadius.pill),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: KoruSpace.xxs),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                pill,
+                Icon(
+                  Icons.expand_more_rounded,
+                  size: KoruSize.iconSm,
+                  color: KoruColors.inkFaint,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

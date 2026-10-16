@@ -20,7 +20,7 @@ env:
   # cloud is the default engine, and a local model can still be added by dropping
   # a .gguf into the app's models folder. Flip this to "true" to ship the pair
   # again, which is one line rather than a code change.
-  BUNDLE_LOCAL_ENGINE: "false"
+  BUNDLE_LOCAL_ENGINE: "true"
 
 jobs:
   # Builds the on-device inference engine for Android arm64. Separate from the

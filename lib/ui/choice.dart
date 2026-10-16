@@ -29,6 +29,7 @@ class KoruSelectableTile extends StatelessWidget {
     required this.onTap,
     this.icon,
     this.trailing,
+    this.blurb,
     this.large = false,
   });
 
@@ -44,6 +45,7 @@ class KoruSelectableTile extends StatelessWidget {
     required this.onTap,
   })  : icon = null,
         trailing = null,
+        blurb = null,
         large = true;
 
   final String label;
@@ -51,6 +53,13 @@ class KoruSelectableTile extends StatelessWidget {
   final VoidCallback onTap;
   final IconData? icon;
   final Widget? trailing;
+
+  /// One line under the label saying what picking this actually gets you.
+  ///
+  /// There because a row that names a choice without saying what it costs is how
+  /// "the model on this phone" got picked by somebody expecting a chatbot and
+  /// got a lookup table.
+  final String? blurb;
 
   /// Centres a bigger label and drops the tick: the number is the whole mark.
   final bool large;
@@ -94,19 +103,36 @@ class KoruSelectableTile extends StatelessWidget {
                   const SizedBox(width: KoruSpace.md),
                 ],
                 Expanded(
-                  child: Text(
-                    label,
-                    textAlign: large ? TextAlign.center : TextAlign.start,
-                    style: large
-                        ? KoruType.rowTitleLarge.copyWith(
-                            fontSize: 19,
-                            fontWeight:
-                                selected ? FontWeight.w700 : FontWeight.w500,
-                          )
-                        : KoruType.rowTitle.copyWith(
-                            fontWeight:
-                                selected ? FontWeight.w600 : FontWeight.w500,
+                  child: Column(
+                    crossAxisAlignment: large
+                        ? CrossAxisAlignment.center
+                        : CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        textAlign:
+                            large ? TextAlign.center : TextAlign.start,
+                        style: large
+                            ? KoruType.rowTitleLarge.copyWith(
+                                fontSize: 19,
+                                fontWeight:
+                                    selected ? FontWeight.w700 : FontWeight.w500,
+                              )
+                            : KoruType.rowTitle.copyWith(
+                                fontWeight:
+                                    selected ? FontWeight.w600 : FontWeight.w500,
+                              ),
+                      ),
+                      if (blurb != null && !large)
+                        Padding(
+                          padding: const EdgeInsets.only(top: KoruSpace.xxs),
+                          child: Text(
+                            blurb!,
+                            style: KoruType.caption.copyWith(height: 1.35),
                           ),
+                        ),
+                    ],
                   ),
                 ),
                 if (trailing != null) trailing!
