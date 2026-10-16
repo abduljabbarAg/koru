@@ -14,6 +14,10 @@ import 'widgets.dart';
 /// It asks for a client capacity because that is the one number the rest of the
 /// product measures itself against, and asking once here is better than nagging
 /// later about a limit the user never chose.
+///
+/// Seven pages, one frame. The user meets the mascot on the first page and it
+/// stays on every page after that, because a character that is present during
+/// setup is a guide and one that is only there to say hello is decoration.
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -22,9 +26,9 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  /// Number of screens, including the review.
+  /// Number of pages, including the review.
   ///
-  /// One constant rather than a 6 written in four places. It was 6 in the page
+  /// One constant rather than a 7 written in four places. It was 6 in the page
   /// bar, the counter, the Continue label and the bounds of _next, and those
   /// drifting apart is how a flow ends up able to reach a step that does not
   /// exist.
@@ -62,7 +66,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   ];
 
   /// Presets rather than a free-form number, because the honest answer to "how
-  /// many clients can you serve well" is a feeling and three options capture it
+  /// many clients can you serve well" is a feeling and four options capture it
   /// better than a text field.
   static const _capacityOptions = [3, 5, 8, 12];
 
@@ -92,10 +96,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   void _next() {
     if (_step < _last) {
-      setState(() => _step++);
-      _mascot.play(_clipFor(_step + 1));
-      _page.animateToPage(_step,
-          duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+      _goTo(_step + 1);
     } else {
       _save();
     }
@@ -103,10 +104,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   void _back() {
     if (_step == 0) return;
-    setState(() => _step--);
-    _mascot.play(_clipFor(_step - 1));
-    _page.animateToPage(_step,
-        duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+    _goTo(_step - 1);
+  }
+
+  /// One place a page changes, because the page controller, the step counter and
+  /// the mascot all have to agree and they used to be updated from three methods.
+  void _goTo(int step) {
+    setState(() => _step = step);
+    _mascot.play(_clipFor(step));
+    _page.animateToPage(
+      step,
+      duration: KoruMotion.quick + const Duration(milliseconds: 120),
+      curve: KoruMotion.easeOut,
+    );
   }
 
   /// Writes the profile and finishes onboarding.
@@ -139,7 +149,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     ref.read(onboardedProvider.notifier).state = true;
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: KoruColors.cream,
@@ -148,34 +158,27 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  KoruSpace.xxl, KoruSpace.lg, KoruSpace.xxl, KoruSpace.sm),
+                KoruSpace.gutter, KoruSpace.lg, KoruSpace.gutter, KoruSpace.md),
               child: Row(
                 children: [
-                  const KoruMark(size: 30),
+                  const KoruMark(size: KoruSize.mark),
                   const SizedBox(width: KoruSpace.md),
-                  Text('Koru', style: KoruType.title.copyWith(fontSize: 19)),
+                  Text('Koru', style: KoruType.title),
                   const Spacer(),
-                  Text('${_step + 1} of $_steps', style: KoruType.caption),
+                  // A pill rather than loose text, so the position in the flow
+                  // is the same kind of object as the step bar under it rather
+                  // than the only loose number on the page.
+                  KoruPill(
+                    label: '${_step + 1} of $_steps',
+                    color: KoruColors.inkSoft,
+                    background: KoruColors.surfaceAlt,
+                  ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: KoruSpace.xxl),
-              child: Row(
-                children: List.generate(_steps, (i) {
-                  return Expanded(
-                    child: Container(
-                      height: 4,
-                      margin: EdgeInsets.only(
-                          right: i == _last ? 0 : KoruSpace.sm - 2),
-                      decoration: BoxDecoration(
-                        color: i <= _step ? KoruColors.leaf : KoruColors.line,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  );
-                }),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: KoruSpace.gutter),
+              child: KoruStepBar(step: _step, steps: _steps),
             ),
             Expanded(
               child: PageView(
@@ -196,17 +199,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  KoruSpace.xxl, KoruSpace.sm, KoruSpace.xxl, KoruSpace.xxl),
+                  KoruSpace.gutter, KoruSpace.md, KoruSpace.gutter, KoruSpace.xl),
               child: Row(
                 children: [
-                  if (_step > 0)
+                  if (_step > 0) ...[
                     Expanded(
                       child: OutlinedButton(
                         onPressed: _back,
                         child: const Text('Back'),
                       ),
                     ),
-                  if (_step > 0) const SizedBox(width: KoruSpace.md),
+                    const SizedBox(width: KoruSpace.md),
+                  ],
                   Expanded(
                     flex: 2,
                     child: FilledButton(
@@ -227,15 +231,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   ///
   /// He was only on the intro screen before, so the character introduced himself
   /// and then vanished for the five screens where the user was actually filling
-  /// things in. A character that is present during setup is a guide; one that is
-  /// only present to say hello is decoration.
+  /// things in.
   ///
   /// The expression follows the step, so the face carries information rather
   /// than just moving: waiting while a question is unanswered, thinking on the
   /// harder ones, cheerful once the details are in.
   Widget _guide(KoruClip clip) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: KoruSpace.xs),
+      padding: const EdgeInsets.only(bottom: KoruSpace.sm),
       child: Row(
         children: [
           KoruMascot(size: 54, controller: _mascot, semanticLabel: 'Koru'),
@@ -248,7 +251,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 KoruClip.wave => 'Koru is here',
                 _ => 'Koru is listening',
               },
-              style: KoruType.bodySmall.copyWith(fontSize: 12.5),
+              // One step up from the metadata grey and a step darker: this line
+              // is the app talking about itself in the first seconds someone
+              // has it open, and it should read as said rather than as filed.
+              style: KoruType.bodySmall.copyWith(color: KoruColors.inkSoft),
             ),
           ),
         ],
@@ -262,18 +268,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// why it is being asked, and the control. Every onboarding step used to lay
   /// itself out by hand, which is how the seven pages came to have seven
   /// different question sizes.
-  Widget _body(String title, String sub, List<Widget> children, {KoruClip clip = KoruClip.idle}) {
+  Widget _body(String title, String sub, List<Widget> children,
+      {KoruClip clip = KoruClip.idle}) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
-          KoruSpace.xxl, KoruSpace.xl, KoruSpace.xxl, KoruSpace.md),
+          KoruSpace.gutter, KoruSpace.xl, KoruSpace.gutter, KoruSpace.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _guide(clip),
           const SizedBox(height: KoruSpace.md),
-          Text(title, style: KoruType.display.copyWith(fontSize: 27, letterSpacing: -0.6)),
+          Text(title, style: KoruType.display),
           const SizedBox(height: KoruSpace.sm),
-          Text(sub, style: KoruType.bodyStrong.copyWith(color: KoruColors.inkSoft)),
+          Text(sub, style: KoruType.bodyStrong),
           const SizedBox(height: KoruSpace.xl),
           ...children,
         ],
@@ -286,14 +293,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'Your clients, your money and what is due. It runs on this phone. '
             'No account, no real name.',
         [
-          const SizedBox(height: KoruSpace.xs),
           ClipRRect(
             borderRadius: BorderRadius.circular(KoruRadius.card),
             child: Image.asset(
               'assets/splash/koru_splash.png',
               width: double.infinity,
               fit: BoxFit.cover,
-              height: 190,
+              height: KoruSize.hero,
               excludeFromSemantics: true,
             ),
           ),
@@ -348,17 +354,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           : 'Check it over. $missing ${missing == 1 ? 'answer is' : 'answers are'} '
               'empty and Koru will say so rather than guess.',
       [
-        const SizedBox(height: KoruSpace.sm + 2),
         for (final row in rows)
           Padding(
-            padding: const EdgeInsets.only(bottom: KoruSpace.sm + 2),
+            padding: const EdgeInsets.only(bottom: KoruSpace.sm),
             child: KoruCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: KoruSpace.lg,
-                vertical: KoruSpace.md,
-              ),
+              // The card's own padding, like every other card in the app. This
+              // one had a tighter pair, which is what made the review look like
+              // a different app from the two pages before it.
               background: row.$2 == 'not set' ? KoruColors.goldSoft : null,
               accent: row.$2 == 'not set' ? KoruColors.gold : null,
+              elevated: false,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -366,16 +371,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          row.$1.toUpperCase(),
-                          style: KoruType.label.copyWith(fontSize: 10.5),
-                        ),
+                        Text(row.$1.toUpperCase(), style: KoruType.labelSmall),
                         const SizedBox(height: KoruSpace.xs),
                         Text(
                           row.$2,
-                          style: KoruType.bodyStrong.copyWith(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w600,
+                          style: KoruType.bodyCompactStrong.copyWith(
                             color: row.$2 == 'not set'
                                 ? KoruColors.inkFaint
                                 : KoruColors.ink,
@@ -385,11 +385,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     ),
                   ),
                   if (row.$2 == 'not set')
-                    IconButton(
+                    KoruRowAction(
                       tooltip: 'Answer this',
-                      iconSize: KoruSize.icon,
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.edit_outlined),
+                      icon: Icons.edit_outlined,
                       onPressed: () => _jumpTo(row.$1),
                     ),
                 ],
@@ -413,10 +411,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void _jumpTo(String label) {
     final target = _stepFor(label);
     if (target >= _step) return;
-    setState(() => _step = target);
-    _mascot.play(_clipFor(target));
-    _page.animateToPage(target,
-        duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
+    _goTo(target);
   }
 
   Widget _nickName() => _body(
@@ -425,7 +420,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'A nickname, not a name. It stays on this device and is never attached '
             'to anything sent to a cloud model.',
         [
-          const SizedBox(height: KoruSpace.sm),
           TextField(
             controller: _nick,
             textCapitalization: TextCapitalization.none,
@@ -436,7 +430,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _choice(String title, List<String> opts, String? sel, void Function(String) onPick) =>
       _body(title, 'Pick one. You can change this later in Settings.', [
-        const SizedBox(height: KoruSpace.xs),
         for (final o in opts)
           KoruSelectableTile(
             label: o,
@@ -445,13 +438,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
       ]);
 
+  /// The two questions about capacity and money, on one page.
+  ///
+  /// They were separate pages once. They are the same subject — the shape of the
+  /// work and the money it is in — and asking for one and then showing a brand
+  /// new mascot for the other made eight taps feel like twelve.
   Widget _capacityStep() => _body(
         'How many clients can you serve well?',
         'Not how many you can juggle, how many you can do properly. Koru keeps '
             'this number so it can tell you when you are full instead of letting '
             'you quietly take on work you have no room for.',
         [
-          const SizedBox(height: KoruSpace.sm),
           Row(
             children: [
               for (final n in _capacityOptions)
@@ -459,7 +456,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   child: Padding(
                     padding: EdgeInsets.only(
                         right: n == _capacityOptions.last ? 0 : KoruSpace.sm),
-                    child: _NumberChoice(
+                    child: KoruSelectableTile.large(
                       label: '$n',
                       selected: _capacity == n,
                       onTap: () => setState(() => _capacity = n),
@@ -468,15 +465,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: KoruSpace.xl),
+          const SizedBox(height: KoruSpace.lg),
           Text(
-            'And what are you paid in?',
-            style: KoruType.bodyStrong.copyWith(color: KoruColors.inkSoft),
+            'You can change any of this in Settings.',
+            style: KoruType.caption,
           ),
-          const SizedBox(height: KoruSpace.md),
-          Wrap(
-            spacing: KoruSpace.sm,
-            runSpacing: KoruSpace.sm,
+          const SizedBox(height: KoruSpace.xl),
+          KoruChoiceGroup(
+            label: 'Paid in $_currency',
             children: [
               for (final c in kCurrencies)
                 KoruSelectablePill(
@@ -485,11 +481,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   onTap: () => setState(() => _currency = c.code),
                 ),
             ],
-          ),
-          const SizedBox(height: KoruSpace.md),
-          Text(
-            'You can change this any time in Settings.',
-            style: KoruType.caption,
           ),
         ],
       );
@@ -516,21 +507,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'Last one. What do you want to be true in three months?',
         'Be specific. This is what I will hold you to.',
         [
-          const SizedBox(height: KoruSpace.sm),
           TextField(
             controller: _goals,
             maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
-              hintText: 'e.g. get paid by 5 clients, stop taking work I cannot finish',
+              hintText: 'e.g. get paid by 5 clients, stop taking work I cannot '
+              'finish',
             ),
           ),
           const SizedBox(height: KoruSpace.xl),
-          const SectionLabel('I want help with', padding: EdgeInsets.only(bottom: KoruSpace.xs)),
-          Text('Pick as many as apply.', style: KoruType.caption),
-          const SizedBox(height: KoruSpace.sm + 2),
-          Wrap(
-            spacing: KoruSpace.sm,
-            runSpacing: KoruSpace.sm,
+          KoruChoiceGroup(
+            label: 'I want help with',
+            caption: 'Pick as many as apply.',
             children: [
               for (final h in _helps)
                 KoruSelectablePill(
@@ -544,6 +533,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       );
 }
 
+/// One promise, with the icon that goes with it.
 class KoruFeature extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -568,61 +558,13 @@ class KoruFeature extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: KoruType.bodyStrong.copyWith(fontWeight: FontWeight.w600)),
+                Text(title, style: KoruType.rowTitle),
                 const SizedBox(height: KoruSpace.xxs),
                 Text(body, style: KoruType.bodySmall),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// One of the capacity numbers.
-///
-/// The same selectable tile as the stage and work lists, centred, because
-/// capacity is picked the same way and had to look like it.
-class _NumberChoice extends StatelessWidget {
-  const _NumberChoice({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(KoruRadius.field),
-        child: AnimatedContainer(
-          duration: KoruMotion.quick,
-          curve: KoruMotion.easeOut,
-          padding: const EdgeInsets.symmetric(vertical: KoruSpace.lg + 2),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? KoruColors.leafSoft : KoruColors.surface,
-            borderRadius: BorderRadius.circular(KoruRadius.field),
-            border: Border.fromBorderSide(
-              selected ? KoruBorders.selected() : KoruBorders.hairline(),
-            ),
-            boxShadow: selected ? KoruElevation.pressed : KoruElevation.none,
-          ),
-          child: Text(
-            label,
-            style: KoruType.bodyStrong.copyWith(
-              fontSize: 19,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-        ),
       ),
     );
   }

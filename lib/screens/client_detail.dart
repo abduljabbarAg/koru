@@ -23,6 +23,17 @@ Client? _firstClient(Iterable<Client> xs) => xs.isEmpty ? null : xs.first;
 /// and the deadlines. Until this screen existed the app had the data and
 /// nowhere to show it, which is also why asking the model about a specific
 /// client was a guess.
+///
+/// The order is the order the questions get asked: what do they owe, is that
+/// overdue, is there a standing arrangement, what was agreed, what came in,
+/// what is still open. The ledger is below the list of payments rather than
+/// folded into the headline, because a balance you cannot trace back to the
+/// rows that made it is not a balance anybody trusts.
+///
+/// The bar carries no title. Everywhere else in the app a bar names the screen
+/// and the page says whose it is; here the page is one client, and putting the
+/// name in both places would say it twice. So the name is the one display line
+/// on the page and the bar is left to the back arrow.
 class ClientDetailScreen extends ConsumerWidget {
   const ClientDetailScreen({super.key, required this.clientId});
 
@@ -30,12 +41,17 @@ class ClientDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final clients = ref.watch(clientsProvider).valueOrNull;
-    final received = ref.watch(receivedTotalsProvider).valueOrNull ?? const <int, double>{};
-    final payments =
-        ref.watch(paymentsProvider).valueOrNull?.where((p) => p.clientId == clientId).toList() ??
-            const <Payment>[];
-    final deadlines = ref.watch(openDeadlinesProvider).valueOrNull
+    final clientsAsync = ref.watch(clientsProvider);
+    final clients = clientsAsync.valueOrNull;
+    final received =
+        ref.watch(receivedTotalsProvider).valueOrNull ?? const <int, double>{};
+    final paymentsAsync = ref.watch(paymentsProvider);
+    final payments = paymentsAsync.valueOrNull
+            ?.where((p) => p.clientId == clientId)
+            .toList() ??
+        const <Payment>[];
+    final deadlinesAsync = ref.watch(openDeadlinesProvider);
+    final deadlines = deadlinesAsync.valueOrNull
             ?.where((d) => d.clientId == clientId)
             .toList() ??
         const <Deadline>[];
@@ -43,18 +59,32 @@ class ClientDetailScreen extends ConsumerWidget {
     final client =
         clients == null ? null : _firstClient(clients.where((c) => c.id == clientId));
     if (client == null) {
+      // Three different situations, three different answers. A failed read used
+      // to look like a slow one: the spinner went round forever because the
+      // screen had no way of telling that the query had already given up.
+      final failed = clientsAsync.hasError && clients == null;
       return Scaffold(
         backgroundColor: KoruColors.cream,
         appBar: AppBar(),
-        body: clients == null
-            ? const KoruLoading(label: 'Loading this client')
-            : const Center(
-                child: EmptyHint(
-                  icon: Icons.person_off_outlined,
-                  title: 'That client is gone',
-                  body: 'They were deleted from the list.',
-                ),
-              ),
+        body: failed
+            ? KoruErrorView(
+                onRetry: () => ref.invalidate(clientsProvider),
+                what: 'open this client',
+              )
+            : clients == null
+                ? const KoruLoading(label: 'Opening this client')
+                : const Center(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(KoruSpace.gutter),
+                      child: EmptyHint(
+                        icon: Icons.person_off_outlined,
+                        title: 'That client is gone',
+                        body: 'They were deleted from the list, so there is no '
+                            'history left to show. Go back to Business to see '
+                            'who is on it now.',
+                      ),
+                    ),
+                  ),
       );
     }
 
@@ -64,16 +94,21 @@ class ClientDetailScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: KoruColors.cream,
-      appBar: AppBar(title: Text(client.name)),
+      appBar: AppBar(),
       body: KoruSettle(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
             KoruSpace.gutter,
-            KoruSpace.sm,
+            KoruSpace.sml,
             KoruSpace.gutter,
             KoruSpace.tail,
           ),
           children: [
+            KoruScreenHeader(
+              eyebrow: 'Client',
+              title: client.name,
+              subtitle: 'What they owe, what has come in, and what is still open.',
+            ),
             _statusPill(client, balance, currency),
             const SizedBox(height: KoruSpace.md),
             _moneySummary(client, balance, received[clientId] ?? 0, currency),
@@ -87,24 +122,21 @@ class ClientDetailScreen extends ConsumerWidget {
             if (client.note != null && client.note!.trim().isNotEmpty) ...[
               const SizedBox(height: KoruSpace.lg),
               const SectionLabel('Note'),
-              const SizedBox(height: KoruSpace.xs + 2),
-              KoruCard(
-                child: Text(
-                  client.note!,
-                  style: KoruType.body,
-                ),
-              ),
+              KoruCard(child: Text(client.note!, style: KoruType.bodyCompact)),
             ],
             KoruSection(
               label: 'Payments',
               hint: payments.isEmpty ? null : '${payments.length} recorded',
               dividerIndent: KoruSpace.row,
-              empty: const EmptyHint(
-                icon: Icons.payments_outlined,
-                title: 'Nothing recorded',
-                body: 'Record a payment from the Business screen when money '
-                    'comes in, and the balance follows.',
-              ),
+              empty: paymentsAsync.isLoading && payments.isEmpty
+                  ? const KoruListSkeleton(rows: 2, badge: false)
+                  : const EmptyHint(
+                      icon: Icons.payments_outlined,
+                      title: 'Nothing recorded yet',
+                      body: 'Money only lands here once it is recorded. Say '
+                          '"Bilal paid 500" in Talk, or use Record payment on '
+                          'the Business screen, and the balance follows.',
+                    ),
               children: [
                 for (final p in payments) _paymentRow(ref, p, currency),
               ],
@@ -113,12 +145,14 @@ class ClientDetailScreen extends ConsumerWidget {
               label: 'Deadlines',
               hint: 'Still open for this client.',
               dividerIndent: KoruSpace.row,
-              empty: const EmptyHint(
-                icon: Icons.event_available_rounded,
-                title: 'Nothing scheduled',
-                body: 'Nothing open for this client. Say "add deadline" in Talk '
-                    'to put one on the list.',
-              ),
+              empty: deadlinesAsync.isLoading && deadlines.isEmpty
+                  ? const KoruListSkeleton(rows: 2)
+                  : const EmptyHint(
+                      icon: Icons.event_available_rounded,
+                      title: 'Nothing scheduled',
+                      body: 'Nothing open for this client. Say "add deadline" '
+                          'in Talk to put one on the list.',
+                    ),
               children: [
                 for (final d in deadlines) _deadlineRow(ref, d, today),
               ],
@@ -129,41 +163,49 @@ class ClientDetailScreen extends ConsumerWidget {
     );
   }
 
+  /// The three facts that decide what happens next, as pills.
+  ///
+  /// Wraps rather than a Row: a long status, an outstanding balance and a
+  /// retainer badge overflowed off the right edge of a narrow phone, and the
+  /// rightmost one is the one that got cut.
   Widget _statusPill(Client c, double balance, Currency currency) {
-    final tone = switch (c.status) {
-      'paid' => KoruTones.leaf,
-      'active' => KoruTones.gold,
-      'delivered' => KoruTones.clay,
-      _ => KoruTones.neutral,
-    };
+    final tone = KoruTones.status(c.status);
     final late = c.isOverdueOn(DateTime.now());
-    return Row(
+    return Wrap(
+      spacing: KoruSpace.sm,
+      runSpacing: KoruSpace.sm,
       children: [
         KoruPill(
           label: c.status.toUpperCase(),
           color: tone.ink,
           background: tone.fill,
         ),
-        if (balance > 0) ...[
-          const SizedBox(width: KoruSpace.sm),
+        if (balance > 0)
           KoruPill(
-            label: '${money(balance)} ${currency.code} OUTSTANDING',
+            label: late
+                ? '${money(balance)} ${currency.code} OVERDUE'
+                : '${money(balance)} ${currency.code} OUTSTANDING',
             color: late ? KoruColors.clay : KoruColors.gold,
             background: late ? KoruColors.claySoft : KoruColors.goldSoft,
+            icon: late ? Icons.error_outline_rounded : null,
           ),
-        ],
-        if (c.isRetainer) ...[
-          const SizedBox(width: KoruSpace.sm),
+        if (c.isRetainer)
           KoruPill(
             label: 'RETAINER',
             color: KoruColors.leaf,
             background: KoruColors.leafSoft,
           ),
-        ],
       ],
     );
   }
 
+  /// The one figure, and the facts it can be checked against.
+  ///
+  /// The metadata sits beside the figure rather than under it because these are
+  /// the details somebody checks the number against — the invoice it came from,
+  /// the number already received, where they came from, how to reach them.
+  /// Underneath, they read as a footnote to a total instead of as the evidence
+  /// for it.
   Widget _moneySummary(Client c, double balance, double received, Currency currency) {
     final meta = <String>[
       if (c.amount != null) '${money(c.amount!)} ${currency.code} invoiced',
@@ -174,27 +216,19 @@ class ClientDetailScreen extends ConsumerWidget {
       // from one that failed to save.
       if (c.phone != null) c.phone!,
     ];
-    return KoruCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            balance > 0 ? money(balance) : money(received),
-            style: KoruType.metric,
-          ),
-          const SizedBox(height: KoruSpace.xs),
-          Text(
-            balance > 0
-                ? '${currency.code} still owed'
-                : '${currency.code} received, nothing outstanding',
-            style: KoruType.caption,
-          ),
-          if (meta.isNotEmpty) ...[
-            const SizedBox(height: KoruSpace.sm + 2),
-            Text(meta.join('  ·  '), style: KoruType.meta.copyWith(fontSize: 13)),
-          ],
-        ],
-      ),
+    return KoruMetric(
+      label: balance > 0 ? 'Still owed' : 'Received',
+      value: money(balance > 0 ? balance : received),
+      sub: balance > 0
+          ? '${currency.code}, of ${money(c.amount ?? 0)} invoiced'
+          : '${currency.code} received, nothing outstanding',
+      trailing: meta.isEmpty
+          ? null
+          : Text(
+              meta.join('\n'),
+              textAlign: TextAlign.right,
+              style: KoruType.meta,
+            ),
     );
   }
 
@@ -204,10 +238,9 @@ class ClientDetailScreen extends ConsumerWidget {
       subtitle: p.note == null
           ? formatDate(p.date, DateTime.now())
           : '${formatDate(p.date, DateTime.now())}  ·  ${p.note}',
-      trailing: IconButton(
+      trailing: KoruRowAction(
         tooltip: 'Undo this payment',
-        icon: const Icon(Icons.undo_rounded, size: KoruSize.icon),
-        visualDensity: VisualDensity.compact,
+        icon: Icons.undo_rounded,
         onPressed: () async {
           final store = await ref.read(storeProvider.future);
           await store.deletePayment(p.id!);
@@ -229,24 +262,20 @@ class ClientDetailScreen extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
+          KoruRowAction(
             tooltip: 'Mark ${d.title} done',
-            icon: Icon(
-              Icons.radio_button_unchecked_rounded,
-              size: KoruSize.icon,
-              color: KoruColors.inkFaint,
-            ),
-            visualDensity: VisualDensity.compact,
+            icon: Icons.radio_button_unchecked_rounded,
+            color: KoruColors.inkFaint,
             onPressed: () async {
               final store = await ref.read(storeProvider.future);
               await store.setDeadlineDone(d.id!, true);
               ref.invalidate(openDeadlinesProvider);
             },
           ),
-          IconButton(
+          KoruRowAction(
             tooltip: 'Delete ${d.title}',
-            icon: const Icon(Icons.close_rounded, size: KoruSize.icon),
-            visualDensity: VisualDensity.compact,
+            icon: Icons.close_rounded,
+            color: KoruColors.inkFaint,
             onPressed: () async {
               final store = await ref.read(storeProvider.future);
               await store.deleteDeadline(d.id!);
@@ -279,9 +308,9 @@ class ClientDetailScreen extends ConsumerWidget {
       return;
     }
     final open = await store.deadlines(clientId: client.id!);
-    final stamp = _RetainerPanel.iso(next);
+    final stamp = isoDate(next);
     if (open.any((d) => d.due == stamp && d.title.contains('Retainer'))) {
-      if (context.mounted) toast(context, 'Already on the calendar for $stamp');
+      if (context.mounted) toast(context, 'Already on the calendar for ${readableDate(next)}');
       return;
     }
     await store.addDeadline(Deadline(
@@ -290,7 +319,7 @@ class ClientDetailScreen extends ConsumerWidget {
       due: stamp,
     ));
     ref.invalidate(openDeadlinesProvider);
-    if (context.mounted) toast(context, 'Retainer due $stamp added');
+    if (context.mounted) toast(context, 'Retainer due ${readableDate(next)} added');
   }
 
   static void _refresh(WidgetRef ref) {
@@ -362,8 +391,7 @@ class _RetainerPanel extends ConsumerWidget {
                     const SizedBox(height: KoruSpace.xs),
                     Text(
                       subtitle,
-                      style: KoruType.body.copyWith(
-                        fontSize: 13,
+                      style: KoruType.bodyCompact.copyWith(
                         color: late ? KoruColors.clay : KoruColors.inkSoft,
                       ),
                     ),
@@ -390,9 +418,4 @@ class _RetainerPanel extends ConsumerWidget {
       },
     );
   }
-
-  static String iso(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
 }

@@ -3,111 +3,31 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../currency.dart';
-import '../engine.dart';
 import '../guide.dart';
+import '../human_date.dart';
 import '../mascot/mascot.dart';
 import '../proposed_write.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../widgets/thinking_dots.dart';
+import 'chat_reply.dart';
 
-/// The engine warming up, or having failed to.
+/// The reply renderer lives beside this file and is re-exported, so a reply can
+/// still be driven on its own through `package:koru/screens/chat.dart`.
+export 'chat_reply.dart';
+
+/// The screen the app is named for.
 ///
-/// Reported here instead of on the splash so the app is usable while it happens.
-class _EngineBanner extends StatelessWidget {
-  const _EngineBanner({this.progress, this.problem});
-
-  final int? progress;
-  final String? problem;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = progress;
-    if (p == null && problem == null) return const SizedBox.shrink();
-    final failed = p == null;
-    final tone = failed ? KoruTones.clay : KoruTones.leaf;
-    // Full-bleed rather than a card, because it sits between the thread and the
-    // composer and is about this screen rather than part of it.
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: KoruSpace.gutter,
-        vertical: KoruSpace.md,
-      ),
-      color: tone.fill,
-      child: Row(
-        children: [
-          if (!failed)
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: tone.ink,
-              ),
-            )
-          else
-            Icon(Icons.error_outline_rounded, size: 15, color: tone.ink),
-          const SizedBox(width: KoruSpace.sm + 2),
-          Expanded(
-            child: Text(
-              failed
-                  ? 'The on-device model did not start. $problem'
-                  : 'Waking the local model up, $p%. You can carry on in the '
-                      'meanwhile.',
-              style: KoruType.bodySmall.copyWith(fontSize: 12.5),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
+/// Everything that makes it feel like one conversation lives in the shared
+/// thread primitives — the bubbles, the composer, the engine's banner, the way
+/// back to the newest turn — so this file is only the state: what has been
+/// said, what is being said, and where the view is.
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
-}
-
-/// Says which engine answered. The whole point of the app is that you can see
-/// where an answer came from, and a local model is slow enough that an
-/// unexplained pause would look like a hang.
-class _EngineBadge extends StatelessWidget {
-  const _EngineBadge({required this.engine, this.tokensPerSecond});
-
-  final KoruEngine? engine;
-  final double? tokensPerSecond;
-
-  @override
-  Widget build(BuildContext context) {
-    final speed = tokensPerSecond;
-    return switch (engine) {
-      KoruEngine.onDevice => KoruPill(
-          label: speed == null
-              ? 'MODEL ON THIS PHONE'
-              : 'THIS PHONE  ${speed.toStringAsFixed(1)} TOK/S',
-          color: KoruColors.leaf,
-          background: KoruColors.leafSoft,
-          icon: Icons.memory_rounded,
-        ),
-      KoruEngine.cloud => KoruPill(
-          label: 'CLOUD MODEL',
-          color: KoruColors.gold,
-          background: KoruColors.goldSoft,
-          icon: Icons.cloud_outlined,
-        ),
-      KoruEngine.builtIn => KoruPill(
-          label: 'FROM YOUR RECORDS',
-          color: KoruColors.leaf,
-          background: KoruColors.leafSoft,
-          icon: Icons.storage_rounded,
-        ),
-      null => const SizedBox.shrink(),
-    };
-  }
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
@@ -163,8 +83,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(chatProvider);
-    final engineProgress = st.engineProgress;
-    final engineProblem = st.engineProblem;
     final guide = ref.watch(guideFactsProvider).valueOrNull;
     final guideSpeech = guide == null ? null : Guide.vary([
           Guide.forChat(guide),
@@ -208,11 +126,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 16,
+        titleSpacing: KoruSpace.gutter,
         title: Row(
           children: [
-            KoruMascot(size: 30, controller: _mascot, busy: st.busy),
-            const SizedBox(width: 9),
+            KoruMascot(size: KoruSize.mark, controller: _mascot, busy: st.busy),
+            const SizedBox(width: KoruSpace.sm),
             const Text('Koru'),
           ],
         ),
@@ -220,29 +138,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (st.messages.length > 1)
             IconButton(
               tooltip: 'Clear conversation',
-              icon: Icon(Icons.restart_alt_rounded, size: 21, color: KoruColors.inkFaint),
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Clear this conversation?'),
-                    content: const Text(
-                        'Messages are stored on this device. This cannot be undone.'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: Text('Clear', style: TextStyle(color: KoruColors.clay)),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  await ref.read(chatProvider.notifier).clear();
-                  if (context.mounted) toast(context, 'Conversation cleared');
-                }
-              },
+              icon: Icon(
+                Icons.restart_alt_rounded,
+                size: KoruSize.icon,
+                color: KoruColors.inkFaint,
+              ),
+              onPressed: _confirmClear,
             ),
+          const SizedBox(width: KoruSpace.xs),
         ],
       ),
       body: Column(
@@ -251,64 +154,109 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           // same line is a recording, and it would also sit on top of the very
           // cards it is telling the user they do not have.
           if (guideSpeech != null && st.messages.length <= 1)
-            KoruGuideBanner(speech: guideSpeech, onTap: () {}),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                KoruSpace.gutter,
+                KoruSpace.sml,
+                KoruSpace.gutter,
+                0,
+              ),
+              child: KoruGuideBanner(speech: guideSpeech, onTap: () {}),
+            ),
           Expanded(
-            child: st.messages.length <= 1
-                ? _intro()
-                : ListView.builder(
-                    controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(
-                      KoruSpace.gutter,
-                      KoruSpace.md,
-                      KoruSpace.gutter,
-                      KoruSpace.sm,
-                    ),
-                    itemCount: st.messages.length,
-                    itemBuilder: (_, i) => _ChatBubble(
-                      m: st.messages[i],
-                      index: i,
-                      activity: st.activity,
-                      currency: ref.watch(currencyProvider).valueOrNull?.symbol ??
-                          'AED',
-                      onEdit: (text) => _editMessage(context, i, text),
-                      onApprove: () =>
-                          ref.read(chatProvider.notifier).applyWrite(
-                                st.messages[i].proposed!,
-                              ),
-                      onDiscard: () =>
-                          ref.read(chatProvider.notifier).discardWrite(),
+            // The thread and the way back to the newest turn are stacked rather
+            // than laid out one above the other, because the button appears and
+            // disappears as the reader scrolls. In a Column it would take its
+            // space from the composer and lift it off the keyboard mid-answer,
+            // which is the kind of movement nobody notices until it is
+            // happening to them.
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: st.messages.length <= 1
+                      ? _intro()
+                      : ListView.builder(
+                          controller: _scroll,
+                          padding: const EdgeInsets.fromLTRB(
+                            KoruSpace.gutter,
+                            KoruSpace.md,
+                            KoruSpace.gutter,
+                            KoruSpace.sm,
+                          ),
+                          itemCount: st.messages.length,
+                          itemBuilder: (_, i) {
+                            final m = st.messages[i];
+                            final above = i == 0 ? null : st.messages[i - 1];
+                            return _ChatBubble(
+                              m: m,
+                              index: i,
+                              activity: st.activity,
+                              currency: ref
+                                      .watch(currencyProvider)
+                                      .valueOrNull
+                                      ?.symbol ??
+                                  'AED',
+                              // Two turns in a row from the same speaker are one
+                              // thought, so they sit closer together and the
+                              // badge is shown once for the run rather than on
+                              // every message in it.
+                              grouped: above != null && above.role == m.role,
+                              // Only where the conversation crosses midnight,
+                              // which is the one place a reader loses their
+                              // bearings.
+                              dayDivider: _dayDivider(above, m),
+                              onEdit: (text) => _editMessage(context, i, text),
+                              onApprove: () => ref
+                                  .read(chatProvider.notifier)
+                                  .applyWrite(m.proposed!),
+                              onDiscard: () => ref
+                                  .read(chatProvider.notifier)
+                                  .discardWrite(),
+                            );
+                          },
+                        ),
+                ),
+                // A way back down while an answer is arriving.
+                //
+                // Only shown when the reader is actually scrolled up. Following
+                // a stream by dragging is the normal way to read back through a
+                // long answer, and the view used to keep yanking itself to the
+                // bottom, so the only way to read was to wait for it to finish.
+                if (st.busy && !_following)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: KoruSpace.lg,
+                    child: Center(
+                      child: KoruJumpToNewest(onTap: _jumpToNewest),
                     ),
                   ),
-          ),
-          // A way back down while an answer is arriving.
-          //
-          // Only shown when the reader is actually scrolled up. Following a
-          // stream by dragging is the normal way to read back through a long
-          // answer, and the view used to keep yanking itself to the bottom, so
-          // the only way to read was to wait for it to finish.
-          if (st.busy && !_following)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Center(
-                child: _JumpToNewestButton(onTap: _jumpToNewest),
-              ),
+              ],
             ),
+          ),
           // The engine's progress lives here rather than on the splash.
           //
           // It is the same information in the same place, but here being slow
           // costs nothing: the user can read the conversation, start typing, or
           // close the app, whereas holding the start screen for it meant a slow
           // copy or a system dialog left them stuck with nothing to do.
-          if (engineProgress != null || engineProblem != null)
-            _EngineBanner(progress: engineProgress, problem: engineProblem),
-          _composer(st.busy),
+          if (st.engineProgress != null || st.engineProblem != null)
+            KoruEngineBanner(
+              progress: st.engineProgress,
+              problem: st.engineProblem,
+            ),
+          KoruComposer(
+            controller: _input,
+            focusNode: _focus,
+            busy: st.busy,
+            onSend: _send,
+            onStop: () => ref.read(chatProvider.notifier).stop(),
+          ),
         ],
       ),
     );
   }
 
-  /// The empty state. Previously an empty list, which is the least useful thing
-  /// a chat screen can be.
   /// Whether the reader is at the bottom, which is what decides if an arriving
   /// token should scroll the view or be left for later.
   bool _following = true;
@@ -327,6 +275,76 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() => _following = true);
   }
 
+  /// The label for the line that marks a new day, or null when the turn belongs
+  /// to the same run as the one above it.
+  ///
+  /// Compares calendar days rather than hours, so a conversation that runs past
+  /// midnight is cut in the right place, and a message with no timestamp yet —
+  /// the turn that was just appended — never moves a divider. The first turn
+  /// draws nothing: a thread that opens on a divider labels a conversation
+  /// nobody has lost track of yet.
+  static String? _dayDivider(Msg? above, Msg m) {
+    final at = m.time;
+    if (at == null || above == null) return null;
+    final was = above.time;
+    if (was == null) return null;
+    if (was.year == at.year && was.month == at.month && was.day == at.day) {
+      return null;
+    }
+    return _dayLabel(at, DateTime.now());
+  }
+
+  /// "Today", "Yesterday", or the date. Worded by a person rather than left to
+  /// the relative formatter, which says them in lower case and would put "today"
+  /// in the middle of a sentence.
+  static String _dayLabel(DateTime at, DateTime now) {
+    final n = daysBetween(now, at);
+    if (n == 0) return 'Today';
+    if (n == -1) return 'Yesterday';
+    return formatDay(at, now, style: DateStyle.short);
+  }
+
+  /// Throws the thread away, after saying what that costs.
+  ///
+  /// A dialog rather than a toast's undo, because there is no undo: the messages
+  /// are gone the moment this lands and the person has to know that before they
+  /// press it rather than after.
+  Future<void> _confirmClear() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear this conversation?'),
+        content: const Text(
+            'Messages are stored on this device. This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: KoruColors.clay),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(chatProvider.notifier).clear();
+    if (mounted) toast(context, 'Conversation cleared');
+  }
+
+  /// The empty state.
+  ///
+  /// Not an empty list, which is the least useful thing a chat screen can be.
+  /// The mascot is the hero because it is the thing the reader has not met yet,
+  /// and the questions underneath are the ones this app can actually answer, so
+  /// the first thing a new user learns is what to ask rather than that they are
+  /// looking at a text box.
+  ///
+  /// The questions sit on a card rather than floating loose, because they are
+  /// the one thing on this screen the reader can act on before they have typed
+  /// anything, and a card says so where a scattered run of pills does not.
   Widget _intro() {
     const suggestions = [
       'How am I doing?',
@@ -356,27 +374,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         Text(
           'Ask me about your clients, your money and what is due.',
           textAlign: TextAlign.center,
-          style: KoruType.rowTitle.copyWith(fontSize: 17),
+          style: KoruType.rowTitleLarge,
         ),
         const SizedBox(height: KoruSpace.sm),
         Text(
           'Those questions are answered here, on this phone. '
           'Faith, health, medicine and law go to a stronger model instead.',
           textAlign: TextAlign.center,
-          style: KoruType.bodySmall.copyWith(height: 1.45),
+          style: KoruType.bodySmall,
         ),
-        const SizedBox(height: KoruSpace.xl),
-        const SectionLabel('Try'),
-        const SizedBox(height: KoruSpace.xs),
-        Wrap(
-          spacing: KoruSpace.sm,
-          runSpacing: KoruSpace.sm,
-          children: suggestions
-              .map((s) => KoruSelectablePill(
-                    label: s,
-                    onTap: () => _useSuggestion(s),
-                  ))
-              .toList(),
+        const SizedBox(height: KoruSpace.xxl),
+        KoruCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SectionLabel('Try one of these'),
+              KoruFilterBar(
+                padding: EdgeInsets.zero,
+                children: [
+                  for (final s in suggestions)
+                    KoruSelectablePill(
+                      label: s,
+                      onTap: () => _useSuggestion(s),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -414,66 +438,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (q.isEmpty || q == current.trim()) return;
     await ref.read(chatProvider.notifier).editAndResend(index, q);
   }
-
-  Widget _composer(bool busy) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-          KoruSpace.md, KoruSpace.sm + 2, KoruSpace.md,
-          KoruSpace.sm + 2 + MediaQuery.of(context).padding.bottom * 0.2),
-      decoration: BoxDecoration(
-        color: KoruColors.cream,
-        border: Border(top: BorderSide(color: KoruColors.line)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _input,
-              focusNode: _focus,
-              minLines: 1,
-              maxLines: 5,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              decoration: InputDecoration(
-                hintText: 'Ask anything...',
-                fillColor: KoruColors.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: KoruSpace.lg,
-                  vertical: KoruSpace.md,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: KoruSpace.sm + 2),
-          // While an answer is being written the same button stops it, rather
-          // than sitting greyed out. A disabled button for fifteen seconds is
-          // the app looking busy; a stop square is the app offering a way out.
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: KoruSize.touch + 4,
-            height: KoruSize.touch + 4,
-            decoration: BoxDecoration(
-              color: busy ? KoruColors.clay : KoruColors.leaf,
-              borderRadius: BorderRadius.circular(KoruRadius.field),
-              boxShadow: KoruElevation.pressed,
-            ),
-            child: IconButton(
-              icon: Icon(
-                busy ? Icons.stop_rounded : Icons.arrow_upward_rounded,
-                color: KoruColors.onAccent,
-                size: busy ? 26 : 22,
-              ),
-              onPressed: busy
-                  ? () => ref.read(chatProvider.notifier).stop()
-                  : _send,
-              tooltip: busy ? 'Stop' : 'Send',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// One message, with its badge, its bubble and anything it proposed.
@@ -493,12 +457,21 @@ class _ChatBubble extends StatefulWidget {
     required this.onEdit,
     required this.onApprove,
     required this.onDiscard,
+    required this.grouped,
+    required this.dayDivider,
   });
 
   final Msg m;
   final int index;
   final String? activity;
   final String currency;
+
+  /// The same speaker as the message above, so this one closes their run
+  /// rather than starting a new one.
+  final bool grouped;
+
+  /// Set when this turn opens a new day in the thread.
+  final String? dayDivider;
 
   final void Function(String text) onEdit;
   final VoidCallback onApprove;
@@ -522,66 +495,33 @@ class _ChatBubbleState extends State<_ChatBubble> {
   @override
   Widget build(BuildContext context) {
     final isUser = m.role == MsgRole.user;
+    final time = m.time;
+    // A run of turns by one speaker is one block of conversation: the mark, the
+    // engine badge and the clock belong to the run rather than to every turn in
+    // it, and the turns sit closer together. Everything after that is the same
+    // shape whichever side of the thread it is on.
+    final opens = !widget.grouped;
 
     final body = Padding(
-      padding: const EdgeInsets.only(bottom: KoruSpace.md),
+      padding: EdgeInsets.only(
+        bottom: widget.grouped ? KoruSpace.sm : KoruSpace.lg,
+      ),
       child: Column(
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (!isUser) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 5, left: 2),
-              child: Row(
-                children: [
-                  const KoruMark(size: 17),
-                  const SizedBox(width: 7),
-                  _EngineBadge(
-                    engine: m.engine,
-                    tokensPerSecond: m.tokensPerSecond,
-                  ),
-                  if (m.why != null) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        m.why!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: KoruType.micro.copyWith(fontSize: 11.5),
-                      ),
-                    ),
-                  ],
-                  // The time rides in the row the badge already occupies
-                  // rather than taking a row of its own, so a long thread does
-                  // not grow taller than it used to.
-                  if (m.time != null) ...[
-                    const SizedBox(width: 6),
-                    Text(
-                      _clock(m.time!),
-                      style: KoruType.micro,
-                    ),
-                  ],
-                ],
+          if (!isUser && opens)
+            KoruMessageMeta(
+              leading: const KoruMark(size: KoruSize.markSm),
+              badge: KoruEngineBadge(
+                engine: m.engine,
+                tokensPerSecond: m.tokensPerSecond,
               ),
+              why: m.why,
+              clock: time == null ? null : _clock(time),
             ),
-          ],
-          Container(
-            constraints: const BoxConstraints(maxWidth: 330),
-            padding: const EdgeInsets.symmetric(
-              horizontal: KoruSpace.lg - 1,
-              vertical: KoruSpace.md,
-            ),
-            decoration: BoxDecoration(
-              color: isUser ? KoruColors.leaf : KoruColors.surface,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(KoruRadius.bubble),
-                topRight: const Radius.circular(KoruRadius.bubble),
-                bottomLeft: Radius.circular(isUser ? KoruRadius.bubble : 6),
-                bottomRight: Radius.circular(isUser ? 6 : KoruRadius.bubble),
-              ),
-              border: isUser ? null : Border.fromBorderSide(KoruBorders.hairline()),
-              boxShadow: KoruElevation.pressed,
-            ),
+          KoruBubble(
+            mine: isUser,
             child: m.pending && m.text.isEmpty
                 ? KoruThinkingDots(
                     // Koru's own face while she is working. The dots meant the
@@ -598,33 +538,28 @@ class _ChatBubbleState extends State<_ChatBubble> {
                       _ => KoruActivity.thinking,
                     },
                   )
-                // Replies are rendered, not dumped. A cloud answer arrives
-                // with **bold**, "-" bullets and numbered steps already in it,
-                // and showing the asterisks and hashes is showing the reader
-                // the plumbing.
-                //
-                // The user's own text is left alone. What somebody typed is
-                // theirs, and a stray asterisk from a price is not a heading.
+                // The time goes inside the bubble rather than in a row
+                // above it. A row per message is what made a long thread
+                // grow tall enough to push the approval cards below the
+                // fold, which is a worse problem than not having a time at
+                // all. Only the turn that opens a run carries it.
                 : isUser
-                    // The time goes inside the bubble rather than in a row
-                    // above it. A row per message is what made a long thread
-                    // grow tall enough to push the approval cards below the
-                    // fold, which is a worse problem than not having a time at
-                    // all. Twelve pixels inside the bubble does not move
-                    // anything.
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
+                          // The accent foreground comes from the palette rather
+                          // than from white: in the dark palette the brand green
+                          // is light, and hard-coded white on it is 1.9:1.
                           Text(
                             m.text,
                             style: KoruType.bodyStrong.copyWith(
                               color: KoruColors.onAccent,
                             ),
                           ),
-                          if (m.time != null) ...[
+                          if (time != null && opens) ...[
                             const SizedBox(height: KoruSpace.xs),
                             Text(
-                              _clock(m.time!),
+                              _clock(time),
                               style: KoruType.micro.copyWith(
                                 color: KoruColors.onAccent.withValues(alpha: 0.72),
                               ),
@@ -632,10 +567,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                           ],
                         ],
                       )
-                    : RichReply(
-                        text: m.text,
-                        muted: m.pending,
-                      ),
+                    : RichReply(text: m.text, muted: m.pending),
           ),
           if (m.handoff != null && !_handoffDismissed)
             HandoffCard(
@@ -659,6 +591,8 @@ class _ChatBubbleState extends State<_ChatBubble> {
       ),
     );
 
+    final divider = widget.dayDivider;
+
     // Long press, not a button on every message: an icon beside each message
     // clutters the thread, and both actions are rare enough that reaching for
     // them is fine. On your own messages it opens the editor; on Koru's it
@@ -673,204 +607,15 @@ class _ChatBubbleState extends State<_ChatBubble> {
         await Clipboard.setData(ClipboardData(text: m.text));
         if (context.mounted) toast(context, 'Copied');
       },
-      child: body,
-    );
-  }
-}
-
-/// Shown while an answer is arriving and the reader is not at the bottom.
-class _JumpToNewestButton extends StatelessWidget {
-  const _JumpToNewestButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        shape: BoxShape.circle,
-        border: Border.fromBorderSide(KoruBorders.hairline()),
-        boxShadow: KoruElevation.raised,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          // 24 plus the icon is the smallest comfortable target, and this is a
-          // control people hit with a thumb while reading one-handed.
-          child: Padding(
-            padding: const EdgeInsets.all(KoruSpace.md),
-            child: Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 22,
-              color: KoruColors.inkSoft,
+      child: divider == null
+          ? body
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                KoruThreadDivider(label: divider),
+                body,
+              ],
             ),
-          ),
-        ),
-      ),
     );
-  }
-}
-
-/// Renders the small amount of markdown a chat reply actually uses.
-///
-/// Deliberately not a markdown parser. Bold, italics, bullets, numbered steps
-/// and headings are what models reach for; tables, links, images and HTML are
-/// what a full renderer would also accept, and on a phone a link someone did
-/// not ask for is a worse failure than an unrendered pipe character.
-///
-/// Streaming is the constraint that shapes this. The text arrives a token at a
-/// time, so an unterminated "**" has to render as literal asterisks until the
-/// closing pair turns up, or the answer visibly flickers between two layouts as
-/// it is written. A pattern that does not close is therefore not styled at all.
-/// Public because it is testable on its own and is the shape any reply in the
-/// app should have. A renderer this fussy about streaming is not something to
-/// verify only through a chat bubble.
-class RichReply extends StatelessWidget {
-  const RichReply({super.key, required this.text, required this.muted});
-
-  final String text;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final base = KoruType.bodyStrong.copyWith(
-      color: muted ? KoruColors.inkFaint : KoruColors.ink,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: _blocks(text, base),
-    );
-  }
-
-  /// Splits [text] into paragraphs and returns a widget per line.
-  List<Widget> _blocks(String raw, TextStyle base) {
-    final out = <Widget>[];
-    final lines = raw.split('\n');
-
-    for (final line in lines) {
-      final trimmed = line.trimRight();
-      if (trimmed.trim().isEmpty) {
-        if (out.isNotEmpty) out.add(const SizedBox(height: 8));
-        continue;
-      }
-
-      final bullet = RegExp(r'^\s*[-*+]\s+').firstMatch(trimmed);
-      final numbered = RegExp(r'^\s*\d+[.)]\s+').firstMatch(trimmed);
-
-      if (bullet != null) {
-        out.add(_row('\u2022', trimmed.substring(bullet.end), base, indent: 16));
-        continue;
-      }
-      if (numbered != null) {
-        final n = RegExp(r'^\s*(\d+)').firstMatch(trimmed)!.group(1)!;
-        out.add(_row('$n.', trimmed.substring(numbered.end), base, indent: 22));
-        continue;
-      }
-
-      final heading = RegExp(r'^(#{1,3})\s+(.*)$').firstMatch(trimmed);
-      if (heading != null) {
-        final level = heading.group(1)!.length;
-        out.add(Padding(
-          padding: const EdgeInsets.only(top: 6, bottom: 2),
-          child: _InlineText(
-            _inline(heading.group(2)!),
-            style: base.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: level == 1 ? 16 : 15,
-            ),
-          ),
-        ));
-        continue;
-      }
-
-      out.add(Padding(
-        padding: const EdgeInsets.only(bottom: 2),
-        child: _InlineText(_inline(trimmed), style: base),
-      ));
-    }
-    return out;
-  }
-
-  Widget _row(String marker, String body, TextStyle base, {required double indent}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 3, left: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: indent,
-            child: Text(marker,
-                style: base.copyWith(color: KoruColors.inkFaint)),
-          ),
-          Expanded(child: _InlineText(_inline(body), style: base)),
-        ],
-      ),
-    );
-  }
-
-  /// The one inline pass: **bold**, *italic* and `code`.
-  ///
-  /// Rewrites the matched text to a tag the next pass knows how to style.
-  /// Anything with no closing pair is left alone: an unclosed run while a reply
-  /// is still streaming would otherwise restyle the rest of the paragraph on
-  /// every token, which reads as the app breaking.
-  static String _inline(String s) {
-    // The two passes cannot nest: bold is consumed first, and the italic
-    // pattern refuses to match anything still wrapped in asterisks.
-    var out = s.replaceAllMapped(
-      RegExp(r'\*\*([^*]{1,200}?)\*\*'),
-      (m) => '<b>${m.group(1)}</b>',
-    );
-    out = out.replaceAllMapped(
-      RegExp(r'(?<!\*)\*([^*]{1,200}?)\*(?!\*)'),
-      (m) => '<i>${m.group(1)}</i>',
-    );
-    out = out.replaceAllMapped(
-      RegExp(r'`([^`]{1,200}?)`'),
-      (m) => '<c>${m.group(1)}</c>',
-    );
-    return out;
-  }
-}
-
-/// Renders the tiny inline dialect produced by [_RichReply._inline].
-///
-/// A bespoke parser rather than a general one, because the tags that can appear
-/// here are exactly three and all of them nest. Accepting anything else would
-/// mean accepting markup nobody asked to render.
-class _InlineText extends StatelessWidget {
-  const _InlineText(this.raw, {required this.style});
-
-  final String raw;
-  final TextStyle style;
-
-  @override
-  Widget build(BuildContext context) {
-    final spans = <TextSpan>[];
-    final re = RegExp(r'<(b|i|c)>(.*?)</\1>');
-    var at = 0;
-    for (final m in re.allMatches(raw)) {
-      if (m.start > at) {
-        spans.add(TextSpan(text: raw.substring(at, m.start)));
-      }
-      final inner = m.group(2)!;
-      spans.add(TextSpan(
-        text: inner,
-        style: switch (m.group(1)) {
-          'b' => style.copyWith(fontWeight: FontWeight.w700),
-          'i' => style.copyWith(fontStyle: FontStyle.italic),
-          _ => style.copyWith(
-              fontFamily: 'monospace',
-              backgroundColor: KoruColors.surfaceAlt),
-        },
-      ));
-      at = m.end;
-    }
-    if (at < raw.length) spans.add(TextSpan(text: raw.substring(at)));
-    return Text.rich(TextSpan(style: style, children: spans));
   }
 }
