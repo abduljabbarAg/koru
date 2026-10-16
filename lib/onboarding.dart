@@ -142,30 +142,32 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: KoruColors.cream,
       body: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+              padding: const EdgeInsets.fromLTRB(
+                  KoruSpace.xxl, KoruSpace.lg, KoruSpace.xxl, KoruSpace.sm),
               child: Row(
                 children: [
-                  const KoruMark(),
-                  const SizedBox(width: 12),
-                  Text('Koru', style: Theme.of(context).textTheme.titleLarge),
+                  const KoruMark(size: 30),
+                  const SizedBox(width: KoruSpace.md),
+                  Text('Koru', style: KoruType.title.copyWith(fontSize: 19)),
                   const Spacer(),
-                  Text('${_step + 1} of $_steps',
-                      style: TextStyle(color: KoruColors.inkFaint, fontSize: 13)),
+                  Text('${_step + 1} of $_steps', style: KoruType.caption),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: KoruSpace.xxl),
               child: Row(
                 children: List.generate(_steps, (i) {
                   return Expanded(
                     child: Container(
                       height: 4,
-                      margin: EdgeInsets.only(right: i == _last ? 0 : 6),
+                      margin: EdgeInsets.only(
+                          right: i == _last ? 0 : KoruSpace.sm - 2),
                       decoration: BoxDecoration(
                         color: i <= _step ? KoruColors.leaf : KoruColors.line,
                         borderRadius: BorderRadius.circular(2),
@@ -193,7 +195,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              padding: const EdgeInsets.fromLTRB(
+                  KoruSpace.xxl, KoruSpace.sm, KoruSpace.xxl, KoruSpace.xxl),
               child: Row(
                 children: [
                   if (_step > 0)
@@ -203,7 +206,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         child: const Text('Back'),
                       ),
                     ),
-                  if (_step > 0) const SizedBox(width: 12),
+                  if (_step > 0) const SizedBox(width: KoruSpace.md),
                   Expanded(
                     flex: 2,
                     child: FilledButton(
@@ -232,11 +235,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   /// harder ones, cheerful once the details are in.
   Widget _guide(KoruClip clip) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: KoruSpace.xs),
       child: Row(
         children: [
           KoruMascot(size: 54, controller: _mascot, semanticLabel: 'Koru'),
-          const SizedBox(width: 12),
+          const SizedBox(width: KoruSpace.md),
           Expanded(
             child: Text(
               switch (clip) {
@@ -245,7 +248,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 KoruClip.wave => 'Koru is here',
                 _ => 'Koru is listening',
               },
-              style: TextStyle(color: KoruColors.inkFaint, fontSize: 12.5),
+              style: KoruType.bodySmall.copyWith(fontSize: 12.5),
             ),
           ),
         ],
@@ -253,22 +256,25 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
+  /// The frame every step sits in.
+  ///
+  /// One definition rather than seven: the mascot, the question, one line of
+  /// why it is being asked, and the control. Every onboarding step used to lay
+  /// itself out by hand, which is how the seven pages came to have seven
+  /// different question sizes.
   Widget _body(String title, String sub, List<Widget> children, {KoruClip clip = KoruClip.idle}) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+      padding: const EdgeInsets.fromLTRB(
+          KoruSpace.xxl, KoruSpace.xl, KoruSpace.xxl, KoruSpace.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _guide(clip),
-          const SizedBox(height: 14),
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 27, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.6)),
-          const SizedBox(height: 8),
-          Text(sub,
-              style: TextStyle(
-                  fontSize: 15, color: KoruColors.inkSoft, height: 1.45)),
-          const SizedBox(height: 24),
+          const SizedBox(height: KoruSpace.md),
+          Text(title, style: KoruType.display.copyWith(fontSize: 27, letterSpacing: -0.6)),
+          const SizedBox(height: KoruSpace.sm),
+          Text(sub, style: KoruType.bodyStrong.copyWith(color: KoruColors.inkSoft)),
+          const SizedBox(height: KoruSpace.xl),
           ...children,
         ],
       ),
@@ -280,9 +286,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'Your clients, your money and what is due. It runs on this phone. '
             'No account, no real name.',
         [
-          const SizedBox(height: 4),
+          const SizedBox(height: KoruSpace.xs),
           ClipRRect(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(KoruRadius.card),
             child: Image.asset(
               'assets/splash/koru_splash.png',
               width: double.infinity,
@@ -291,7 +297,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               excludeFromSemantics: true,
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: KoruSpace.xl),
           const KoruFeature(
               icon: Icons.lock_outline_rounded,
               title: 'Local by default',
@@ -342,19 +348,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           : 'Check it over. $missing ${missing == 1 ? 'answer is' : 'answers are'} '
               'empty and Koru will say so rather than guess.',
       [
-        const SizedBox(height: 10),
+        const SizedBox(height: KoruSpace.sm + 2),
         for (final row in rows)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: row.$2 == 'not set' ? KoruColors.goldSoft : KoruColors.surface,
-                borderRadius: BorderRadius.circular(KoruRadius.field),
-                border: Border.all(
-                  color: row.$2 == 'not set' ? KoruColors.gold : KoruColors.line,
-                ),
+            padding: const EdgeInsets.only(bottom: KoruSpace.sm + 2),
+            child: KoruCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: KoruSpace.lg,
+                vertical: KoruSpace.md,
               ),
+              background: row.$2 == 'not set' ? KoruColors.goldSoft : null,
+              accent: row.$2 == 'not set' ? KoruColors.gold : null,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -362,27 +366,30 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(row.$1,
-                            style: TextStyle(
-                                fontSize: 11.5, color: KoruColors.inkFaint)),
-                        const SizedBox(height: 2),
-                        Text(row.$2,
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w600,
-                              color: row.$2 == 'not set'
-                                  ? KoruColors.inkFaint
-                                  : KoruColors.ink,
-                            )),
+                        Text(
+                          row.$1.toUpperCase(),
+                          style: KoruType.label.copyWith(fontSize: 10.5),
+                        ),
+                        const SizedBox(height: KoruSpace.xs),
+                        Text(
+                          row.$2,
+                          style: KoruType.bodyStrong.copyWith(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                            color: row.$2 == 'not set'
+                                ? KoruColors.inkFaint
+                                : KoruColors.ink,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                   if (row.$2 == 'not set')
                     IconButton(
                       tooltip: 'Answer this',
-                      iconSize: 18,
+                      iconSize: KoruSize.icon,
                       visualDensity: VisualDensity.compact,
-                      icon: Icon(Icons.edit_outlined, color: KoruColors.gold),
+                      icon: const Icon(Icons.edit_outlined),
                       onPressed: () => _jumpTo(row.$1),
                     ),
                 ],
@@ -418,7 +425,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'A nickname, not a name. It stays on this device and is never attached '
             'to anything sent to a cloud model.',
         [
-          const SizedBox(height: 8),
+          const SizedBox(height: KoruSpace.sm),
           TextField(
             controller: _nick,
             textCapitalization: TextCapitalization.none,
@@ -429,39 +436,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _choice(String title, List<String> opts, String? sel, void Function(String) onPick) =>
       _body(title, 'Pick one. You can change this later in Settings.', [
-        const SizedBox(height: 4),
-        ...opts.map((o) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: InkWell(
-                onTap: () => setState(() => onPick(o)),
-                borderRadius: BorderRadius.circular(KoruRadius.field),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  decoration: BoxDecoration(
-                    color: sel == o ? KoruColors.leafSoft : KoruColors.surface,
-                    borderRadius: BorderRadius.circular(KoruRadius.field),
-                    border: Border.all(
-                      color: sel == o ? KoruColors.leaf : KoruColors.line,
-                      width: sel == o ? 1.6 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(o,
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: sel == o ? FontWeight.w600 : FontWeight.w500,
-                                color: KoruColors.ink)),
-                      ),
-                      if (sel == o)
-                        Icon(Icons.check_circle_rounded,
-                            color: KoruColors.leaf, size: 21),
-                    ],
-                  ),
-                ),
-              ),
-            )),
+        const SizedBox(height: KoruSpace.xs),
+        for (final o in opts)
+          KoruSelectableTile(
+            label: o,
+            selected: sel == o,
+            onTap: () => setState(() => onPick(o)),
+          ),
       ]);
 
   Widget _capacityStep() => _body(
@@ -470,82 +451,45 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             'this number so it can tell you when you are full instead of letting '
             'you quietly take on work you have no room for.',
         [
-          const SizedBox(height: 8),
+          const SizedBox(height: KoruSpace.sm),
           Row(
             children: [
-              for (final n in _capacityOptions) ...[
+              for (final n in _capacityOptions)
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InkWell(
+                    padding: EdgeInsets.only(
+                        right: n == _capacityOptions.last ? 0 : KoruSpace.sm),
+                    child: _NumberChoice(
+                      label: '$n',
+                      selected: _capacity == n,
                       onTap: () => setState(() => _capacity = n),
-                      borderRadius: BorderRadius.circular(KoruRadius.field),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: _capacity == n ? KoruColors.leafSoft : KoruColors.surface,
-                          borderRadius: BorderRadius.circular(KoruRadius.field),
-                          border: Border.all(
-                            color: _capacity == n ? KoruColors.leaf : KoruColors.line,
-                            width: _capacity == n ? 1.6 : 1,
-                          ),
-                        ),
-                        child: Text(
-                          '$n',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: _capacity == n ? FontWeight.w700 : FontWeight.w500,
-                            color: KoruColors.ink,
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                 ),
-              ],
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: KoruSpace.xl),
           Text(
             'And what are you paid in?',
-            style: TextStyle(fontSize: 15, color: KoruColors.inkSoft, height: 1.4),
+            style: KoruType.bodyStrong.copyWith(color: KoruColors.inkSoft),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: KoruSpace.md),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: KoruSpace.sm,
+            runSpacing: KoruSpace.sm,
             children: [
               for (final c in kCurrencies)
-                InkWell(
+                KoruSelectablePill(
+                  label: c.code,
+                  selected: _currency == c.code,
                   onTap: () => setState(() => _currency = c.code),
-                  borderRadius: BorderRadius.circular(KoruRadius.pill),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: _currency == c.code ? KoruColors.leafSoft : KoruColors.surface,
-                      borderRadius: BorderRadius.circular(KoruRadius.pill),
-                      border: Border.all(
-                        color: _currency == c.code ? KoruColors.leaf : KoruColors.line,
-                        width: _currency == c.code ? 1.6 : 1,
-                      ),
-                    ),
-                    child: Text(
-                      c.code,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: _currency == c.code ? FontWeight.w700 : FontWeight.w500,
-                        color: KoruColors.ink,
-                      ),
-                    ),
-                  ),
                 ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: KoruSpace.md),
           Text(
             'You can change this any time in Settings.',
-            style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
+            style: KoruType.caption,
           ),
         ],
       );
@@ -572,7 +516,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         'Last one. What do you want to be true in three months?',
         'Be specific. This is what I will hold you to.',
         [
-          const SizedBox(height: 8),
+          const SizedBox(height: KoruSpace.sm),
           TextField(
             controller: _goals,
             maxLines: 4,
@@ -580,26 +524,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               hintText: 'e.g. get paid by 5 clients, stop taking work I cannot finish',
             ),
           ),
-          const SizedBox(height: 18),
-          const SectionLabel('I want help with'),
-          Text(
-            'Pick as many as apply.',
-            style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
-          ),
-          const SizedBox(height: 10),
-          ..._helps.map((h) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ChoiceChip(
-                  label: Text(h),
+          const SizedBox(height: KoruSpace.xl),
+          const SectionLabel('I want help with', padding: EdgeInsets.only(bottom: KoruSpace.xs)),
+          Text('Pick as many as apply.', style: KoruType.caption),
+          const SizedBox(height: KoruSpace.sm + 2),
+          Wrap(
+            spacing: KoruSpace.sm,
+            runSpacing: KoruSpace.sm,
+            children: [
+              for (final h in _helps)
+                KoruSelectablePill(
+                  label: h,
                   selected: _help.contains(h),
-                  onSelected: (s) => setState(() => _toggleHelp(h, s)),
-                  selectedColor: KoruColors.leafSoft,
-                  side: BorderSide(color: KoruColors.line),
-                  labelStyle: TextStyle(
-                      color: KoruColors.ink,
-                      fontWeight: _help.contains(h) ? FontWeight.w600 : FontWeight.w500),
+                  onTap: () => setState(() => _toggleHelp(h, !_help.contains(h))),
                 ),
-              )),
+            ],
+          ),
         ],
       );
 }
@@ -614,27 +554,75 @@ class KoruFeature extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: KoruSpace.lg),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: KoruColors.leaf, size: 22),
-          const SizedBox(width: 14),
+          KoruIconBadge(
+            icon: icon,
+            color: KoruColors.leaf,
+            background: KoruColors.leafSoft,
+          ),
+          const SizedBox(width: KoruSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 15.5, color: KoruColors.ink)),
-                const SizedBox(height: 2),
-                Text(body,
-                    style: TextStyle(
-                        color: KoruColors.inkFaint, fontSize: 13.5, height: 1.4)),
+                Text(title, style: KoruType.bodyStrong.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: KoruSpace.xxs),
+                Text(body, style: KoruType.bodySmall),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One of the capacity numbers.
+///
+/// The same selectable tile as the stage and work lists, centred, because
+/// capacity is picked the same way and had to look like it.
+class _NumberChoice extends StatelessWidget {
+  const _NumberChoice({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(KoruRadius.field),
+        child: AnimatedContainer(
+          duration: KoruMotion.quick,
+          curve: KoruMotion.easeOut,
+          padding: const EdgeInsets.symmetric(vertical: KoruSpace.lg + 2),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? KoruColors.leafSoft : KoruColors.surface,
+            borderRadius: BorderRadius.circular(KoruRadius.field),
+            border: Border.fromBorderSide(
+              selected ? KoruBorders.selected() : KoruBorders.hairline(),
+            ),
+            boxShadow: selected ? KoruElevation.pressed : KoruElevation.none,
+          ),
+          child: Text(
+            label,
+            style: KoruType.bodyStrong.copyWith(
+              fontSize: 19,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
       ),
     );
   }

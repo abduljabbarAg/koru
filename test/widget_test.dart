@@ -208,7 +208,7 @@ void main() {
           tester.element(find.byType(RootGate)));
       container.read(chatProvider.notifier);
       await tester.pump();
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 6));
       await pumpFrames(tester, frames: 12);
 
       expect(find.byType(SplashScreen), findsNothing,
@@ -218,12 +218,17 @@ void main() {
 
     testWidgets('Start on the last step lands you in the app', (tester) async {
       useTallSurface(tester);
+      // A fresh install is also offered the permission explanation before the
+      // shell, so this store is marked as already having been asked. Otherwise
+      // this asserts the landing on HomeShell when the app is behaving exactly
+      // as designed and stopping one screen short.
+      await seed(tester, () => store.put('asked_permissions', '1'));
       await pumpApp(tester, const RootGate());
 
       // Splash first: it holds for a minimum time, and it only starts once the
       // store read in initState resolves, so give both room.
       await tester.pump();
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 6));
       await pumpFrames(tester, frames: 12);
       expect(find.byType(OnboardingScreen), findsOneWidget);
 
@@ -338,21 +343,25 @@ void main() {
       await tapChip(tester, 'Pricing');
 
       // All three stay selected at once.
-      expect(find.byType(ChoiceChip), findsNWidgets(5));
+      expect(find.byType(KoruSelectablePill), findsNWidgets(5));
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Finding clients')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Finding clients')).selected,
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Getting paid')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Getting paid')).selected,
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Staying organised')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Staying organised')).selected,
         isFalse,
       );
 
@@ -372,13 +381,15 @@ void main() {
 
       await tapChip(tester, 'Pricing');
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
         isTrue,
       );
 
       await tapChip(tester, 'Pricing');
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
         isFalse,
       );
     });
@@ -393,22 +404,26 @@ void main() {
       await tapChip(tester, 'All of it');
 
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All of it')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'All of it')).selected,
         isTrue,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Pricing')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
         isFalse,
       );
 
       // Picking something specific drops the shortcut.
       await tapChip(tester, 'Getting paid');
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All of it')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'All of it')).selected,
         isFalse,
       );
       expect(
-        tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Getting paid')).selected,
+        tester.widget<KoruSelectablePill>(
+                find.widgetWithText(KoruSelectablePill, 'Getting paid')).selected,
         isTrue,
       );
 

@@ -44,13 +44,16 @@ class ClientDetailScreen extends ConsumerWidget {
         clients == null ? null : _firstClient(clients.where((c) => c.id == clientId));
     if (client == null) {
       return Scaffold(
+        backgroundColor: KoruColors.cream,
         appBar: AppBar(),
         body: clients == null
-            ? Center(child: CircularProgressIndicator(color: KoruColors.leaf))
-            : const EmptyHint(
-                icon: Icons.person_off_outlined,
-                title: 'That client is gone',
-                body: 'They were deleted from the list.',
+            ? const KoruLoading(label: 'Loading this client')
+            : const Center(
+                child: EmptyHint(
+                  icon: Icons.person_off_outlined,
+                  title: 'That client is gone',
+                  body: 'They were deleted from the list.',
+                ),
               ),
       );
     }
@@ -60,77 +63,89 @@ class ClientDetailScreen extends ConsumerWidget {
     final today = DateTime.now();
 
     return Scaffold(
+      backgroundColor: KoruColors.cream,
       appBar: AppBar(title: Text(client.name)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          _statusPill(client, balance, currency),
-          const SizedBox(height: 14),
-          _moneySummary(client, balance, received[clientId] ?? 0, currency),
-          if (client.isRetainer) ...[
-            const SizedBox(height: 14),
-            _RetainerPanel(
-              client: client,
-              onAddNext: () => _addNextRetainerDeadline(context, ref, client),
-            ),
-          ],
-          if (client.note != null && client.note!.trim().isNotEmpty) ...[
-            const SizedBox(height: 18),
-            const SectionLabel('Note'),
-            const SizedBox(height: 6),
-            Text(
-              client.note!,
-              style: TextStyle(fontSize: 14, color: KoruColors.inkSoft, height: 1.5),
-            ),
-          ],
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              const Expanded(child: SectionLabel('Payments')),
-              if (payments.isNotEmpty)
-                Text(
-                  '${payments.length} recorded',
-                  style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
-                ),
-            ],
+      body: KoruSettle(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            KoruSpace.gutter,
+            KoruSpace.sm,
+            KoruSpace.gutter,
+            KoruSpace.tail,
           ),
-          const SizedBox(height: 4),
-          if (payments.isEmpty)
-            Text(
-              'Nothing recorded. Tap "Record payment" on the Business screen when '
-              'money comes in.',
-              style: TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4),
-            )
-          else
-            ...payments.map((p) => _paymentRow(ref, p, currency)),
-          const SizedBox(height: 18),
-          const SectionLabel('Deadlines'),
-          const SizedBox(height: 4),
-          if (deadlines.isEmpty)
-            Text(
-              'Nothing scheduled for this client.',
-              style: TextStyle(fontSize: 13, color: KoruColors.inkFaint, height: 1.4),
-            )
-          else
-            ...deadlines.map((d) => _deadlineRow(ref, d, today)),
-        ],
+          children: [
+            _statusPill(client, balance, currency),
+            const SizedBox(height: KoruSpace.md),
+            _moneySummary(client, balance, received[clientId] ?? 0, currency),
+            if (client.isRetainer) ...[
+              const SizedBox(height: KoruSpace.md),
+              _RetainerPanel(
+                client: client,
+                onAddNext: () => _addNextRetainerDeadline(context, ref, client),
+              ),
+            ],
+            if (client.note != null && client.note!.trim().isNotEmpty) ...[
+              const SizedBox(height: KoruSpace.lg),
+              const SectionLabel('Note'),
+              const SizedBox(height: KoruSpace.xs + 2),
+              KoruCard(
+                child: Text(
+                  client.note!,
+                  style: KoruType.body,
+                ),
+              ),
+            ],
+            KoruSection(
+              label: 'Payments',
+              hint: payments.isEmpty ? null : '${payments.length} recorded',
+              dividerIndent: KoruSpace.row,
+              empty: const EmptyHint(
+                icon: Icons.payments_outlined,
+                title: 'Nothing recorded',
+                body: 'Record a payment from the Business screen when money '
+                    'comes in, and the balance follows.',
+              ),
+              children: [
+                for (final p in payments) _paymentRow(ref, p, currency),
+              ],
+            ),
+            KoruSection(
+              label: 'Deadlines',
+              hint: 'Still open for this client.',
+              dividerIndent: KoruSpace.row,
+              empty: const EmptyHint(
+                icon: Icons.event_available_rounded,
+                title: 'Nothing scheduled',
+                body: 'Nothing open for this client. Say "add deadline" in Talk '
+                    'to put one on the list.',
+              ),
+              children: [
+                for (final d in deadlines) _deadlineRow(ref, d, today),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _statusPill(Client c, double balance, Currency currency) {
-    final (color, background) = switch (c.status) {
-      'paid' => (KoruColors.leaf, KoruColors.leafSoft),
-      'active' => (KoruColors.gold, KoruColors.goldSoft),
-      'delivered' => (KoruColors.clay, KoruColors.claySoft),
-      _ => (KoruColors.inkSoft, KoruColors.surfaceAlt),
+    final tone = switch (c.status) {
+      'paid' => KoruTones.leaf,
+      'active' => KoruTones.gold,
+      'delivered' => KoruTones.clay,
+      _ => KoruTones.neutral,
     };
     final late = c.isOverdueOn(DateTime.now());
     return Row(
       children: [
-        KoruPill(label: c.status.toUpperCase(), color: color, background: background),
+        KoruPill(
+          label: c.status.toUpperCase(),
+          color: tone.ink,
+          background: tone.fill,
+        ),
         if (balance > 0) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: KoruSpace.sm),
           KoruPill(
             label: '${money(balance)} ${currency.code} OUTSTANDING',
             color: late ? KoruColors.clay : KoruColors.gold,
@@ -138,7 +153,7 @@ class ClientDetailScreen extends ConsumerWidget {
           ),
         ],
         if (c.isRetainer) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: KoruSpace.sm),
           KoruPill(
             label: 'RETAINER',
             color: KoruColors.leaf,
@@ -159,38 +174,24 @@ class ClientDetailScreen extends ConsumerWidget {
       // from one that failed to save.
       if (c.phone != null) c.phone!,
     ];
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: KoruColors.line),
-      ),
+    return KoruCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             balance > 0 ? money(balance) : money(received),
-            style: TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.w700,
-              color: KoruColors.ink,
-              letterSpacing: -0.8,
-            ),
+            style: KoruType.metric,
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: KoruSpace.xs),
           Text(
             balance > 0
                 ? '${currency.code} still owed'
                 : '${currency.code} received, nothing outstanding',
-            style: TextStyle(fontSize: 13, color: KoruColors.inkFaint),
+            style: KoruType.caption,
           ),
           if (meta.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              meta.join('  ·  '),
-              style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft),
-            ),
+            const SizedBox(height: KoruSpace.sm + 2),
+            Text(meta.join('  ·  '), style: KoruType.meta.copyWith(fontSize: 13)),
           ],
         ],
       ),
@@ -198,91 +199,54 @@ class ClientDetailScreen extends ConsumerWidget {
   }
 
   Widget _paymentRow(WidgetRef ref, Payment p, Currency currency) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: KoruColors.line),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${money(p.amount)} ${currency.code}',
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  p.note == null
-                      ? formatDate(p.date, DateTime.now())
-                      : '${formatDate(p.date, DateTime.now())}  ·  ${p.note}',
-                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Undo this payment',
-            icon: Icon(Icons.undo_rounded, size: 18, color: KoruColors.inkFaint),
-            onPressed: () async {
-              final store = await ref.read(storeProvider.future);
-              await store.deletePayment(p.id!);
-              _refresh(ref);
-            },
-          ),
-        ],
+    return KoruRow(
+      title: '${money(p.amount)} ${currency.code}',
+      subtitle: p.note == null
+          ? formatDate(p.date, DateTime.now())
+          : '${formatDate(p.date, DateTime.now())}  ·  ${p.note}',
+      trailing: IconButton(
+        tooltip: 'Undo this payment',
+        icon: const Icon(Icons.undo_rounded, size: KoruSize.icon),
+        visualDensity: VisualDensity.compact,
+        onPressed: () async {
+          final store = await ref.read(storeProvider.future);
+          await store.deletePayment(p.id!);
+          _refresh(ref);
+        },
       ),
     );
   }
 
   Widget _deadlineRow(WidgetRef ref, Deadline d, DateTime today) {
     final late = d.isOverdueOn(today);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: late ? KoruColors.clay : KoruColors.line),
-      ),
-      child: Row(
+    return KoruRow(
+      title: d.title,
+      subtitle: late
+          ? 'was due ${formatDate(d.due, DateTime.now())}'
+          : 'due ${formatDate(d.due, DateTime.now())}',
+      subtitleIn: late ? KoruColors.clay : null,
+      accent: late ? KoruColors.clay : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
             tooltip: 'Mark ${d.title} done',
-            icon: Icon(Icons.radio_button_unchecked_rounded, color: KoruColors.inkFaint),
+            icon: Icon(
+              Icons.radio_button_unchecked_rounded,
+              size: KoruSize.icon,
+              color: KoruColors.inkFaint,
+            ),
+            visualDensity: VisualDensity.compact,
             onPressed: () async {
               final store = await ref.read(storeProvider.future);
               await store.setDeadlineDone(d.id!, true);
               ref.invalidate(openDeadlinesProvider);
             },
           ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(d.title,
-                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 2),
-                Text(
-                  late
-                        ? 'was due ${formatDate(d.due, DateTime.now())}'
-                        : 'due ${formatDate(d.due, DateTime.now())}',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: late ? KoruColors.clay : KoruColors.inkFaint,
-                  ),
-                ),
-              ],
-            ),
-          ),
           IconButton(
             tooltip: 'Delete ${d.title}',
-            icon: Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
+            icon: const Icon(Icons.close_rounded, size: KoruSize.icon),
+            visualDensity: VisualDensity.compact,
             onPressed: () async {
               final store = await ref.read(storeProvider.future);
               await store.deleteDeadline(d.id!);
@@ -368,58 +332,58 @@ class _RetainerPanel extends ConsumerWidget {
         final next = snap.data?.next;
         final today = DateTime.now();
         final late = next != null && next.isBefore(today);
+        final tone = late ? KoruTones.clay : KoruTones.leaf;
         final subtitle = last == null
             ? 'Never paid. A retainer that has not started is not income.'
             : late
                 ? 'Was due ${formatDay(next, DateTime.now())} and has not landed'
                 : 'Next due ${formatDay(next!, DateTime.now())}';
-        return Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: late ? KoruColors.claySoft : KoruColors.leafSoft,
-            borderRadius: BorderRadius.circular(KoruRadius.card),
-            border: Border.all(color: late ? KoruColors.clay : KoruColors.leaf),
-          ),
+        return KoruCard(
+          background: tone.fill,
+          accent: tone.ink,
+          elevated: false,
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.autorenew_rounded,
-                size: 19,
-                color: late ? KoruColors.clay : KoruColors.leaf,
+              KoruIconBadge(
+                icon: Icons.autorenew_rounded,
+                color: tone.ink,
+                background: KoruColors.surface,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: KoruSpace.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       '${money(client.monthly!)} ${currency.code} per month',
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        color: KoruColors.ink,
-                      ),
+                      style: KoruType.rowTitle,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: KoruSpace.xs),
                     Text(
                       subtitle,
-                      style: TextStyle(
-                        fontSize: 12.5,
+                      style: KoruType.body.copyWith(
+                        fontSize: 13,
                         color: late ? KoruColors.clay : KoruColors.inkSoft,
                       ),
                     ),
+                    if (last != null) ...[
+                      const SizedBox(height: KoruSpace.sm),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: onAddNext,
+                          icon: const Icon(
+                            Icons.event_repeat_rounded,
+                            size: KoruSize.iconSm,
+                          ),
+                          label: const Text('Add next one to my list'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (last != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: onAddNext,
-                    icon: const Icon(Icons.event_repeat_rounded, size: 17),
-                    label: const Text('Add next one to my list'),
-                  ),
-                ),
             ],
           ),
         );

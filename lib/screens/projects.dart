@@ -15,8 +15,8 @@ import '../widgets.dart';
 /// we on the shop" without inventing something encouraging.
 ///
 /// Client and personal projects share this screen because they differ in one
-/// field. Splitting them would mean two screens, two sets of empty states, and
-/// a user with three personal projects and one client project calling them four
+/// field. Splitting them would mean two screens, two sets of empty states, and a
+/// user with three personal projects and one client project calling them four
 /// different things.
 class ProjectsScreen extends ConsumerStatefulWidget {
   const ProjectsScreen({super.key});
@@ -33,21 +33,15 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     final projects = ref.watch(projectsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Projects'),
-        backgroundColor: KoruColors.cream,
-        surfaceTintColor: Colors.transparent,
-      ),
       backgroundColor: KoruColors.cream,
+      appBar: AppBar(title: const Text('Projects')),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: KoruColors.leaf,
-        foregroundColor: KoruColors.onAccent,
         onPressed: () => _edit(null),
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: const Text('New project'),
       ),
       body: projects.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const KoruLoading(label: 'Loading your projects'),
         error: (e, _) => KoruErrorView(
           onRetry: () => ref.invalidate(projectsProvider),
           what: 'load your projects',
@@ -57,37 +51,65 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               ? all
               : all.where((p) => p.kind == _filter).toList();
           if (all.isEmpty) {
-            return const _Empty(
-              icon: Icons.folder_open,
-              title: 'No projects yet',
-              body: 'A project is one piece of work with a finish line. Add '
-                  'the site you are building, the thing you are learning, or '
-                  'anything else with an end to it.',
+            return const Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(KoruSpace.gutter),
+                child: EmptyHint(
+                  icon: Icons.folder_open_rounded,
+                  title: 'No projects yet',
+                  body: 'A project is one piece of work with a finish line. Add '
+                      'the site you are building, the thing you are learning, or '
+                      'anything else with an end to it.',
+                ),
+              ),
             );
           }
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-            children: [
-              _FilterBar(
-                selected: _filter,
-                counts: {
-                  for (final k in ProjectKind.values)
-                    k: all.where((p) => p.kind == k).length,
-                },
-                onChanged: (k) => setState(() => _filter = k),
+          return KoruSettle(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                KoruSpace.gutter,
+                KoruSpace.sm,
+                KoruSpace.gutter,
+                KoruSpace.aboveFab,
               ),
-              if (shown.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 40),
-                  child: Center(child: Text('Nothing in this list yet.')),
+              children: [
+                KoruScreenHeader(
+                  eyebrow: '${all.length} ${all.length == 1 ? 'project' : 'projects'}',
+                  title: 'What you are building',
+                  subtitle: shown.isEmpty
+                      ? null
+                      : 'Sorted by what was touched most recently.',
                 ),
-              for (final p in shown)
-                _ProjectCard(
-                  project: p,
-                  onTap: () => _edit(p),
-                  onNote: () => _addNote(p),
+                _FilterBar(
+                  selected: _filter,
+                  counts: {
+                    for (final k in ProjectKind.values)
+                      k: all.where((p) => p.kind == k).length,
+                  },
+                  onChanged: (k) => setState(() => _filter = k),
                 ),
-            ],
+                if (shown.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: KoruSpace.xxxl),
+                    child: Center(
+                      child: Text(
+                        'Nothing in this list yet.',
+                        style: KoruType.bodyStrong.copyWith(
+                          fontSize: 14,
+                          color: KoruColors.inkFaint,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  for (final p in shown)
+                    _ProjectCard(
+                      project: p,
+                      onTap: () => _edit(p),
+                      onNote: () => _addNote(p),
+                    ),
+              ],
+            ),
           );
         },
       ),
@@ -98,7 +120,6 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: KoruColors.surface,
       builder: (_) => ProjectSheet(project: existing),
     );
     ref.invalidate(projectsProvider);
@@ -167,46 +188,37 @@ class _FilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: KoruSpace.lg),
       child: Wrap(
-        spacing: 8,
+        spacing: KoruSpace.sm,
+        runSpacing: KoruSpace.sm,
         children: [
-          _chip(context, null, 'All', counts.values.fold(0, (a, b) => a + b)),
+          KoruSelectablePill(
+            label: 'All (${counts.values.fold(0, (a, b) => a + b)})',
+            selected: selected == null,
+            dense: true,
+            onTap: () => onChanged(null),
+          ),
           for (final k in ProjectKind.values)
-            _chip(
-              context,
-              k,
-              k == ProjectKind.client ? 'Client work' : 'Personal',
-              counts[k] ?? 0,
+            KoruSelectablePill(
+              label:
+                  '${k == ProjectKind.client ? 'Client work' : 'Personal'} (${counts[k] ?? 0})',
+              selected: selected == k,
+              dense: true,
+              onTap: () => onChanged(k),
             ),
         ],
       ),
     );
   }
-
-  Widget _chip(
-    BuildContext context,
-    ProjectKind? kind,
-    String label,
-    int count,
-  ) {
-    final on = selected == kind;
-    return ChoiceChip(
-      label: Text('$label ($count)'),
-      selected: on,
-      onSelected: (_) => onChanged(kind),
-      selectedColor: KoruColors.leafSoft,
-      labelStyle: TextStyle(
-        color: on ? KoruColors.leaf : KoruColors.inkSoft,
-        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-      ),
-      side: BorderSide(color: on ? KoruColors.leaf : KoruColors.line),
-      backgroundColor: KoruColors.surface,
-      showCheckmark: false,
-    );
-  }
 }
 
+/// One project: what it is, how far along, and the last note.
+///
+/// The note is the reason this card exists. A progress bar says how far along
+/// something is and nothing about why, and the assistant reads the note rather
+/// than the bar, so the note is the same weight as the title rather than the
+/// small print under it.
 class _ProjectCard extends StatelessWidget {
   const _ProjectCard({
     required this.project,
@@ -222,89 +234,56 @@ class _ProjectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final personal = project.isPersonal;
     final pct = (project.progress * 100).round();
+    final tone = personal ? KoruTones.clay : KoruTones.leaf;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: KoruColors.line),
-      ),
-      child: InkWell(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: KoruSpace.md),
+      child: KoruCard(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    personal ? Icons.favorite_outline : Icons.work_outline,
-                    size: 16,
-                    color: personal ? KoruColors.clay : KoruColors.leaf,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    personal ? 'Personal' : 'Client work',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: personal ? KoruColors.clay : KoruColors.leaf,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text('$pct%',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: KoruColors.inkSoft,
-                      )),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(project.name,
-                  style: TextStyle(
-                    fontSize: 16,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                KoruPill(
+                  label: personal ? 'PERSONAL' : 'CLIENT WORK',
+                  color: tone.ink,
+                  background: tone.fill,
+                ),
+                const Spacer(),
+                Text(
+                  '$pct%',
+                  style: KoruType.body.copyWith(
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: KoruColors.ink,
-                  )),
-              if (project.target != null && project.target!.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text('Done when ${project.target}',
-                    style: TextStyle(
-                        fontSize: 13, color: KoruColors.inkSoft)),
-              ],
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: project.progress.clamp(0, 1),
-                  minHeight: 6,
-                  backgroundColor: KoruColors.line,
-                  valueColor: AlwaysStoppedAnimation(
-                    personal ? KoruColors.clay : KoruColors.leaf,
+                    color: KoruColors.inkSoft,
                   ),
                 ),
-              ),
-              if (project.progressNote != null &&
-                  project.progressNote!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(project.progressNote!,
-                    style: TextStyle(
-                        fontSize: 13, color: KoruColors.inkSoft)),
               ],
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: onNote,
-                  icon: const Icon(Icons.note_add_outlined, size: 18),
-                  label: const Text('Add note'),
-                ),
-              ),
+            ),
+            const SizedBox(height: KoruSpace.md),
+            Text(project.name, style: KoruType.rowTitle.copyWith(fontSize: 17)),
+            if (project.target != null && project.target!.isNotEmpty) ...[
+              const SizedBox(height: KoruSpace.xs),
+              Text('Done when ${project.target}', style: KoruType.body),
             ],
-          ),
+            const SizedBox(height: KoruSpace.md + 2),
+            KoruProgressBar(value: project.progress, color: tone.ink),
+            if (project.progressNote != null &&
+                project.progressNote!.isNotEmpty) ...[
+              const SizedBox(height: KoruSpace.md),
+              Text(project.progressNote!, style: KoruType.body),
+            ],
+            const SizedBox(height: KoruSpace.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: onNote,
+                icon: const Icon(Icons.note_add_outlined, size: KoruSize.icon),
+                label: const Text('Add note'),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -361,96 +340,89 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
   @override
   Widget build(BuildContext context) {
     final p = widget.project;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(p == null ? 'New project' : 'Edit project',
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            SegmentedButton<ProjectKind>(
-              segments: const [
-                ButtonSegment(
-                  value: ProjectKind.personal,
-                  label: Text('Personal'),
-                  icon: Icon(Icons.favorite_outline, size: 18),
-                ),
-                ButtonSegment(
-                  value: ProjectKind.client,
-                  label: Text('Client'),
-                  icon: Icon(Icons.work_outline, size: 18),
-                ),
-              ],
-              selected: {_kind},
-              onSelectionChanged: (s) => setState(() => _kind = s.first),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _name,
-              decoration: const InputDecoration(labelText: 'Name'),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _target,
-              decoration: const InputDecoration(
-                labelText: 'Done when',
-                hintText: 'the shop is open',
+    return KoruSheetBody(
+      title: p == null ? 'New project' : 'Edit project',
+      subtitle: 'One piece of work with a finish line.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SegmentedButton<ProjectKind>(
+            segments: const [
+              ButtonSegment(
+                value: ProjectKind.personal,
+                label: Text('Personal'),
+                icon: Icon(Icons.favorite_outline, size: KoruSize.icon),
               ),
-              textCapitalization: TextCapitalization.sentences,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _plan,
-              decoration: const InputDecoration(
-                labelText: 'How you get there',
-                hintText: 'photos first, then the build',
+              ButtonSegment(
+                value: ProjectKind.client,
+                label: Text('Client'),
+                icon: Icon(Icons.work_outline, size: KoruSize.icon),
               ),
-              textCapitalization: TextCapitalization.sentences,
+            ],
+            selected: {_kind},
+            onSelectionChanged: (s) => setState(() => _kind = s.first),
+          ),
+          const SizedBox(height: KoruSpace.md),
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'Name'),
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: KoruSpace.sm + 2),
+          TextField(
+            controller: _target,
+            decoration: const InputDecoration(
+              labelText: 'Done when',
+              hintText: 'the shop is open',
             ),
-            const SizedBox(height: 16),
-            Text('${(_progress * 100).round()}% along',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            Slider(
-              value: _progress.clamp(0, 1),
-              onChanged: (v) => setState(() => _progress = v),
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: KoruSpace.sm + 2),
+          TextField(
+            controller: _plan,
+            decoration: const InputDecoration(
+              labelText: 'How you get there',
+              hintText: 'photos first, then the build',
             ),
-            TextField(
-              controller: _note,
-              decoration: const InputDecoration(
-                labelText: 'Why it is there',
-                hintText: 'two rooms left, both need wiring',
-              ),
-              textCapitalization: TextCapitalization.sentences,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: KoruSpace.lg),
+          Text(
+            '${(_progress * 100).round()}% along',
+            style: KoruType.bodyStrong.copyWith(fontWeight: FontWeight.w600),
+          ),
+          Slider(
+            value: _progress.clamp(0, 1),
+            onChanged: (v) => setState(() => _progress = v),
+          ),
+          TextField(
+            controller: _note,
+            decoration: const InputDecoration(
+              labelText: 'Why it is there',
+              hintText: 'two rooms left, both need wiring',
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                if (p != null)
-                  TextButton(
-                    onPressed: _saving ? null : _delete,
-                    style: TextButton.styleFrom(
-                        foregroundColor: KoruColors.clay),
-                    child: const Text('Delete'),
-                  ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: Text(p == null ? 'Add' : 'Save'),
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: KoruSpace.lg),
+          Row(
+            children: [
+              if (p != null)
+                TextButton(
+                  onPressed: _saving ? null : _delete,
+                  style: TextButton.styleFrom(foregroundColor: KoruColors.clay),
+                  child: const Text('Delete'),
                 ),
-              ],
-            ),
-          ],
-        ),
+              const Spacer(),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, KoruSize.buttonInCard),
+                ),
+                onPressed: _saving ? null : _save,
+                child: Text(p == null ? 'Add' : 'Save'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -492,41 +464,5 @@ class _ProjectSheetState extends ConsumerState<ProjectSheet> {
     final store = await ref.read(storeProvider.future);
     await store.deleteProject(id);
     if (mounted) Navigator.pop(context);
-  }
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 44, color: KoruColors.inkFaint),
-            const SizedBox(height: 12),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(body,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 14, color: KoruColors.inkSoft)),
-          ],
-        ),
-      ),
-    );
   }
 }

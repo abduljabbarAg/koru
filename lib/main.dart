@@ -13,6 +13,7 @@ import 'onboarding.dart';
 import 'screens/business.dart';
 import 'screens/chat.dart';
 import 'screens/client_detail.dart';
+import 'screens/permissions_intro.dart';
 import 'screens/projects.dart';
 import 'screens/settings.dart';
 import 'screens/today.dart';
@@ -73,18 +74,13 @@ class _RootGateState extends ConsumerState<RootGate> {
   bool? _ready;
   bool _splashDone = false;
 
-  /// How long the reason for the permissions stays up before the first prompt.
-  ///
-  /// Long enough to read on a phone held in one hand, short enough that nobody
-  /// puts the app down waiting for it.
-  static const _reasonReadTime = Duration(seconds: 4);
+  /// False until we know whether the permission explanation still needs showing.
+  bool _askedPermissions = true;
 
-  /// Owned here so it can be cancelled when the gate goes away.
-  Timer? _permissionTimer;
+
 
   @override
   void dispose() {
-    _permissionTimer?.cancel();
     super.dispose();
   }
 
@@ -98,11 +94,14 @@ class _RootGateState extends ConsumerState<RootGate> {
     final store = await ref.read(storeProvider.future);
     final done = await store.onboarded;
     if (!mounted) return;
-    setState(() => _ready = true);
+    final asked = await store.get('asked_permissions') == '1';
+    if (!mounted) return;
+    setState(() {
+      _ready = true;
+      _askedPermissions = asked;
+    });
     ref.read(onboardedProvider.notifier).state = done;
-    // A first run has nothing to ask about until the form is finished, so the
-    // ask waits on onboarding rather than on the splash.
-    if (done) _askForPermissionsLater();
+    if (done) ref.read(chatProvider.notifier).load();
     // Started here rather than from the chat screen. The splash is where the
     // model is actually being unpacked, so it is the only place that can show
     // progress for it, and waiting until the chat screen meant the splash was
@@ -123,26 +122,6 @@ class _RootGateState extends ConsumerState<RootGate> {
     // halfway through a form is also just rude.
   }
 
-  /// Explains the permissions, then asks for them, once the app is usable.
-  ///
-  /// After a frame rather than during it, because the messenger belongs to a
-  /// Scaffold that does not exist yet while this runs.
-  void _askForPermissionsLater() {
-    if (_permissionTimer != null) return;
-    _permissionTimer = Timer(_reasonReadTime, () async {
-      // Read before the first await. Everything below this line can outlive the
-      // frame it was scheduled in, and a messenger belonging to a screen that
-      // has since been replaced is worse than no explanation at all.
-      final messenger = ScaffoldMessenger.maybeOf(context);
-      if (!mounted) return;
-      final store = await ref.read(storeProvider.future);
-      if (!mounted || messenger == null) return;
-      if (await store.get('asked_permissions') == '1') return;
-      unawaited(requestHealthPermissions(ref, messenger: messenger));
-      await store.put('asked_permissions', '1');
-    });
-  }
-
   /// Checks permissions on first run after an upgrade, and never nags again.
   ///
   /// Asked once, and recorded as asked. A permission prompt that returns on
@@ -156,12 +135,11 @@ class _RootGateState extends ConsumerState<RootGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_ready == null) {
-      return SplashScreen(onDone: _leaveSplash);
-    }
-    if (!_splashDone) {
-      // The store opened faster than the minimum splash time. Keep showing it so
-      // the intro never flashes past.
+    if (_ready == null || !_splashDone) {
+      // Five seconds, first run or not, because the loading bar underneath it
+      // is real: it reports the model actually being unpacked and warmed, and a
+      // flash of a bar going nowhere is worse than a few seconds of honesty. The
+      // bar still moves with real engine progress, not a timer.
       return SplashScreen(onDone: _leaveSplash);
     }
     // Watched, not cached in a field. Onboarding flips this provider when the
@@ -170,6 +148,16 @@ class _RootGateState extends ConsumerState<RootGate> {
     // last screen did nothing at all.
     final onboarded = ref.watch(onboardedProvider);
     if (!onboarded) return const OnboardingScreen();
+    // The permission explanation, once, before the app itself. Asked from a screen
+    // a person chose to leave, and every line on it says what refusing costs.
+    if (!_askedPermissions) {
+      return PermissionsIntroScreen(
+        onDone: () {
+          setState(() => _askedPermissions = true);
+          ref.read(storeProvider).value?.put('asked_permissions', '1');
+        },
+      );
+    }
     // Watched from here so the notification is kept up to date for the whole
     // time the app is open, not only while a particular screen happens to be
     // mounted. Watching it inside the chat screen meant the badge went stale the
@@ -193,7 +181,7 @@ class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({
     super.key,
     this.onDone,
-    this.minimum = const Duration(milliseconds: 1500),
+    this.minimum = const Duration(seconds: 5),
   });
 
   final VoidCallback? onDone;

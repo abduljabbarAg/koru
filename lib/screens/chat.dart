@@ -26,29 +26,37 @@ class _EngineBanner extends StatelessWidget {
     final p = progress;
     if (p == null && problem == null) return const SizedBox.shrink();
     final failed = p == null;
+    final tone = failed ? KoruTones.clay : KoruTones.leaf;
+    // Full-bleed rather than a card, because it sits between the thread and the
+    // composer and is about this screen rather than part of it.
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      color: failed ? KoruColors.claySoft : KoruColors.leafSoft,
+      padding: const EdgeInsets.symmetric(
+        horizontal: KoruSpace.gutter,
+        vertical: KoruSpace.md,
+      ),
+      color: tone.fill,
       child: Row(
         children: [
           if (!failed)
-            const SizedBox(
+            SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: tone.ink,
+              ),
             )
           else
-            Icon(Icons.error_outline_rounded,
-                size: 15, color: KoruColors.clay),
-          const SizedBox(width: 10),
+            Icon(Icons.error_outline_rounded, size: 15, color: tone.ink),
+          const SizedBox(width: KoruSpace.sm + 2),
           Expanded(
             child: Text(
               failed
                   ? 'The on-device model did not start. $problem'
                   : 'Waking the local model up, $p%. You can carry on in the '
                       'meanwhile.',
-              style: const TextStyle(fontSize: 12, height: 1.35),
+              style: KoruType.bodySmall.copyWith(fontSize: 12.5),
             ),
           ),
         ],
@@ -249,7 +257,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? _intro()
                 : ListView.builder(
                     controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(
+                      KoruSpace.gutter,
+                      KoruSpace.md,
+                      KoruSpace.gutter,
+                      KoruSpace.sm,
+                    ),
                     itemCount: st.messages.length,
                     itemBuilder: (_, i) => _ChatBubble(
                       m: st.messages[i],
@@ -324,7 +337,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       'Schedule a call with Bilal tomorrow at 3pm',
     ];
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.fromLTRB(
+        KoruSpace.gutter,
+        KoruSpace.sm,
+        KoruSpace.gutter,
+        KoruSpace.lg,
+      ),
       children: [
         Center(
           child: KoruMascot(
@@ -334,31 +352,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             semanticLabel: 'Koru, your helper. Tap to say hello.',
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: KoruSpace.xl),
         Text(
           'Ask me about your clients, your money and what is due.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: KoruColors.ink),
+          style: KoruType.rowTitle.copyWith(fontSize: 17),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: KoruSpace.sm),
         Text(
           'Those questions are answered here, on this phone. '
           'Faith, health, medicine and law go to a stronger model instead.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13.5, color: KoruColors.inkFaint, height: 1.45),
+          style: KoruType.bodySmall.copyWith(height: 1.45),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: KoruSpace.xl),
         const SectionLabel('Try'),
+        const SizedBox(height: KoruSpace.xs),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: KoruSpace.sm,
+          runSpacing: KoruSpace.sm,
           children: suggestions
-              .map((s) => ActionChip(
-                    label: Text(s),
-                    backgroundColor: KoruColors.surface,
-                    side: BorderSide(color: KoruColors.line),
-                    labelStyle: TextStyle(color: KoruColors.inkSoft, fontSize: 13),
-                    onPressed: () => _useSuggestion(s),
+              .map((s) => KoruSelectablePill(
+                    label: s,
+                    onTap: () => _useSuggestion(s),
                   ))
               .toList(),
         ),
@@ -371,34 +387,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final edited = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: KoruColors.cream,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            18, 18, 18, 18 + MediaQuery.of(context).viewInsets.bottom),
+      builder: (context) => KoruSheetBody(
+        title: 'Edit message',
+        subtitle: 'Asking again drops the reply below it.',
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Edit message',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            const SizedBox(height: 4),
-            Text('Asking again drops the reply below it.',
-                style: TextStyle(color: KoruColors.inkFaint, fontSize: 12.5)),
-            const SizedBox(height: 14),
             TextField(
               controller: controller,
               autofocus: true,
               minLines: 1,
               maxLines: 5,
-              decoration: const InputDecoration(
-                contentPadding: EdgeInsets.all(14),
-                border: OutlineInputBorder(),
-              ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: KoruSpace.lg),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(controller.text),
               child: const Text('Ask again'),
@@ -417,7 +418,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _composer(bool busy) {
     return Container(
       padding: EdgeInsets.fromLTRB(
-          12, 10, 12, 10 + MediaQuery.of(context).padding.bottom * 0.2),
+          KoruSpace.md, KoruSpace.sm + 2, KoruSpace.md,
+          KoruSpace.sm + 2 + MediaQuery.of(context).padding.bottom * 0.2),
       decoration: BoxDecoration(
         color: KoruColors.cream,
         border: Border(top: BorderSide(color: KoruColors.line)),
@@ -433,23 +435,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               maxLines: 5,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _send(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Ask anything...',
-                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                fillColor: KoruColors.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: KoruSpace.lg,
+                  vertical: KoruSpace.md,
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 9),
+          const SizedBox(width: KoruSpace.sm + 2),
           // While an answer is being written the same button stops it, rather
           // than sitting greyed out. A disabled button for fifteen seconds is
           // the app looking busy; a stop square is the app offering a way out.
           AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            width: 48,
-            height: 48,
+            width: KoruSize.touch + 4,
+            height: KoruSize.touch + 4,
             decoration: BoxDecoration(
               color: busy ? KoruColors.clay : KoruColors.leaf,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(KoruRadius.field),
+              boxShadow: KoruElevation.pressed,
             ),
             child: IconButton(
               icon: Icon(
@@ -517,7 +524,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
     final isUser = m.role == MsgRole.user;
 
     final body = Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: KoruSpace.md),
       child: Column(
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -540,8 +547,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                         m.why!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11.5, color: KoruColors.inkFaint),
+                        style: KoruType.micro.copyWith(fontSize: 11.5),
                       ),
                     ),
                   ],
@@ -552,8 +558,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     const SizedBox(width: 6),
                     Text(
                       _clock(m.time!),
-                      style: TextStyle(
-                          fontSize: 10.5, color: KoruColors.inkFaint),
+                      style: KoruType.micro,
                     ),
                   ],
                 ],
@@ -562,16 +567,20 @@ class _ChatBubbleState extends State<_ChatBubble> {
           ],
           Container(
             constraints: const BoxConstraints(maxWidth: 330),
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+            padding: const EdgeInsets.symmetric(
+              horizontal: KoruSpace.lg - 1,
+              vertical: KoruSpace.md,
+            ),
             decoration: BoxDecoration(
               color: isUser ? KoruColors.leaf : KoruColors.surface,
               borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isUser ? 16 : 4),
-                bottomRight: Radius.circular(isUser ? 4 : 16),
+                topLeft: const Radius.circular(KoruRadius.bubble),
+                topRight: const Radius.circular(KoruRadius.bubble),
+                bottomLeft: Radius.circular(isUser ? KoruRadius.bubble : 6),
+                bottomRight: Radius.circular(isUser ? 6 : KoruRadius.bubble),
               ),
-              border: isUser ? null : Border.all(color: KoruColors.line),
+              border: isUser ? null : Border.fromBorderSide(KoruBorders.hairline()),
+              boxShadow: KoruElevation.pressed,
             ),
             child: m.pending && m.text.isEmpty
                 ? KoruThinkingDots(
@@ -608,19 +617,16 @@ class _ChatBubbleState extends State<_ChatBubble> {
                         children: [
                           Text(
                             m.text,
-                            style: TextStyle(
-                              fontSize: 15,
-                              height: 1.45,
+                            style: KoruType.bodyStrong.copyWith(
                               color: KoruColors.onAccent,
                             ),
                           ),
                           if (m.time != null) ...[
-                            const SizedBox(height: 3),
+                            const SizedBox(height: KoruSpace.xs),
                             Text(
                               _clock(m.time!),
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                color: KoruColors.onAccent.withValues(alpha: 0.75),
+                              style: KoruType.micro.copyWith(
+                                color: KoruColors.onAccent.withValues(alpha: 0.72),
                               ),
                             ),
                           ],
@@ -680,19 +686,29 @@ class _JumpToNewestButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: KoruColors.surface,
-      shape: CircleBorder(side: BorderSide(color: KoruColors.line)),
-      elevation: 2,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        // 28 plus the icon is the smallest comfortable target, and this is a
-        // control people hit with a thumb while reading one-handed.
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Icon(Icons.keyboard_arrow_down_rounded,
-              size: 22, color: KoruColors.inkSoft),
+    return Container(
+      decoration: BoxDecoration(
+        color: KoruColors.surface,
+        shape: BoxShape.circle,
+        border: Border.fromBorderSide(KoruBorders.hairline()),
+        boxShadow: KoruElevation.raised,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          // 24 plus the icon is the smallest comfortable target, and this is a
+          // control people hit with a thumb while reading one-handed.
+          child: Padding(
+            padding: const EdgeInsets.all(KoruSpace.md),
+            child: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 22,
+              color: KoruColors.inkSoft,
+            ),
+          ),
         ),
       ),
     );
@@ -721,9 +737,7 @@ class RichReply extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = TextStyle(
-      fontSize: 15,
-      height: 1.45,
+    final base = KoruType.bodyStrong.copyWith(
       color: muted ? KoruColors.inkFaint : KoruColors.ink,
     );
     return Column(
@@ -851,7 +865,7 @@ class _InlineText extends StatelessWidget {
           'i' => style.copyWith(fontStyle: FontStyle.italic),
           _ => style.copyWith(
               fontFamily: 'monospace',
-              backgroundColor: KoruColors.line.withValues(alpha: 0.5)),
+              backgroundColor: KoruColors.surfaceAlt),
         },
       ));
       at = m.end;

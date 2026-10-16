@@ -73,7 +73,7 @@ class BusinessScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           TextField(controller: name, decoration: const InputDecoration(labelText: 'Name or company')),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           Row(
             children: [
               Expanded(
@@ -84,7 +84,7 @@ class BusinessScreen extends ConsumerWidget {
                   decoration: InputDecoration(labelText: 'Invoiced', suffixText: currency.symbol),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: KoruSpace.md),
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(
@@ -98,7 +98,7 @@ class BusinessScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           TextField(
             controller: monthly,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -108,13 +108,13 @@ class BusinessScreen extends ConsumerWidget {
               helperText: 'Only if they pay you the same amount every month.',
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           TextField(
             controller: source,
             decoration: const InputDecoration(
                 labelText: 'Lead source', hintText: 'referral, twitter, ads...'),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           TextField(
             controller: phone,
             keyboardType: TextInputType.phone,
@@ -125,19 +125,17 @@ class BusinessScreen extends ConsumerWidget {
               helperMaxLines: 2,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           TextField(
             controller: note,
             maxLines: 2,
             decoration: const InputDecoration(labelText: 'Note', hintText: 'What was agreed?'),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: KoruSpace.lg),
           const Divider(height: 1),
-          const SizedBox(height: 16),
-          Text('Payment terms',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 13, color: KoruColors.inkSoft)),
-          const SizedBox(height: 10),
+          const SizedBox(height: KoruSpace.lg),
+          const SectionLabel('Payment terms', padding: EdgeInsets.zero),
+          const SizedBox(height: KoruSpace.sm + 2),
           TextField(
             controller: deposit,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -147,30 +145,28 @@ class BusinessScreen extends ConsumerWidget {
               helperText: 'Only if they paid something up front.',
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
-                      lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
-                      initialDate: invoicedOn,
-                      helpText: 'When did you invoice them?',
-                    );
-                    if (picked != null) setSheetState(() => invoicedOn = picked);
-                  },
-                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                  label: Text('Invoiced ${_fmtDate(invoicedOn)}'),
-                ),
-              ),
-            ],
+          const SizedBox(height: KoruSpace.md),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: ctx,
+                  firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
+                  lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                  initialDate: invoicedOn,
+                  helpText: 'When did you invoice them?',
+                );
+                if (picked != null) setSheetState(() => invoicedOn = picked);
+              },
+              icon: const Icon(Icons.receipt_long_outlined, size: KoruSize.icon),
+              label: Text('Invoiced ${_fmtDate(invoicedOn)}'),
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           Wrap(
-            spacing: 8,
+            spacing: KoruSpace.sm,
+            runSpacing: KoruSpace.sm,
             children: [
               for (final option in const [
                 (label: 'On completion', days: 0),
@@ -178,18 +174,18 @@ class BusinessScreen extends ConsumerWidget {
                 (label: 'Net 14', days: 14),
                 (label: 'Net 30', days: 30),
               ])
-                ChoiceChip(
-                  label: Text(option.label),
+                KoruSelectablePill(
+                  label: option.label,
                   selected: overrideDue == null && terms == option.days,
-                  onSelected: (_) => setSheetState(() {
+                  onTap: () => setSheetState(() {
                     terms = option.days;
                     overrideDue = null;
                   }),
                 ),
-              ChoiceChip(
-                label: const Text('Exact date'),
+              KoruSelectablePill(
+                label: 'Exact date',
                 selected: overrideDue != null,
-                onSelected: (_) async {
+                onTap: () async {
                   final picked = await showDatePicker(
                     context: ctx,
                     firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
@@ -203,36 +199,42 @@ class BusinessScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: KoruSpace.md),
           // The date the rest of the app will use, shown rather than typed. A
           // figure the app worked out and the user can see is a figure they can
           // catch; a figure they had to type is one they will get wrong.
           Builder(builder: (_) {
             final computed = overrideDue ??
                 DateTime(invoicedOn.year, invoicedOn.month, invoicedOn.day + terms);
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: KoruColors.leafSoft,
-                borderRadius: BorderRadius.circular(12),
-              ),
+            return KoruCard(
+              padding: const EdgeInsets.all(KoruSpace.md),
+              background: KoruColors.leafSoft,
+              accent: KoruColors.leaf,
+              elevated: false,
               child: Row(
                 children: [
-                  Icon(Icons.event_available_rounded, size: 18, color: KoruColors.leaf),
-                  const SizedBox(width: 10),
+                  Icon(
+                    Icons.event_available_rounded,
+                    size: KoruSize.icon,
+                    color: KoruColors.leaf,
+                  ),
+                  const SizedBox(width: KoruSpace.sm + 2),
                   Expanded(
                     child: Text(
                       overrideDue == null
                           ? 'Due ${_fmtDate(computed)} (${terms == 0 ? 'on completion' : 'net $terms days'})'
                           : 'Due ${_fmtDate(computed)}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: KoruType.bodyStrong.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
               ),
             );
           }),
-          const SizedBox(height: 20),
+          const SizedBox(height: KoruSpace.xl),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(existing == null ? 'Save client' : 'Save changes'),
@@ -367,27 +369,30 @@ class BusinessScreen extends ConsumerWidget {
               helperText: 'Part payments are fine.',
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           TextField(
             controller: note,
             decoration: const InputDecoration(
                 labelText: 'Note', hintText: 'Invoice 3, transfer, cash...'),
           ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final picked = await showDatePicker(
-                context: ctx,
-                firstDate: DateTime.now().subtract(const Duration(days: 365 * 3)),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-                initialDate: date,
-              );
-              if (picked != null) date = picked;
-            },
-            icon: const Icon(Icons.event_outlined, size: 18),
-            label: Text(_fmtDate(date)),
+          const SizedBox(height: KoruSpace.md),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: ctx,
+                  firstDate: DateTime.now().subtract(const Duration(days: 365 * 3)),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  initialDate: date,
+                );
+                if (picked != null) date = picked;
+              },
+              icon: const Icon(Icons.event_outlined, size: KoruSize.icon),
+              label: Text(_fmtDate(date)),
+            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: KoruSpace.xl),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Record payment'),
@@ -449,7 +454,7 @@ class BusinessScreen extends ConsumerWidget {
             decoration: const InputDecoration(
                 labelText: 'What', hintText: 'Send invoice, deliver the site...'),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: KoruSpace.md),
           if (clients.isNotEmpty)
             DropdownButtonFormField<Client>(
               decoration: const InputDecoration(labelText: 'For which client'),
@@ -458,21 +463,24 @@ class BusinessScreen extends ConsumerWidget {
                   .toList(),
               onChanged: (v) => client = v,
             ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final picked = await showDatePicker(
-                context: ctx,
-                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
-                initialDate: date,
-              );
-              if (picked != null) date = picked;
-            },
-            icon: const Icon(Icons.event_outlined, size: 18),
-            label: Text(_fmtDate(date)),
+          const SizedBox(height: KoruSpace.md),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: ctx,
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                  initialDate: date,
+                );
+                if (picked != null) date = picked;
+              },
+              icon: const Icon(Icons.event_outlined, size: KoruSize.icon),
+              label: Text(_fmtDate(date)),
+            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: KoruSpace.xl),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Add deadline'),
@@ -553,16 +561,15 @@ class BusinessScreen extends ConsumerWidget {
     final guide = ref.watch(guideFactsProvider).valueOrNull;
 
     return Scaffold(
+      backgroundColor: KoruColors.cream,
       appBar: AppBar(title: const Text('Business')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _edit(context, ref),
-        backgroundColor: KoruColors.leaf,
-        foregroundColor: KoruColors.onAccent,
         icon: const Icon(Icons.add_rounded),
         label: const Text('Client'),
       ),
       body: clients.when(
-        loading: () => Center(child: CircularProgressIndicator(color: KoruColors.leaf)),
+        loading: () => const KoruLoading(label: 'Loading your clients'),
         error: (e, _) => KoruErrorView(
           onRetry: () => ref.invalidate(clientsProvider),
           what: 'load your clients',
@@ -589,143 +596,150 @@ class BusinessScreen extends ConsumerWidget {
           final overdue = owing.where((c) => c.isOverdueOn(today)).toList();
           final byId = {for (final c in list) if (c.id != null) c.id!: c};
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
-            children: [
-              KoruGuideBanner(
-                speech: guide == null ? null : Guide.forBusiness(guide),
-                onTap: () {},
+          return KoruSettle(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(
+                KoruSpace.gutter,
+                KoruSpace.sm,
+                KoruSpace.gutter,
+                KoruSpace.aboveFab,
               ),
-              Row(
-                children: [
-                  Expanded(
-                    child: StatTile(
-                      label: 'OWED',
-                      value: money(outstanding),
-                      sub: owing.isEmpty ? '${currency.code}, all clear' : '${currency.code}, ${owing.length} to chase',
-                      tint: KoruColors.clay,
-                      tintBg: KoruColors.claySoft,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatTile(
-                      label: 'RECEIVED',
-                      value: money(receivedTotal),
-                      sub: '${currency.code}, all time',
-                      tint: KoruColors.leaf,
-                      tintBg: KoruColors.leafSoft,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatTile(
-                      label: 'OVERDUE',
-                      value: '${overdue.length}',
-                      sub: overdue.isEmpty ? 'nothing late' : 'past due date',
-                      tint: overdue.isEmpty ? KoruColors.gold : KoruColors.clay,
-                      tintBg: overdue.isEmpty ? KoruColors.goldSoft : KoruColors.claySoft,
-                    ),
-                  ),
-                ],
-              ),
-              if (overdue.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: KoruColors.claySoft,
-                    borderRadius: BorderRadius.circular(KoruRadius.card),
-                    border: Border.all(color: KoruColors.clay),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.schedule_rounded, size: 19, color: KoruColors.clay),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '${money(overdue.fold(0.0, (a, c) => a + balanceOf(c)))} ${currency.code} is late: '
-                          '${overdue.take(3).map((c) => c.name).join(', ')}',
-                          style: TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
-                        ),
-                      ),
-                    ],
-                  ),
+              children: [
+                KoruGuideBanner(
+                  speech: guide == null ? null : Guide.forBusiness(guide),
+                  onTap: () {},
                 ),
-              ],
-              const SizedBox(height: 14),
-              _capacityBar(underway, capacity),
-              const SizedBox(height: 18),
-Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Expanded(child: SectionLabel('Deadlines')),
-                  TextButton.icon(
+                    Expanded(
+                      child: StatTile(
+                        label: 'OWED',
+                        value: money(outstanding),
+                        sub: owing.isEmpty ? '${currency.code}, all clear' : '${currency.code}, ${owing.length} to chase',
+                        tint: KoruColors.clay,
+                        tintBg: KoruColors.claySoft,
+                      ),
+                    ),
+                    const SizedBox(width: KoruSpace.sm),
+                    Expanded(
+                      child: StatTile(
+                        label: 'RECEIVED',
+                        value: money(receivedTotal),
+                        sub: '${currency.code}, all time',
+                        tint: KoruColors.leaf,
+                        tintBg: KoruColors.leafSoft,
+                      ),
+                    ),
+                    const SizedBox(width: KoruSpace.sm),
+                    Expanded(
+                      child: StatTile(
+                        label: 'OVERDUE',
+                        value: '${overdue.length}',
+                        sub: overdue.isEmpty ? 'nothing late' : 'past due date',
+                        tint: overdue.isEmpty ? KoruColors.gold : KoruColors.clay,
+                        tintBg: overdue.isEmpty ? KoruColors.goldSoft : KoruColors.claySoft,
+                      ),
+                    ),
+                  ],
+                ),
+                if (overdue.isNotEmpty)
+                  KoruNotice(
+                    icon: Icons.schedule_rounded,
+                    tone: KoruTones.clay,
+                    title: 'Behind on payment',
+                    message: '${money(overdue.fold(0.0, (a, c) => a + balanceOf(c)))} ${currency.code} is late: '
+                        '${overdue.take(3).map((c) => c.name).join(', ')}',
+                  ),
+                _capacityBar(underway, capacity),
+                // The rules between rows line up under the text rather than
+                // running the full width of the card, which is what a list is
+                // supposed to do.
+                KoruSection(
+                  label: 'Deadlines',
+                  hint: 'What has to happen next, soonest first.',
+                  dividerIndent: KoruSpace.row,
+                  action: TextButton.icon(
                     onPressed: () => _addDeadline(context, ref, list),
-                    icon: const Icon(Icons.add_rounded, size: 16),
+                    icon: const Icon(Icons.add_rounded, size: KoruSize.icon),
                     label: const Text('Add'),
                   ),
-                ],
-              ),
-              if (deadlines.isEmpty)
-                const EmptyHint(
-                  icon: Icons.event_available_rounded,
-                  title: 'Nothing scheduled',
-                  body: 'Add what has to happen next and it sorts itself by urgency.',
-                )
-              else
-                ...deadlines.map((d) => _deadlineRow(context, ref, d, today, byId[d.clientId])),
-              const SizedBox(height: 18),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Expanded(child: SectionLabel('Calendar')),
-                  TextButton.icon(
+                  empty: const EmptyHint(
+                    icon: Icons.event_available_rounded,
+                    title: 'Nothing scheduled',
+                    body: 'Add what has to happen next and it sorts itself by urgency.',
+                  ),
+                  children: [
+                    for (final d in deadlines)
+                      _deadlineRow(context, ref, d, today, byId[d.clientId]),
+                  ],
+                ),
+                KoruSection(
+                  label: 'Calendar',
+                  hint: 'Meetings you have asked Koru to keep.',
+                  dividerIndent: KoruSpace.row,
+                  action: TextButton.icon(
                     onPressed: () => _addEventHint(context),
-                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 15),
+                    icon: const Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: KoruSize.iconSm,
+                    ),
                     label: const Text('Ask Koru'),
                   ),
-                ],
-              ),
-              if (events.isEmpty)
-                const EmptyHint(
-                  icon: Icons.event_rounded,
-                  title: 'Nothing on the calendar',
-                  body: 'Say "schedule a call with Bilal tomorrow at 3pm" in '
-                      'Talk and it lands here, with an option to mirror it to '
-                      'your phone calendar.',
-                )
-              else
-                ...events.take(6).map((e) => _eventRow(context, ref, e)),
-              const SizedBox(height: 18),
-              if (payments.isNotEmpty) ...[
-                const SectionLabel('Recent payments'),
-                const SizedBox(height: 8),
-                ...payments.map((p) => _paymentRow(ref, p, byId[p.clientId], currency)),
-              ],
-              if (pipeline.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                SectionLabel('Pipeline (${pipeline.length})'),
-                const SizedBox(height: 8),
-                ...pipeline.map((c) => _pipelineRow(context, ref, c, today, currency)),
-              ],
-              const SizedBox(height: 18),
-              const SectionLabel('Clients'),
-              const SizedBox(height: 8),
-              if (list.isEmpty)
-                EmptyHint(
-                  icon: Icons.folder_open_rounded,
-                  title: 'No clients yet',
-                  body: 'Add your first client to start tracking who owes you what.',
-                  action: FilledButton(
-                    onPressed: () => _edit(context, ref),
-                    child: const Text('Add a client'),
+                  empty: const EmptyHint(
+                    icon: Icons.event_rounded,
+                    title: 'Nothing on the calendar',
+                    body: 'Say "schedule a call with Bilal tomorrow at 3pm" in '
+                        'Talk and it lands here, with an option to mirror it to '
+                        'your phone calendar.',
                   ),
-                )
-              else
-                ...list.map((c) => _row(context, ref, c, today, currency,
-                    received[c.id] ?? 0, statusColor, statusBg)),
-            ],
+                  children: [
+                    for (final e in events.take(6)) _eventRow(context, ref, e),
+                  ],
+                ),
+                if (payments.isNotEmpty)
+                  KoruSection(
+                    label: 'Recent payments',
+                    hint: 'Money in, newest first.',
+                    dividerIndent: KoruSpace.row,
+                    children: [
+                      for (final p in payments)
+                        _paymentRow(ref, p, byId[p.clientId], currency),
+                    ],
+                  ),
+                if (pipeline.isNotEmpty)
+                  KoruSection(
+                    label: 'Pipeline (${pipeline.length})',
+                    hint: 'Leads and active work, oldest first.',
+                    dividerIndent: KoruSpace.row,
+                    children: [
+                      for (final c in pipeline)
+                        _pipelineRow(context, ref, c, today, currency),
+                    ],
+                  ),
+                KoruSection(
+                  label: 'Clients',
+                  hint: list.isEmpty
+                      ? null
+                      : 'Tap a client for the whole history and the ledger.',
+                  dividerIndent: KoruSpace.row,
+                  empty: EmptyHint(
+                    icon: Icons.folder_open_rounded,
+                    title: 'No clients yet',
+                    body: 'Add your first client to start tracking who owes you what.',
+                    action: FilledButton(
+                      onPressed: () => _edit(context, ref),
+                      child: const Text('Add a client'),
+                    ),
+                  ),
+                  children: [
+                    for (final c in list)
+                      _row(context, ref, c, today, currency,
+                          received[c.id] ?? 0, statusColor, statusBg),
+                  ],
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -749,66 +763,68 @@ Row(
   Widget _capacityBar(int activeCount, int capacity) {
     final full = activeCount >= capacity;
     final room = capacity - activeCount;
-    final tint = full ? KoruColors.clay : KoruColors.leaf;
-    final tintBg = full ? KoruColors.claySoft : KoruColors.leafSoft;
+    final tone = full ? KoruTones.clay : KoruTones.leaf;
     final message = full
         ? 'You said $capacity was the most you could serve well, and you are at '
             '$activeCount. Worth finishing or handing off before taking more.'
         : 'Room for $room more client${room == 1 ? '' : 's'} before you are full.';
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tintBg,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: tint),
+    return Padding(
+      padding: const EdgeInsets.only(
+        top: KoruSpace.lg,
+        bottom: KoruSpace.section,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.groups_rounded, size: 18, color: tint),
-              const SizedBox(width: 8),
-              Text(
-                '$activeCount of $capacity',
-                style: TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w700,
-                  color: tint,
+      child: KoruCard(
+        background: tone.fill,
+        accent: tone.ink,
+        elevated: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                KoruIconBadge(
+                  icon: Icons.groups_rounded,
+                  color: tone.ink,
+                  background: KoruColors.surface,
                 ),
-              ),
-              const Spacer(),
-              Text(
-                full ? 'at capacity' : '$room free',
-                style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              for (var i = 0; i < capacity && i < 20; i++) ...[
-                Expanded(
-                  child: Container(
-                    height: 6,
-                    margin: EdgeInsets.only(right: i == capacity - 1 ? 0 : 4),
-                    decoration: BoxDecoration(
-                      color: i < activeCount ? tint : tintBg,
-                      borderRadius: BorderRadius.circular(3),
-                      border: i < activeCount ? null : Border.all(color: tint.withValues(alpha: 0.35)),
-                    ),
-                  ),
+                const SizedBox(width: KoruSpace.md),
+                Text('$activeCount of $capacity', style: KoruType.rowTitle.copyWith(color: tone.ink)),
+                const Spacer(),
+                Text(
+                  full ? 'at capacity' : '$room free',
+                  style: KoruType.meta.copyWith(color: KoruColors.inkSoft),
                 ),
               ],
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            message,
-            style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
-          ),
-        ],
+            ),
+            const SizedBox(height: KoruSpace.md),
+            Row(
+              children: [
+                for (var i = 0; i < capacity && i < 20; i++) ...[
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(right: i == capacity - 1 ? 0 : KoruSpace.xs),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          height: 6,
+                          color: i < activeCount
+                              ? tone.ink
+                              : KoruColors.surface.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: KoruSpace.md),
+            Text(
+              message,
+              style: KoruType.body.copyWith(fontSize: 13),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -824,53 +840,27 @@ Row(
     final born = DateTime.tryParse(c.created);
     final days = born == null ? null : today.difference(born).inDays;
     final stale = days != null && days >= 21;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: stale ? KoruColors.gold : KoruColors.line),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: c.id == null
-                  ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => ClientDetailScreen(clientId: c.id!),
-                        ),
-                      ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(c.name,
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(
-                    [
-                      if (c.amount != null) '${money(c.amount!)} ${currency.code}',
-                      if (days != null) days == 0 ? 'added today' : 'added $days days ago',
-                    ].join('  ·  '),
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: stale ? KoruColors.gold : KoruColors.inkFaint,
-                    ),
-                  ),
-                ],
+    return KoruRow(
+      title: c.name,
+      subtitle: [
+        if (c.amount != null) '${money(c.amount!)} ${currency.code}',
+        if (days != null) days == 0 ? 'added today' : 'added $days days ago',
+      ].join('  ·  '),
+      subtitleIn: stale ? KoruColors.gold : null,
+      onTap: c.id == null
+          ? null
+          : () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ClientDetailScreen(clientId: c.id!),
+                ),
               ),
-            ),
-          ),
-          if (stale)
-            KoruPill(
+      trailing: stale
+          ? KoruPill(
               label: 'GOING COLD',
               color: KoruColors.gold,
               background: KoruColors.goldSoft,
-            ),
-        ],
-      ),
+            )
+          : null,
     );
   }
 
@@ -883,51 +873,31 @@ Row(
   ) {
     final late = d.isOverdueOn(today);
     final label = client == null ? d.title : '${d.title}  ·  ${client.name}';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: late ? KoruColors.clay : KoruColors.line),
-      ),
-      child: Row(
+    return KoruRow(
+      title: label,
+      subtitle: late
+          ? 'was due ${formatDate(d.due, DateTime.now())}'
+          : 'due ${formatDate(d.due, DateTime.now())}',
+      subtitleIn: late ? KoruColors.clay : null,
+      accent: late ? KoruColors.clay : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
+          _rowAction(
             tooltip: 'Mark ${d.title} done',
-            icon: Icon(Icons.radio_button_unchecked_rounded, color: KoruColors.inkFaint),
+            icon: Icons.radio_button_unchecked_rounded,
+            color: KoruColors.inkFaint,
             onPressed: () => _completeDeadline(ref, d),
           ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _completeDeadline(ref, d),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 2),
-                  Text(
-                    late
-                        ? 'was due ${formatDate(d.due, DateTime.now())}'
-                        : 'due ${formatDate(d.due, DateTime.now())}',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: late ? KoruColors.clay : KoruColors.inkFaint,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          IconButton(
+          _rowAction(
             tooltip: 'Put ${d.title} in the calendar',
-            icon: Icon(Icons.event_outlined, size: 18, color: KoruColors.inkFaint),
+            icon: Icons.event_outlined,
             onPressed: () => _toCalendar(context, ref, d, client),
           ),
-          IconButton(
+          _rowAction(
             tooltip: 'Delete ${d.title}',
-            icon: Icon(Icons.close_rounded, size: 18, color: KoruColors.inkFaint),
+            icon: Icons.close_rounded,
+            color: KoruColors.inkFaint,
             onPressed: () => _deleteDeadline(ref, d),
           ),
         ],
@@ -942,75 +912,67 @@ Row(
     final dayLabel = starts == null
         ? e.date
         : '${_weekdayShort(starts.weekday)} ${starts.day} ${_monthShort(starts.month)}';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: KoruColors.line),
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: KoruSpace.row,
+        vertical: KoruSpace.md + 2,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 62,
+            width: 64,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(dayLabel,
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: KoruColors.ink)),
-                Text(e.timeLabel,
-                    style:
-                        TextStyle(fontSize: 12, color: KoruColors.inkFaint)),
+                Text(dayLabel, style: KoruType.rowTitleCompact),
+                Text(e.timeLabel, style: KoruType.meta.copyWith(fontSize: 12)),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: KoruSpace.sm + 2),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(e.title,
-                    style: const TextStyle(
-                        fontSize: 14.5, fontWeight: FontWeight.w500)),
+                Text(e.title, style: KoruType.rowTitleCompact),
                 if (e.location != null)
-                  Text(e.location!,
-                      style: TextStyle(
-                          fontSize: 12.5, color: KoruColors.inkFaint)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(e.location!, style: KoruType.meta),
+                  ),
                 if (e.durationMin != null || e.recurrence != null)
-                  Text([
-                    if (e.durationMin != null) '${e.durationMin} min',
-                    if (e.recurrence != null) e.recurrence!.phrase,
-                  ].join(' \u00b7 '),
-                      style: TextStyle(
-                          fontSize: 12, color: KoruColors.inkFaint)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      [
+                        if (e.durationMin != null) '${e.durationMin} min',
+                        if (e.recurrence != null) e.recurrence!.phrase,
+                      ].join(' · '),
+                      style: KoruType.meta.copyWith(fontSize: 12),
+                    ),
+                  ),
               ],
             ),
           ),
-          IconButton(
+          _rowAction(
             tooltip: e.synced
                 ? 'Already in your phone calendar'
                 : 'Copy to your phone calendar',
-            icon: Icon(
-              e.synced ? Icons.check_rounded : Icons.event_outlined,
-              size: 18,
-              color: e.synced ? KoruColors.leaf : KoruColors.inkFaint,
-            ),
+            icon: e.synced ? Icons.check_rounded : Icons.event_outlined,
+            color: e.synced ? KoruColors.leaf : null,
             onPressed: e.synced ? null : () => _syncEvent(context, ref, e),
           ),
-          IconButton(
+          _rowAction(
             tooltip: 'Change ${e.title}',
-            icon: Icon(Icons.edit_outlined,
-                size: 17, color: KoruColors.inkFaint),
+            icon: Icons.edit_outlined,
+            color: KoruColors.inkFaint,
             onPressed: () => _editEvent(context, ref, e),
           ),
-          IconButton(
+          _rowAction(
             tooltip: 'Delete ${e.title}',
-            icon: Icon(Icons.close_rounded,
-                size: 18, color: KoruColors.inkFaint),
+            icon: Icons.close_rounded,
+            color: KoruColors.inkFaint,
             onPressed: () => _deleteEvent(ref, e),
           ),
         ],
@@ -1026,7 +988,6 @@ Row(
     final changed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: KoruColors.surface,
       builder: (_) => _EventSheet(event: e),
     );
     if (!context.mounted || changed != true) return;
@@ -1062,8 +1023,8 @@ Row(
       await store.updateEvent(
           CalendarEvent.fromMap({...e.toMap(), 'synced': 1}));
       ref.invalidate(eventsProvider);
-      // The write crosses an await, so the element may be gone by now; using
-      // the context then throws instead of quietly doing nothing.
+      // The write crosses an await, so the element may be gone by now; using the
+      // context then throws instead of quietly doing nothing.
       if (!context.mounted) return;
       toast(context, 'Copied to your phone calendar.');
     } else {
@@ -1104,38 +1065,14 @@ Row(
       };
 
   Widget _paymentRow(WidgetRef ref, Payment p, Client? client, Currency currency) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: KoruColors.line),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${money(p.amount)} ${currency.code}  ·  ${client?.name ?? 'unknown'}',
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  p.note == null ? p.date : '${p.date}  ·  ${p.note}',
-                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Undo this payment',
-            icon: Icon(Icons.undo_rounded, size: 18, color: KoruColors.inkFaint),
-            onPressed: () => _undoPayment(ref, p),
-          ),
-        ],
+    return KoruRow(
+      title: '${money(p.amount)} ${currency.code}  ·  ${client?.name ?? 'unknown'}',
+      subtitle: p.note == null ? p.date : '${p.date}  ·  ${p.note}',
+      trailing: _rowAction(
+        tooltip: 'Undo this payment',
+        icon: Icons.undo_rounded,
+        color: KoruColors.inkFaint,
+        onPressed: () => _undoPayment(ref, p),
       ),
     );
   }
@@ -1159,120 +1096,143 @@ Row(
       if (c.parsedDue != null) 'due ${formatDate(c.due, DateTime.now())}',
     ];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-      decoration: BoxDecoration(
-        color: KoruColors.surface,
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        border: Border.all(color: late ? KoruColors.clay : KoruColors.line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: c.id == null
-                      ? null
-                      : () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ClientDetailScreen(clientId: c.id!),
-                            ),
-                          ),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        c.name,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        meta.join('  ·  '),
-                        style: TextStyle(color: KoruColors.inkFaint, fontSize: 12.5),
-                      ),
-                    ],
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: c.id == null
+            ? null
+            : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ClientDetailScreen(clientId: c.id!),
                   ),
                 ),
-              ),
-              PopupMenuButton<String>(
-                initialValue: c.status,
-                color: KoruColors.surface,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                onSelected: (v) async {
-                  final store = await ref.read(storeProvider.future);
-                  await store.setClientStatus(c.id!, v);
-                  _invalidateMoney(ref);
-                },
-                itemBuilder: (_) => kClientStatuses
-                    .map((s) => PopupMenuItem(value: s, child: Text(s)))
-                    .toList(),
-                child: KoruPill(
-                  label: c.status.toUpperCase(),
-                  color: sc(c.status),
-                  background: sb(c.status),
-                  icon: Icons.arrow_drop_down_rounded,
-                ),
-              ),
-            ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            KoruSpace.row,
+            KoruSpace.md,
+            KoruSpace.sm,
+            KoruSpace.sm,
           ),
-          if (balance > 0) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                KoruPill(
-                  label: '${money(balance)} ${currency.code} OUTSTANDING',
-                  color: late ? KoruColors.clay : KoruColors.gold,
-                  background: late ? KoruColors.claySoft : KoruColors.goldSoft,
-                ),
-                if (late) ...[
-                  const SizedBox(width: 8),
-                  KoruPill(
-                    label: 'OVERDUE',
-                    color: KoruColors.clay,
-                    background: KoruColors.claySoft,
-                    icon: Icons.error_outline_rounded,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          c.name,
+                          style: KoruType.rowTitle.copyWith(
+                            color: late ? KoruColors.clay : KoruColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: KoruSpace.xs),
+                        Text(
+                          meta.join('  ·  '),
+                          style: KoruType.meta,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: KoruSpace.sm),
+                  PopupMenuButton<String>(
+                    initialValue: c.status,
+                    onSelected: (v) async {
+                      final store = await ref.read(storeProvider.future);
+                      await store.setClientStatus(c.id!, v);
+                      _invalidateMoney(ref);
+                    },
+                    itemBuilder: (_) => kClientStatuses
+                        .map((s) => PopupMenuItem(value: s, child: Text(s)))
+                        .toList(),
+                    child: KoruPill(
+                      label: c.status.toUpperCase(),
+                      color: sc(c.status),
+                      background: sb(c.status),
+                      icon: Icons.arrow_drop_down_rounded,
+                    ),
                   ),
                 ],
-              ],
-            ),
-          ],
-          if (c.note != null) ...[
-            const SizedBox(height: 8),
-            Text(c.note!,
-                style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4)),
-          ],
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: () => _edit(context, ref, existing: c),
-                icon: const Icon(Icons.edit_outlined, size: 16),
-                label: const Text('Edit'),
               ),
-              if (c.status != 'lost')
-                TextButton.icon(
-                  onPressed: () => _recordPayment(context, ref, c, alreadyReceived),
-                  icon: const Icon(Icons.payments_outlined, size: 16),
-                  label: Text(alreadyReceived > 0 ? 'Add payment' : 'Mark paid'),
+              if (balance > 0) ...[
+                const SizedBox(height: KoruSpace.sm + 2),
+                Row(
+                  children: [
+                    KoruPill(
+                      label: '${money(balance)} ${currency.code} OUTSTANDING',
+                      color: late ? KoruColors.clay : KoruColors.gold,
+                      background: late ? KoruColors.claySoft : KoruColors.goldSoft,
+                    ),
+                    if (late) ...[
+                      const SizedBox(width: KoruSpace.sm),
+                      KoruPill(
+                        label: 'OVERDUE',
+                        color: KoruColors.clay,
+                        background: KoruColors.claySoft,
+                        icon: Icons.error_outline_rounded,
+                      ),
+                    ],
+                  ],
                 ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Delete ${c.name}',
-                icon: Icon(Icons.delete_outline_rounded, size: 19, color: KoruColors.inkFaint),
-                onPressed: () async {
-                  final store = await ref.read(storeProvider.future);
-                  await store.deleteClient(c.id!);
-                  _invalidateMoney(ref);
-                },
+              ],
+              if (c.note != null) ...[
+                const SizedBox(height: KoruSpace.sm + 2),
+                Text(
+                  c.note!,
+                  style: KoruType.body.copyWith(fontSize: 13),
+                ),
+              ],
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () => _edit(context, ref, existing: c),
+                    icon: const Icon(Icons.edit_outlined, size: KoruSize.iconSm),
+                    label: const Text('Edit'),
+                  ),
+                  if (c.status != 'lost')
+                    TextButton.icon(
+                      onPressed: () => _recordPayment(context, ref, c, alreadyReceived),
+                      icon: const Icon(Icons.payments_outlined, size: KoruSize.iconSm),
+                      label: Text(alreadyReceived > 0 ? 'Add payment' : 'Mark paid'),
+                    ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Delete ${c.name}',
+                    icon: const Icon(Icons.delete_outline_rounded, size: KoruSize.icon),
+                    onPressed: () async {
+                      final store = await ref.read(storeProvider.future);
+                      await store.deleteClient(c.id!);
+                      _invalidateMoney(ref);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  /// The small icon control at the right of a row.
+  ///
+  /// Pulled out because a list of deadlines had one set at 18, the calendar had
+  /// one at 18 in a different colour and the clients had one at 19. Three sizes
+  /// for the same control.
+  static Widget _rowAction({
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback? onPressed,
+    Color? color,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      icon: Icon(icon, size: KoruSize.icon, color: color),
+      visualDensity: VisualDensity.compact,
+      onPressed: onPressed,
     );
   }
 }
@@ -1328,85 +1288,78 @@ class _EventSheetState extends ConsumerState<_EventSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Change entry',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _title,
-              decoration: const InputDecoration(labelText: 'Title'),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _date,
-                    decoration:
-                        const InputDecoration(labelText: 'Date (YYYY-MM-DD)'),
-                  ),
+    return KoruSheetBody(
+      title: 'Change entry',
+      subtitle: 'Everything is stored on this phone.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _title,
+            decoration: const InputDecoration(labelText: 'Title'),
+          ),
+          const SizedBox(height: KoruSpace.sm + 2),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _date,
+                  decoration:
+                      const InputDecoration(labelText: 'Date (YYYY-MM-DD)'),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _time,
-                    decoration: const InputDecoration(labelText: 'Time (HH:mm)'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _location,
-              decoration: const InputDecoration(labelText: 'Where'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _duration,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Length in minutes',
-                hintText: 'leave empty for the default',
               ),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<EventRecurrence?>(
-              value: _recurrence,
-              decoration: const InputDecoration(labelText: 'Repeats'),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('Once')),
-                for (final r in EventRecurrence.values)
-                  DropdownMenuItem(value: r, child: Text(_titleCase(r.phrase))),
-              ],
-              onChanged: (v) => setState(() => _recurrence = v),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: _saving ? null : () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+              const SizedBox(width: KoruSpace.sm + 2),
+              Expanded(
+                child: TextField(
+                  controller: _time,
+                  decoration: const InputDecoration(labelText: 'Time (HH:mm)'),
                 ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: const Text('Save'),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: KoruSpace.sm + 2),
+          TextField(
+            controller: _location,
+            decoration: const InputDecoration(labelText: 'Where'),
+          ),
+          const SizedBox(height: KoruSpace.sm + 2),
+          TextField(
+            controller: _duration,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Length in minutes',
+              hintText: 'leave empty for the default',
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: KoruSpace.md),
+          DropdownButtonFormField<EventRecurrence?>(
+            value: _recurrence,
+            decoration: const InputDecoration(labelText: 'Repeats'),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Once')),
+              for (final r in EventRecurrence.values)
+                DropdownMenuItem(value: r, child: Text(_titleCase(r.phrase))),
+            ],
+            onChanged: (v) => setState(() => _recurrence = v),
+          ),
+          const SizedBox(height: KoruSpace.xl),
+          Row(
+            children: [
+              TextButton(
+                onPressed: _saving ? null : () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              const Spacer(),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, KoruSize.buttonInCard),
+                ),
+                onPressed: _saving ? null : _save,
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
