@@ -250,15 +250,15 @@ class MainActivity : FlutterActivity() {
     /**
      * Every model the engine could be pointed at, bundled first.
      *
-     * Listed rather than hardcoded because the bundled 0.5B is no longer the
-     * best thing this phone can run: a 1.7B ternary model fits in about 600 MB
-     * resident and is markedly sharper, but it is 442 MB to download and putting
-     * both in the APK would take it past 900 MB for every install to serve a
-     * choice most people make once.
+     * Listed rather than hardcoded because the bundled Bonsai is not the only
+     * thing this phone can run: a bigger model dropped into the app's own
+     * models folder shows up here and can be picked. Putting both in the APK
+     * would take every install past 600 MB to serve a choice most people make
+     * once, which is why only one ships and the other has to be brought.
      */
     private fun availableModels(): List<Pair<String, File>> {
         val out = mutableListOf<Pair<String, File>>()
-        modelFile()?.let { out.add("Qwen2.5 0.5B (bundled, fast)" to it) }
+        modelFile()?.let { out.add("${it.nameWithoutExtension} (bundled)" to it) }
         for (dir in modelDirs()) {
             val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".gguf") } ?: continue
             for (f in files.sortedBy { it.name }) {
@@ -272,18 +272,36 @@ class MainActivity : FlutterActivity() {
         return out
     }
 
+    /**
+     * The bundled model's filename, tried in order.
+     *
+     * Bonsai-1.7B-Q1_0 is what ships now: 231 MB, and markedly sharper than the
+     * Qwen 0.5B it replaces, at the same resident size the old one had. The old
+     * name stays in the list because an install that already unpacked it should
+     * not unpack a second model it will never offer.
+     */
+    private val bundledModelNames = listOf(
+        "Bonsai-1.7B-Q1_0.gguf",
+        "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    )
+
     private fun modelFile(): File? {
-        val target = File(filesDir, "models/qwen2.5-0.5b-instruct-q4_k_m.gguf")
-        if (target.exists() && target.length() > 1_000_000) return target
+        for (name in bundledModelNames) {
+            val target = File(filesDir, "models/$name")
+            if (target.exists() && target.length() > 1_000_000) return target
+        }
         // Flutter puts app assets under assets/flutter_assets/, so the asset
         // that sits at assets/flutter_assets/assets/models/ in the package is
         // reached as flutter_assets/assets/models/ here. Asking for the shorter
         // path failed quietly and the engine never launched.
-        val assetNames = listOf(
-            "flutter_assets/assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
-            "assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
-        )
+        val assetNames = bundledModelNames.flatMap { name ->
+            listOf(
+                "flutter_assets/assets/models/$name",
+                "assets/models/$name",
+            )
+        }
         for (assetName in assetNames) {
+            val target = File(filesDir, "models/" + assetName.substringAfterLast('/'))
             try {
                 assets.open(assetName).use { input ->
                     target.parentFile?.mkdirs()
@@ -296,7 +314,6 @@ class MainActivity : FlutterActivity() {
         }
         // Absent. Not an error: the app still works with an external server, it
         // just cannot start the bundled engine.
-        target.delete()
         return null
     }
 
@@ -337,16 +354,12 @@ class MainActivity : FlutterActivity() {
                 "127.0.0.1",
             )
             // The chosen model if it is one we listed, otherwise the bundled one.
-        // Validated against the list rather than trusted, because this path comes
-        // from Dart and points at a file the engine will mmap and run maths over.
-        val chosen = availableModels().firstOrNull { it.second.absolutePath == chosenModel }?.second
-            ?: model
-            // The model goes on the command line rather than in the
-            // environment, validated against the list we enumerated. This path
+            // Validated against the list rather than trusted, because this path
             // comes from Dart and points at a file the engine will mmap and run
-            // arithmetic over.
-        val chosen = availableModels().firstOrNull { it.second.absolutePath == chosenModel }?.second
-            ?: model
+            // arithmetic over. It goes on the command line rather than in the
+            // environment.
+            val chosen = availableModels().firstOrNull { it.second.absolutePath == chosenModel }
+                ?.second ?: model
         builder.command(binary.absolutePath, "--model", chosen.absolutePath,
             "--port", requestedPort.toString(), "--host", "127.0.0.1",
             // Two threads, and that is measured rather than guessed: on this

@@ -4,10 +4,10 @@ import 'package:koru/local/bundled_engine.dart';
 
 /// Bring your own model.
 ///
-/// The bundled 0.5B is no longer the best thing this phone can run: a 1.7B
-/// ternary model fits in about 600 MB resident and is markedly sharper. But it
-/// is 442 MB, and putting both in the APK would take every install past 900 MB
-/// to serve a choice most people make once.
+/// The bundled Bonsai is not the only thing this phone can run: a bigger model
+/// dropped into the app's own folder shows up in the picker. Both cannot ship
+/// in the APK — that would take every install past 600 MB to serve a choice
+/// most people make once.
 ///
 /// So the engine lists whatever models it can find and the person picks. These
 /// cover the two things that can go wrong at the platform boundary: a platform
@@ -34,15 +34,15 @@ void main() {
     // Order matters and is not cosmetic: the bundled model is first on purpose,
     // and it is the default for anyone who never touches the picker.
     mock([
-      {'label': 'Qwen2.5 0.5B (bundled, fast)', 'path': '/data/models/qwen.gguf'},
-      {'label': 'Bonsai 1.7B (442 MB)', 'path': '/sdcard/models/bonsai.gguf'},
+      {'label': 'Bonsai-1.7B-Q1_0 (bundled)', 'path': '/data/models/bonsai.gguf'},
+      {'label': 'qwen3-4b-q4_k_m (3900 MB)', 'path': '/sdcard/models/qwen3.gguf'},
     ]);
 
     final models = await engine.models();
 
     expect(models, hasLength(2));
     expect(models.first.label, contains('bundled'));
-    expect(models.last.path, '/sdcard/models/bonsai.gguf');
+    expect(models.last.path, '/sdcard/models/qwen3.gguf');
   });
 
   test('a platform with no models at all is an empty list', () async {

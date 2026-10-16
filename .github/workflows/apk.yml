@@ -46,35 +46,24 @@ jobs:
         with:
           ndk-version: r27c
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      # Pinned, not a moving branch: the APK ships this binary, so the same
+      # version of the app has to mean the same inference code regardless of
+      # when it built. b11574 is the revision measured on the target phone at
+      # 4.65 t/s on the bundled model.
+      - name: fetch llama.cpp
+        run: git clone --depth 1 -b b11574 https://github.com/ggml-org/llama.cpp third_party/llama.cpp
 
       - name: build the engine for android
         id: build
         run: |
           set -eu
           chmod +x tool/build_engine_android.sh
-          # Builds from the copy vendored in third_party/llama.cpp, so no token and no
-          # public window on another repository is needed. The script locates the
-          # NDK itself from the clang the setup action put on PATH.
-          ./tool/build_engine_android.sh
+          NDK_ROOT="$ANDROID_NDK_HOME" ./tool/build_engine_android.sh
           {
             echo "path=android/app/src/main/jniLibs/arm64-v8a/libllama-server.so"
             echo "size=$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libllama-server.so)"
           } >> "$GITHUB_OUTPUT"
           ls -la android/app/src/main/jniLibs/arm64-v8a/
-
-      # Unit tests for the pure parts: the JSON parser and escaper that build
-      # every SSE chunk, and the sampler that picks every token. Eight source
-      # files and no test module meant a malformed stream could only be found
-      # by watching a phone.
-      - name: test the engine
-        run: cargo test --manifest-path third_party/llama.cpp/Cargo.toml
 
       # Prove the binary is what we think it is.
       #
@@ -228,26 +217,26 @@ jobs:
 
       # Bundled only when there is an engine to run it.
       #
-      # The model is 491 MB and is copied into every per-ABI APK, so shipping it
+      # The model is 231 MB and is copied into every per-ABI APK, so shipping it
       # without the binary means a 1.4 GB artifact that still cannot use it.
       # A 17 MB app that says "this build has no bundled model" is far more
       # useful than a gigabyte that does nothing.
       - name: fetch the model
         if: steps.engine.outputs.available == 'true' && env.BUNDLE_LOCAL_ENGINE == 'true'
         env:
-          MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          MODEL_URL: https://huggingface.co/prism-ml/Bonsai-1.7B-gguf/resolve/main/Bonsai-1.7B-Q1_0.gguf
         run: |
           set -eu
           mkdir -p assets/models
-          curl -sL --retry 5 -C - -o assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf "$MODEL_URL"
-          test "$(sha256sum assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf | cut -d' ' -f1)" \
-            = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+          curl -sL --retry 5 -C - -o assets/models/Bonsai-1.7B-Q1_0.gguf "$MODEL_URL"
+          test "$(sha256sum assets/models/Bonsai-1.7B-Q1_0.gguf | cut -d' ' -f1)" \
+            = "3d7c6c90dd98717a203adb22d5eacd2581850e40aa5327e144b97766cae5f7e3"
           ls -la assets/models/
 
       - name: say whether the model is going in
         run: |
-          if [ -f assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf ]; then
-            echo "Bundling the model: $(du -h assets/models/qwen2.5-0.5b-instruct-q4_k_m.gguf | cut -f1)"
+          if [ -f assets/models/Bonsai-1.7B-Q1_0.gguf ]; then
+            echo "Bundling the model: $(du -h assets/models/Bonsai-1.7B-Q1_0.gguf | cut -f1)"
           else
             echo "No engine binary, so no bundled model. The app still works."
           fi

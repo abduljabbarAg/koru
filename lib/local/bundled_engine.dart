@@ -4,10 +4,10 @@ import 'package:flutter/services.dart';
 
 /// Controls the inference engine bundled inside the APK.
 ///
-/// The APK ships glen and a 0.5B model, so choosing "On-device model" needs no
-/// setup at all: this starts the bundled server and points the client at it. If
-/// the engine is missing, or fails to start, the caller falls back and says so
-/// rather than leaving the user on a spinner.
+/// The APK ships llama.cpp and a 1-bit 1.7B model, so choosing "On-device model"
+/// needs no setup at all: this starts the bundled server and points the client at
+/// it. If the engine is missing, or fails to start, the caller falls back and
+/// says so rather than leaving the user on a spinner.
 ///
 /// Everything here degrades. A build without the binary, a device that refuses
 /// to exec it, and a model that will not load all end in the same place: no
@@ -17,6 +17,15 @@ class BundledEngine {
 
   static const MethodChannel _channel = MethodChannel('koru/local_engine');
   static const int defaultPort = 8099;
+
+  /// The model that ships inside the APK, and how big it is.
+  ///
+  /// Bonsai-1.7B-Q1_0: 1-bit weights, 231 MB on disk, and markedly sharper than
+  /// the Qwen 0.5B it replaced. The size is stated rather than measured off
+  /// disk because it is written into the model config the settings screen
+  /// reads, and a config that guessed would report a wrong RAM estimate.
+  static const bundledModelId = 'Bonsai-1.7B-Q1_0';
+  static const bundledModelBytes = 248302272;
 
   /// Whether the binary is present and executable.
   Future<bool> get available async => (await status()).available;
@@ -76,7 +85,7 @@ class BundledEngine {
     }
   }
 
-  /// Every model glen could be pointed at.
+  /// Every model the engine could be pointed at.
   ///
   /// The bundled one is always first. Anything else is a .gguf the person put
   /// in the app's own folder, which is how a bigger model gets onto a phone that
@@ -165,10 +174,10 @@ class BundledEngine {
         return BundledStartResult.ready('http://127.0.0.1:$port');
       }
     }
-    // A model glen cannot load does not fail at launch, it dies while loading
-    // the file. start() reported success for that, the health poll then timed
-    // out, and the message said only that nothing answered. The reason is in the
-    // engine's own log, so it is fetched and passed on: "missing tensor
+    // A model the engine cannot load does not fail at launch, it dies while
+    // loading the file. start() reported success for that, the health poll then
+    // timed out, and the message said only that nothing answered. The reason is
+    // in the engine's own log, so it is fetched and passed on: "missing tensor
     // blk.0.attn_q.weight" is a diagnosis, "did not answer in 180 seconds" is
     // not.
     final why = await diagnose();
@@ -259,7 +268,7 @@ class BundledEngineStatus {
   }
 }
 
-/// One model glen could be pointed at.
+/// One model the engine could be pointed at.
 class LocalModelFile {
   const LocalModelFile({required this.label, required this.path});
 

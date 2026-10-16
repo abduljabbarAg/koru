@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **The on-device model is now Bonsai-1.7B-Q1_0, not Qwen2.5-0.5B.** A 1-bit
+  1.7B that is 231 MB on disk — half the download of the model it replaces and
+  markedly sharper, at about the same resident size. It only works because the
+  bundled engine is now llama.cpp rather than glen, which could not read the
+  format at all: Q1_0 has been `GGML_TYPE_Q1_0 = 41` in stock ggml all along,
+  and glen's "unknown dtype 41" was a missing case in glen.
+- **The engine builds again.** `tool/build_engine_android.sh` pointed at a
+  cmake toolchain file that exists in no llama.cpp release, so the cross
+  compile could never have configured. It now uses the NDK's own
+  `android.toolchain.cmake`, links statically — one executable has no library
+  search path to get wrong on a phone — and strips the result: 187 MB of debug
+  symbols down to a 13.8 MB binary.
+- The CI engine job cloned nothing, ran `cargo test` on a C++ project, and
+  installed a Rust toolchain it did not use. It now clones llama.cpp at the
+  pinned b11574 and fetches Bonsai with its checksum.
+
+### Fixed
+
+- **`MainActivity.kt` did not compile.** A merge left `val chosen` declared
+  twice in the same scope, so no APK containing the engine could have been
+  built from the committed tree. Found while building the first one.
+- The bundled-model panel labelled itself from the Qwen filename; it now takes
+  the label from whichever model actually shipped.
+
 ## 1.5.0
 
 Dark mode, a Today screen, and the mascot in the notification bar.
