@@ -11,7 +11,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMethodCodec
-import io.flutter.plugin.common.TaskQueues
+import io.flutter.embedding.engine.dart.TaskQueues
 import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -272,7 +272,7 @@ class MainActivity : FlutterActivity() {
      * system keeps room to breathe, and the APK itself has already been written
      * by this point, so this is checked against space genuinely available now.
      */
-    private const val MODEL_HEADROOM = 120L * 1024 * 1024
+    private val MODEL_HEADROOM = 120L * 1024 * 1024
 
     /**
      * How big the bundled model is, mirroring BundledEngine.bundledModelBytes.
@@ -283,7 +283,7 @@ class MainActivity : FlutterActivity() {
      * the disk is full the only way it can. Duplicated here rather than passed
      * over the channel because it is a sentence, not a decision.
      */
-    private const val BUNDLED_MODEL_BYTES = 248302272L
+    private val BUNDLED_MODEL_BYTES = 248302272L
 
     /** What is left to unpack into, in bytes. */
     private fun freeBytes(): Long =
@@ -418,8 +418,11 @@ class MainActivity : FlutterActivity() {
                     return null
                 }
             }
+            // Declared out here rather than inside the try, because the catch
+            // below has to be able to delete it: a half-written file under the
+            // real name is exactly what this whole dance exists to prevent.
+            val partial = File(target.parentFile, "$name.part")
             try {
-                val partial = File(target.parentFile, "$name.part")
                 target.parentFile?.mkdirs()
                 // Written aside and renamed, never straight onto the real name.
                 // A copy interrupted by a full disk or a killed process used to
