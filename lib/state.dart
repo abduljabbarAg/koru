@@ -250,6 +250,9 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> clear() async {
     final store = await ref.read(storeProvider.future);
     await store.clearChat();
+    // A question held for a turn that is still running belongs to a conversation
+    // that no longer exists.
+    _queued.clear();
     state = const ChatState(
       messages: [Msg(MsgRole.koru, _greeting, local: true)],
       busy: false,
@@ -259,8 +262,76 @@ class ChatNotifier extends Notifier<ChatState> {
 
   Future<void> ask(String question) async {
     final q = question.trim();
-    if (q.isEmpty || state.busy) return;
+    if (q.isEmpty) return;
 
+    // Asked while an answer is still arriving: held, not dropped.
+    //
+    // It used to return here, silently. On this phone an answer takes about
+    // thirteen seconds, so the window in which a second question is refused is
+    // not an edge case — it is most of the time somebody is reading the last
+    // answer and thinking of the next one. The composer had already cleared
+    // itself by then, so the question was gone and the screen went on showing
+    // the previous answer: what the user described as asking a second question
+    // and getting the same answer back. Nothing was sent, so nothing could
+    // depend on the new input either.
+    //
+    // Holding it instead means the question goes out as soon as the turn it was
+    // typed during is finished, carrying the exchange that came before it, which
+    // is what the person meant by asking it at all.
+    if (state.busy) {
+      _queued.add(q);
+      return;
+    }
+    await _turn(q);
+    await _drainQueued();
+  }
+
+  /// Questions typed while an answer was arriving, oldest first.
+  final List<String> _queued = [];
+
+  bool _draining = false;
+
+  /// Sends whatever was asked while a turn was running, one at a time.
+  ///
+  /// One at a time on purpose: the engine serves a single slot, and two requests
+  /// in flight at once is the only way tokens from one turn could ever be
+  /// attached to another.
+  Future<void> _drainQueued() async {
+    if (_draining) return;
+    _draining = true;
+    try {
+      while (_queued.isNotEmpty && !_gone) {
+        await _turn(_queued.removeAt(0));
+      }
+    } finally {
+      _draining = false;
+    }
+  }
+
+  /// The turn in flight, if there is one.
+  ///
+  /// The engine is served from a single slot, so the launch warm-up waits for
+  /// this rather than being sent beside it. Two requests on one slot is the only
+  /// way tokens from one turn could ever be attached to another, and there is
+  /// nothing to be gained from the overlap: the warm-up asks for one token.
+  Future<void>? _inFlight;
+
+  /// One question, start to finish: the turn itself.
+  ///
+  /// Wrapped rather than written inline so that the whole turn — including the
+  /// store writes at both ends — is one thing other work can wait behind.
+  Future<void> _turn(String q) async {
+    final running = Completer<void>();
+    _inFlight = running.future;
+    try {
+      await _answer(q);
+    } finally {
+      running.complete();
+      if (identical(_inFlight, running.future)) _inFlight = null;
+    }
+  }
+
+  Future<void> _answer(String q) async {
     // A request is stale once a newer one starts or this one is stopped.
     //
     // This used to be a boolean that stop() set and that ask() cleared *after*
@@ -452,6 +523,9 @@ class ChatNotifier extends Notifier<ChatState> {
     ProfileStore store,
   ) async {
     try {
+      // Behind any turn, never inside it. One slot, one request.
+      final running = _inFlight;
+      if (running != null) await running;
       final currency = (await ref.read(currencyProvider.future)).code;
       final system = LocalModelPrompt.build(
         packet: await store.packet(),
@@ -611,6 +685,11 @@ class ChatNotifier extends Notifier<ChatState> {
       );
     }
     state = state.copyWith(busy: false, messages: messages);
+    // Anything asked while this was being written goes now rather than waiting
+    // for the socket to finish draining a reply nobody is going to read. The
+    // stopped turn is retired, so it can no longer write, and the engine serves
+    // one request at a time.
+    if (_queued.isNotEmpty) unawaited(_drainQueued());
   }
 
   /// Edits a message the user sent and asks again from there.
@@ -785,7 +864,12 @@ class ChatNotifier extends Notifier<ChatState> {
       ..invalidate(receivedTotalsProvider)
       ..invalidate(openDeadlinesProvider)
       ..invalidate(eventsProvider)
-      ..invalidate(guideFactsProvider);
+      ..invalidate(guideFactsProvider)
+      // A project edit, a note or a delete changes what the Projects tab and the
+      // model prompt read, so they are re-read rather than left showing what was
+      // there before the card was approved.
+      ..invalidate(projectsProvider)
+      ..invalidate(packetProvider);
 
     // An import is remembered only once it has actually landed. Recording it
     // before would mean a failed import could never be retried, because the
@@ -817,7 +901,7 @@ class ChatNotifier extends Notifier<ChatState> {
     if (at < 0) return;
     messages[at] = Msg(
       MsgRole.koru,
-      '${problem ?? 'Added ${write.summary}. You can undo this from Clients.'}'
+      '${problem ?? write.applied ?? 'Added ${write.summary}. You can undo this from Clients.'}'
       '$syncNote',
       // Saying why, when the write did not land, is the difference between a
       // bug report and a user who thinks their records are fine.

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/attention_bridge.dart';
 import 'package:koru/calendar_bridge.dart';
 import 'package:koru/main.dart';
+import 'package:koru/onboarding.dart';
 import 'package:koru/permission_consent.dart';
 import 'package:koru/screens/permissions_intro.dart';
 import 'package:koru/screens/settings.dart';
@@ -341,6 +342,52 @@ void main() {
       // and has been sent here anyway, because they have never actually seen it.
       expect(find.byType(PermissionsIntroScreen), findsOneWidget);
       expect(find.byType(HomeShell), findsNothing);
+    });
+
+    testWidgets('a genuine first run reaches it too, with no restart',
+        (tester) async {
+      // The bug behind "I have to close the app and start again then i see the
+      // permission screen". A fresh install is not the upgrading user above: it
+      // has no flags at all, which means the gate answers "nothing to ask about"
+      // at launch because onboarding has not finished yet — and it never asks
+      // again, so the explanation is unreachable for the whole session. Only the
+      // second launch asks the question with onboarding already behind it, which
+      // is exactly what the report describes.
+      useTallSurface(tester);
+      // Nothing seeded: no onboarded, no asked_permissions, no consent. This is
+      // the store of an app installed five seconds ago.
+      await pumpApp(tester, const RootGate());
+
+      await pastSplash(tester);
+
+      expect(find.byType(OnboardingScreen), findsOneWidget,
+          reason: 'a fresh install starts at onboarding, not at the app');
+
+      // Walk onboarding the way a person does: straight through, answering
+      // nothing. Every field is optional and the last button is the one that
+      // commits.
+      for (var i = 0; i < 6; i++) {
+        await tester.tap(find.text('Continue'));
+        await pumpFrames(tester);
+      }
+      await tester.tap(find.text('Start'));
+      await pumpFrames(tester, frames: 20);
+
+      // No restart, no second launch, no relaunch of the engine: the screen the
+      // report says only appears after one of those.
+      expect(find.byType(PermissionsIntroScreen), findsOneWidget);
+      expect(find.byType(HomeShell), findsNothing);
+      expect(await stored(tester, 'onboarded'), '1',
+          reason: 'onboarding really did finish; this is not a stuck form');
+
+      // And it is a real screen, not a flash: answering it gets into the app and
+      // records the answer.
+      await tester.tap(find.text('Not now'));
+      await pumpUntilGone(tester, find.byType(PermissionsIntroScreen));
+      await pumpFrames(tester, frames: 12);
+
+      expect(await stored(tester, permissionConsentKey), 'declined');
+      expect(find.byType(HomeShell), findsOneWidget);
     });
 
     testWidgets('the screen can actually be finished and asks for something',

@@ -81,12 +81,19 @@ class _WriteCardState extends State<WriteCard> {
     final write = widget.write;
     final amountError = write is ProposedPayment &&
         (double.tryParse(_amount.text.trim()) ?? 0) <= 0;
+    // Clay for a delete, gold for everything else. The tone is what tells a
+    // person which of the two things they are agreeing to is the one that
+    // cannot be taken back, and it is read before the words are.
+    final destructive = write.isDestructive;
+    final tone = destructive ? KoruColors.clay : KoruColors.gold;
+    final fill = destructive ? KoruColors.claySoft : KoruColors.goldSoft;
+    final approveLabel = destructive ? 'Delete it' : 'Save it';
 
     return Padding(
       padding: const EdgeInsets.only(top: KoruSpace.sml, bottom: KoruSpace.xs),
       child: KoruCard(
-        background: KoruColors.goldSoft,
-        accent: KoruColors.gold,
+        background: fill,
+        accent: tone,
         elevated: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,8 +102,10 @@ class _WriteCardState extends State<WriteCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 KoruIconBadge(
-                  icon: Icons.edit_note_rounded,
-                  color: KoruColors.gold,
+                  icon: destructive
+                      ? Icons.delete_outline_rounded
+                      : Icons.edit_note_rounded,
+                  color: tone,
                   background: KoruColors.surface,
                 ),
                 const SizedBox(width: KoruSpace.md),
@@ -127,11 +136,18 @@ class _WriteCardState extends State<WriteCard> {
               children: [
                 Expanded(
                   child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(KoruSize.buttonInCard),
-                    ),
+                    style: destructive
+                        ? FilledButton.styleFrom(
+                            backgroundColor: KoruColors.clay,
+                            minimumSize:
+                                const Size.fromHeight(KoruSize.buttonInCard),
+                          )
+                        : FilledButton.styleFrom(
+                            minimumSize:
+                                const Size.fromHeight(KoruSize.buttonInCard),
+                          ),
                     onPressed: _busy || amountError ? null : _approve,
-                    child: const Text('Save it'),
+                    child: Text(approveLabel),
                   ),
                 ),
                 const SizedBox(width: KoruSpace.sm),

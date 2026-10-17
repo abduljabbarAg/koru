@@ -60,6 +60,92 @@ void main() {
       expect(turns.map((t) => t['role']), ['user', 'assistant']);
     });
 
+    group('every engine is given the conversation, not just the question', () {
+      // The bug: OpenAI was sent the earlier turns and the other two formats
+      // were sent the question alone. A follow-up to Anthropic or Gemini was
+      // therefore asked against the same records as the turn before it, with
+      // nothing to connect the two — which is the shape of "I asked something
+      // else and got the same answer".
+      const history = [
+        (role: 'user', content: 'who owes me money?'),
+        (role: 'assistant', content: 'Bilal owes 1500.'),
+      ];
+
+      Map<String, dynamic> bodyOf(String providerId) => jsonDecode(
+            CloudAdapter.build(
+              provider: at(providerId),
+              model: 'm',
+              apiKey: 'k',
+              system: 'sys',
+              question: 'and what about Sara?',
+              history: history,
+            ).body,
+          ) as Map<String, dynamic>;
+
+      List<String> rolesIn(String providerId, List<dynamic> messages) => [
+          for (final m in messages.cast<Map<String, dynamic>>()) m['role'] as String
+        ];
+
+      test('anthropic is sent the whole exchange', () {
+        final messages = (bodyOf('anthropic')['messages'] as List).cast<Map>();
+        expect(rolesIn('anthropic', messages), ['user', 'assistant', 'user']);
+        expect(messages.last['content'], 'and what about Sara?');
+        expect(messages.first['content'], 'who owes me money?');
+      });
+
+      test('anthropic never opens with the assistant', () {
+        // Every chat in this app opens with Koru greeting, which arrives as an
+        // assistant turn. Anthropic refuses a conversation that starts there
+        // with a 400, so it is dropped rather than sent and rejected.
+        final request = CloudAdapter.build(
+          provider: at('anthropic'),
+          model: 'm',
+          apiKey: 'k',
+          system: 'sys',
+          question: 'and what about Sara?',
+          history: const [
+            (role: 'assistant', content: 'I am here, and I answer questions.'),
+            (role: 'user', content: 'who owes me money?'),
+            (role: 'assistant', content: 'Bilal owes 1500.'),
+          ],
+        );
+        final messages =
+            ((jsonDecode(request.body) as Map)['messages'] as List).cast<Map>();
+        expect(messages.first['role'], 'user');
+        expect(messages.map((m) => m['content']),
+            isNot(contains('I am here, and I answer questions.')));
+      });
+
+      test('gemini is sent the whole exchange, with its own role names', () {
+        final contents = (bodyOf('gemini')['contents'] as List).cast<Map>();
+        expect(rolesIn('gemini', contents), ['user', 'model', 'user']);
+        expect(
+          (contents.last['parts'] as List).cast<Map>().single['text'],
+          'and what about Sara?',
+        );
+      });
+
+      test('two turns by the same speaker are joined, not sent twice over', () {
+        // A question the model could not answer followed by the next one puts
+        // two assistant turns in a row, which both formats refuse.
+        final messages = (CloudAdapter.build(
+          provider: at('anthropic'),
+          model: 'm',
+          apiKey: 'k',
+          system: 'sys',
+          question: 'and then?',
+          history: const [
+            (role: 'user', content: 'who owes me money?'),
+            (role: 'assistant', content: 'The local model is not running.'),
+            (role: 'assistant', content: 'The local model is not running.'),
+          ],
+        ).body);
+        final sent = ((jsonDecode(messages) as Map)['messages'] as List)
+            .cast<Map>();
+        expect(rolesIn('anthropic', sent), ['user', 'assistant', 'user']);
+      });
+    });
+
     test('streaming is asked for only when streaming', () {
       CloudRequest build({required bool stream}) => CloudAdapter.build(
             provider: at('openai'),

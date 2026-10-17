@@ -30,8 +30,11 @@ enum _Kind {
   payment,
   client,
   project,
+  projectEdit,
+  projectDelete,
   edit,
   delete,
+  note,
   none,
 }
 
@@ -263,6 +266,93 @@ class DeleteClientIntent extends WriteIntent {
   String get summary => 'Delete $clientName';
 }
 
+/// A change to a project already on file.
+///
+/// Every field is optional and null means "leave it alone", the same rule as
+/// [EditClientIntent]: "the shop project is half done" must not quietly throw
+/// away what it was meant to be finished by.
+class EditProjectIntent extends WriteIntent {
+  const EditProjectIntent({
+    required this.projectName,
+    this.name,
+    this.target,
+    this.plan,
+    this.progress,
+  });
+
+  /// Which project, as typed. Resolved against the real ones later.
+  final String projectName;
+
+  /// A new name, from "rename the project X to Y". Null leaves it alone.
+  final String? name;
+
+  /// What "finished" looks like now, in the user's own words.
+  final String? target;
+
+  /// How they intend to get there.
+  final String? plan;
+
+  /// How far along, 0 to 1. Null leaves the number where it was.
+  final double? progress;
+
+  bool get changesAnything =>
+      name != null || target != null || plan != null || progress != null;
+
+  @override
+  String get summary {
+    final parts = <String>[];
+    if (name != null) parts.add('name to $name');
+    if (target != null) parts.add('done when $target');
+    if (plan != null) parts.add('by: $plan');
+    if (progress != null) {
+      parts.add('${(progress! * 100).round()}% along');
+    }
+    return 'Change project $projectName: '
+        '${parts.isEmpty ? 'nothing' : parts.join(', ')}';
+  }
+}
+
+/// Removes a project and the notes under it.
+class DeleteProjectIntent extends WriteIntent {
+  const DeleteProjectIntent({required this.projectName});
+
+  final String projectName;
+
+  @override
+  String get summary => 'Delete project $projectName';
+}
+
+/// What a note is being written against.
+enum NoteTarget { client, project }
+
+/// A note against a client or a project, in the user's own words.
+///
+/// The one write whose value is text, which is why the body is never guessed at:
+/// "add a note to Bilal that the site visit went well" has one right answer and
+/// it is the sentence after the cue.
+class AddNoteIntent extends WriteIntent {
+  const AddNoteIntent({
+    required this.on,
+    required this.name,
+    required this.body,
+  });
+
+  /// Which kind of record it is about. Typed either way; resolved later.
+  final NoteTarget on;
+
+  /// Who or what it is about, as typed.
+  final String name;
+
+  /// The note itself.
+  final String body;
+
+  @override
+  String get summary {
+    final where = on == NoteTarget.project ? 'project $name' : name;
+    return 'Add a note to $where: "$body"';
+  }
+}
+
 /// A new piece of work, client or personal.
 class AddProjectIntent extends WriteIntent {
   const AddProjectIntent({
@@ -324,6 +414,11 @@ class IncompleteWriteIntent extends WriteIntent {
           'Which client paid, and how much? Like "Bilal paid 500".',
         WriteKind.deadline =>
           'What is the deadline for? Like "Bilal due Friday".',
+        WriteKind.project =>
+          'What should the project be called? Like "start a project called the shop".',
+        WriteKind.note =>
+          'Which client or project is the note about? Like "add a note to Bilal '
+              'that the invoice is late".',
       };
 
   /// Never reaches a card, but the getter is part of the sealed contract.
@@ -335,7 +430,7 @@ class IncompleteWriteIntent extends WriteIntent {
 }
 
 /// The three kinds of write the parser recognises.
-enum WriteKind { client, payment, deadline }
+enum WriteKind { client, payment, deadline, project, note }
 
 /// Turns a sentence into a [WriteIntent], or null when it is not asking for one.
 ///
@@ -435,6 +530,50 @@ class WriteIntentParser {
     'delete the client',
     'remove client',
     'remove the client',
+  ];
+
+  /// Notes, in the words people actually use for them.
+  ///
+  /// Kept apart from the client and project cues because a note is neither: it
+  /// attaches to a record that already exists and changes nothing but a line of
+  /// text on it. Read as an add it would create a second client called "note".
+  static const _noteCues = [
+    'add a note',
+    'add note',
+    'write a note',
+    'write down',
+    'jot down',
+    'make a note',
+    'note that',
+    'remember that',
+  ];
+
+  /// Changes to a project that already exists.
+  ///
+  /// Separate from the add cues for the same reason the client edits are: "the
+  /// shop is half done" is a change to work under way, and adding a project
+  /// called "the shop is half done" would be a new record rather than an edit of
+  /// one.
+  static const _editProjectCues = [
+    'change the project',
+    'change project',
+    'update the project',
+    'update project',
+    'edit the project',
+    'edit project',
+    'rename the project',
+    'rename project',
+    'project is now',
+    'project progress',
+  ];
+
+  static const _deleteProjectCues = [
+    'delete project',
+    'delete the project',
+    'remove project',
+    'remove the project',
+    'cancel project',
+    'cancel the project',
   ];
 
   /// "start a project called X", "I'm learning X".
@@ -593,7 +732,9 @@ class WriteIntentParser {
     if (input.contains('?')) return null;
 
     final clean = input
-        .replaceAll(RegExp(r'[^\w\s.,\-:/]'), ' ')
+        // '%' survives cleaning because progress is spoken with one and
+        // dropping it turns "60% done" into "60 done", which reads as a figure.
+        .replaceAll(RegExp(r'[^\w\s.,\-:/%]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (clean.isEmpty) return null;
@@ -643,6 +784,12 @@ class WriteIntentParser {
         return _editEvent(clean, lower);
       case _Kind.project:
         return _project(clean, lower);
+      case _Kind.projectEdit:
+        return _editProject(clean, lower);
+      case _Kind.projectDelete:
+        return _deleteProject(clean, lower);
+      case _Kind.note:
+        return _note(clean, lower);
       case _Kind.none:
         // No write cue anywhere. A sentence that merely mentions "client" is a
         // question for the model, not an instruction, and guessing here is how
@@ -661,6 +808,9 @@ class WriteIntentParser {
     final ev = _earliestCue(lower, _eventCues);
     final evEdit = _earliestCue(lower, _editEventCues);
     final pr = _earliestCue(lower, _projectCues);
+    final prEdit = _earliestCue(lower, _editProjectCues);
+    final prDelete = _earliestCue(lower, _deleteProjectCues);
+    final nt = _earliestCue(lower, _noteCues);
     // The "X paid N" shape has no cue phrase at all, it is its own pattern, so
     // it is detected separately and only when no explicit cue beat it.
     final paidAt = lower.indexOf(' paid');
@@ -688,7 +838,26 @@ class WriteIntentParser {
     // moving the first is exactly what the person did not ask for.
     offer(_Kind.eventEdit, evEdit?.$1);
     offer(_Kind.event, ev?.$1);
+    // A new project before a changed one. "set up a project called X" carries
+    // both "set project" and "set up a project" at the same position, and a tie
+    // is won by whoever was offered it first.
     offer(_Kind.project, pr?.$1);
+    offer(_Kind.projectEdit, prEdit?.$1);
+    offer(_Kind.projectDelete, prDelete?.$1);
+    // A note goes last, so a sentence that says both "add a note" and something
+    // else is read as the something else rather than as a note that quietly
+    // swallows it.
+    offer(_Kind.note, nt?.$1);
+    // "the shop is now half done" and "the shop is now 60% done" carry no cue
+    // phrase, and the only thing that marks them is progress after "is now".
+    // Without this they reach a model, which answers them in prose and records
+    // nothing. A sentence naming a client in this shape is refused by the
+    // resolver, which looks for a project and says what it cannot find.
+    if (best == _Kind.none &&
+        RegExp(r'\bis now\b').hasMatch(lower) &&
+        _progressIn(lower) != null) {
+      best = _Kind.projectEdit;
+    }
     if (best == _Kind.none && paidAt >= 0) best = _Kind.payment;
     return best;
   }
@@ -879,6 +1048,55 @@ class WriteIntentParser {
     );
   }
 
+  /// A record named on one side of a cue or the other.
+  ///
+  /// Same shape as reading a client's name for an edit, lifted out because a
+  /// project edit needs it too: "change the project shop" names it after the
+  /// cue, "the shop is now half done" names it before. " to " ends the name in
+  /// both directions, because it introduces the new value rather than belonging
+  /// to the name.
+  String? _nameAround(String after, String before) {
+    // The side after the cue usually names the record; the side before it names
+    // it in "the shop is now half done". When the first reads like a value
+    // rather than a name the other one is the name, because "half done" is not
+    // a project.
+    if (!_readsLikeAValue(after)) {
+      final named = _nameFrom(after);
+      if (named != null) return named;
+    }
+    return _nameFrom(before);
+  }
+
+  String? _nameFrom(String s) {
+    final lower = s.toLowerCase();
+    var cut = -1;
+    for (final stop in const [' to ', ' is now ', ' so ', ' so that ', ' because ']) {
+      final at = lower.indexOf(stop);
+      if (at > 0 && (cut < 0 || at < cut)) cut = at;
+    }
+    final head = cut > 0 ? s.substring(0, cut) : s;
+    final name = _trimName(head, head.toLowerCase());
+    if (name == null || name.length < 2) return null;
+    if (!_hasLetter(name) || _number.hasMatch(name)) return null;
+    return name;
+  }
+
+  /// Whether [s] is a new value rather than a name.
+  ///
+  /// The words that carry a value in this grammar: a figure, a percentage, and
+  /// the handful of phrases that describe progress.
+  bool _readsLikeAValue(String s) {
+    final t = s.trim().toLowerCase();
+    if (t.isEmpty) return false;
+    // Only when it *starts* with one. "the shop to 60% done" has a figure in it
+    // and is still a name followed by a figure.
+    if (RegExp(r'^\d').hasMatch(t)) return true;
+    return RegExp(
+      r'^(half|halfway|half way|almost|nearly|all|done|complete|completed|finished'
+      r'|in progress|started|not started)\b',
+    ).hasMatch(t);
+  }
+
   /// The client an edit is about, read from either word order.
   String? _editTarget(String clean, String lower) {
     final found = _earliestCue(lower, _editCues);
@@ -888,15 +1106,19 @@ class WriteIntentParser {
     // Before it: "bilal now owes 4000".
     final before = clean.substring(0, found.$1).trim();
 
-    for (final lead in const [' to ', ' from ']) {
-      // "change ... to" introduces the new value, not the name, so it ends the
-      // name rather than being part of it.
+    // " to " and " from " introduce the new value rather than belonging to the
+    // name, and " status " introduces the field being changed. Earliest of the
+    // three wins, so "change client Bilal status to paid" reads as Bilal and
+    // not as a client called "Bilal status".
+    var cutAt = -1;
+    for (final lead in const [' to ', ' from ', ' status ']) {
       final at = after.toLowerCase().indexOf(lead);
-      if (at > 0) {
-        final head = after.substring(0, at);
-        final cut = _trimName(head, head.toLowerCase());
-        if (cut != null && cut.length >= 2) return cut;
-      }
+      if (at > 0 && (cutAt < 0 || at < cutAt)) cutAt = at;
+    }
+    if (cutAt > 0) {
+      final head = after.substring(0, cutAt);
+      final cut = _trimName(head, head.toLowerCase());
+      if (cut != null && cut.length >= 2) return cut;
     }
     // A tail of "4000" is the new amount, not the client's name. "bilal now
     // owes 4000" has its name before the cue and its value after it, so a tail
@@ -923,6 +1145,13 @@ class WriteIntentParser {
       ('status active', 'active'),
       ('status paid', 'paid'),
       ('status lead', 'lead'),
+      // "change client Bilal status to paid" is how it is said as often as
+      // "mark Bilal as paid", and it names the record as well as the state.
+      ('status to active', 'active'),
+      ('status to paid', 'paid'),
+      ('status to lead', 'lead'),
+      ('status back to paid', 'paid'),
+      ('status back to lead', 'lead'),
       ('set to active', 'active'),
       ('set to paid', 'paid'),
     ]) {
@@ -936,7 +1165,15 @@ class WriteIntentParser {
     if (!_hasCue(lower, _deleteCues)) return null;
     final found = _earliestCue(lower, _deleteCues);
     if (found == null) return null;
-    final rest = clean.substring(found.$1 + found.$2.length).trim();
+    var rest = clean.substring(found.$1 + found.$2.length).trim();
+    // "delete the client called X" was being read as a client called
+    // "called X", which is a record nobody has and cannot be deleted.
+    for (final lead in const ['called ', 'named ']) {
+      if (rest.toLowerCase().startsWith(lead)) {
+        rest = rest.substring(lead.length).trim();
+        break;
+      }
+    }
     final name = _trimName(rest, rest.toLowerCase());
     if (name == null || name.length < 2 || _number.hasMatch(name)) {
       return IncompleteWriteIntent(kind: WriteKind.client, askedFor: clean);
@@ -1177,7 +1414,6 @@ class WriteIntentParser {
     return null;
   }
 
-  /// "change the call with Bilal to Thursday", "move the standup to 10am".
   /// "start a project called the shop", "I'm learning Arabic, done when I can
   /// hold a conversation".
   WriteIntent? _project(String clean, String lower) {
@@ -1252,6 +1488,217 @@ class WriteIntentParser {
     );
   }
 
+  /// "change the project shop so it is done when the door opens", "the shop is
+  /// half done", "rename the project shop to the shop front".
+  WriteIntent? _editProject(String clean, String lower) {
+    final found = _earliestCue(lower, _editProjectCues);
+    // No cue at all is a shape the caller has already recognised: "the shop is
+    // now half done" carries no phrase, only progress after "is now". The whole
+    // sentence is then the text after a cue nobody said.
+    final at = found?.$1 ?? -1;
+    final cue = found?.$2 ?? '';
+
+    // The project is named on one side of the cue or the other, exactly as it is
+    // for a client edit: "change the project shop" names it after, "the shop is
+    // now half done" names it before.
+    final after = at < 0 ? clean : clean.substring(at + cue.length).trim();
+    final before = at < 0 ? '' : clean.substring(0, at).trim();
+    final name = _nameAround(after, before);
+    if (name == null) {
+      return IncompleteWriteIntent(kind: WriteKind.project, askedFor: clean);
+    }
+
+    // A rename carries the old name first and the new one after "to". Read
+    // before anything else, because the new name is also a plausible reading of
+    // the rest of the sentence.
+    String? renamed;
+    if (cue.startsWith('rename')) {
+      final to = after.toLowerCase().indexOf(' to ');
+      if (to > 0) {
+        final tail = _trimName(
+          after.substring(to + 4).trim(),
+          after.substring(to + 4).trim().toLowerCase(),
+        );
+        if (tail != null && tail.length >= 2) renamed = tail;
+      }
+    }
+
+    final done = RegExp(r'(?:done|finished|complete)\s+(?:when|once|after|at)\s+(.+)',
+            caseSensitive: false)
+        .firstMatch(clean);
+    final target =
+        done == null ? null : _titleCase(done.group(1)!.trim().split(RegExp(r'[.,;]')).first);
+
+    final by = RegExp(r'\b(?:by|using|through)\s+(.+)', caseSensitive: false)
+        .firstMatch(clean);
+    final plan = by == null
+        ? null
+        : _titleCase(by.group(1)!.trim().split(RegExp(r'[.,;]')).first);
+
+    final progress = _progressIn(lower);
+
+    if (renamed == null && target == null && plan == null && progress == null) {
+      // "change the project shop" says which one and nothing else. Answering it
+      // with a card trains people to approve cards without reading them.
+      return IncompleteWriteIntent(kind: WriteKind.project, askedFor: clean);
+    }
+    return EditProjectIntent(
+      projectName: name,
+      name: renamed,
+      target: target,
+      plan: plan,
+      progress: progress,
+    );
+  }
+
+  /// How far along something is, as a fraction, or null when it says nothing
+  /// about it.
+  ///
+  /// A percentage is read as one. "halfway" and "finished" are the two ways
+  /// people say it without a number, and both are unambiguous enough to be worth
+  /// recording. Anything else is left alone rather than guessed at: progress is
+  /// the one number this app shows back, and a guess becomes a fact.
+  double? _progressIn(String lower) {
+    final pct = RegExp(r'(\d{1,3})\s*%').firstMatch(lower);
+    if (pct != null) {
+      final v = int.tryParse(pct.group(1)!);
+      if (v != null && v >= 0 && v <= 100) return v / 100;
+    }
+    if (RegExp(r'\b(halfway|half way|half done|half finished)\b').hasMatch(lower)) {
+      return 0.5;
+    }
+    if (RegExp(r'\b(almost done|nearly done|nearly finished)\b').hasMatch(lower)) {
+      return 0.9;
+    }
+    // "is done when the roof is on" is a target and not a completion, so the
+    // words after the phrase decide whether it counted. Getting this wrong moves
+    // a project to 100% because somebody described when it finishes.
+    if (RegExp(r'\b(all done|now done|is done|now complete|is complete|completed'
+            r'|now finished|is finished)\b'
+            r'(?!\s+(when|once|after|if|whenever|before))')
+        .hasMatch(lower)) {
+      return 1;
+    }
+    return null;
+  }
+
+  /// Removes a project and the notes under it.
+  WriteIntent? _deleteProject(String clean, String lower) {
+    final found = _earliestCue(lower, _deleteProjectCues);
+    if (found == null) return null;
+    var rest = clean.substring(found.$1 + found.$2.length).trim();
+    // "delete the project called X", the same lead word the other kinds accept.
+    for (final lead in const ['called ', 'named ']) {
+      if (rest.toLowerCase().startsWith(lead)) {
+        rest = rest.substring(lead.length).trim();
+        break;
+      }
+    }
+    final name = _trimName(rest, rest.toLowerCase());
+    if (name == null || name.length < 2 || _number.hasMatch(name)) {
+      return IncompleteWriteIntent(kind: WriteKind.project, askedFor: clean);
+    }
+    return DeleteProjectIntent(projectName: name);
+  }
+
+  /// "add a note to Bilal that the invoice is late", "write down on the shop
+  /// project that the site visit went well".
+  WriteIntent? _note(String clean, String lower) {
+    final found = _earliestCue(lower, _noteCues);
+    if (found == null) return null;
+    var rest = clean.substring(found.$1 + found.$2.length).trim();
+    if (rest.isEmpty) {
+      return IncompleteWriteIntent(kind: WriteKind.note, askedFor: clean);
+    }
+
+    // "note that X" has no target in it at all, and the only way to read it is as
+    // a note against something already on file.
+    var on = NoteTarget.client;
+    // The lead word is at the very start, so it has no space in front of it:
+    // the cue already ends and everything was trimmed. " on " reads as a project
+    // and the rest as a client, because "a note on Bilal" is still about the
+    // person and "a note on the shop" is about the work.
+    for (final lead in const ['to ', 'on ', 'about ', 'for ']) {
+      if (rest.toLowerCase().startsWith(lead)) {
+        if (lead == 'on ') on = NoteTarget.project;
+        rest = rest.substring(lead.length).trim();
+        break;
+      }
+    }
+    // "add a note to Bilal: called about the invoice" — the colon ends the name.
+    final colon = rest.indexOf(':');
+    if (colon > 0) {
+      final head = rest.substring(0, colon).trim();
+      final tail = rest.substring(colon + 1).trim();
+      if (head.isNotEmpty && tail.isNotEmpty) rest = '$head $tail';
+    }
+    // "note that the door opens Friday": the clause word belongs to the grammar,
+    // not to the note.
+    for (final filler in const ['that ', 'saying ', 'to say ']) {
+      if (rest.toLowerCase().startsWith(filler)) {
+        rest = rest.substring(filler.length).trim();
+        break;
+      }
+    }
+
+    // Split what is left into who it is about and what it says. The name is
+    // whichever half reads like a name, and the note is the other half — so a
+    // note that names nobody is refused rather than attached to a guess.
+    final parts = _splitNote(rest);
+    if (parts == null) {
+      return IncompleteWriteIntent(kind: WriteKind.note, askedFor: clean);
+    }
+    // "a note on the shop project" names the project as "the shop", and the
+    // word "project" is the sentence's word rather than the record's.
+    var name = parts.$1;
+    if (RegExp(r'\s+projects?$', caseSensitive: false).hasMatch(name)) {
+      name = name.replaceFirst(RegExp(r'\s+projects?$', caseSensitive: false), '');
+    }
+    return AddNoteIntent(on: on, name: name, body: parts.$2);
+  }
+
+  /// The name and the body of a note, read off one sentence.
+  ///
+  /// The cue is followed by a name and then the note itself, with no punctuation
+  /// between them in the way people actually type: "add a note to Bilal he has
+  /// not paid since March". So the split is on the first word that cannot be
+  /// part of a name — "that", "saying", or a preposition opening the clause.
+  (String, String)? _splitNote(String rest) {
+    const separators = [' that ', ' saying ', ' because ', ' since '];
+    for (final sep in separators) {
+      final at = rest.toLowerCase().indexOf(sep);
+      if (at <= 0) continue;
+      final name = rest.substring(0, at).trim();
+      final body = rest.substring(at + sep.length).trim();
+      if (name.isEmpty || body.isEmpty) continue;
+      if (_looksLikeAName(name)) return (name, body);
+    }
+    // No clause word: the name is the first few words and the rest is the note.
+    final words = rest.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.length < 3) return null;
+    for (var take = 1; take <= 3 && take < words.length; take++) {
+      final name = words.take(take).join(' ');
+      final body = words.skip(take).join(' ');
+      if (_looksLikeAName(name) && body.trim().length > 2) return (name, body);
+    }
+    return null;
+  }
+
+  /// Whether [text] reads like the name of a person or a piece of work.
+  ///
+  /// Three words at most, no figures, and not an open-ended phrase. This is the
+  /// only thing standing between "add a note that the invoice is late" and a
+  /// client called "the invoice is late". Three rather than two because "the
+  /// shop project" is how a project is named in a sentence, and two words would
+  /// read that as the name "the" with the rest as the note.
+  bool _looksLikeAName(String text) {
+    final words = text.trim().split(RegExp(r'\s+'));
+    if (words.isEmpty || words.length > 3) return false;
+    if (_number.hasMatch(text)) return false;
+    return words.every((w) => RegExp(r"^[a-z][a-z'\.]*$", caseSensitive: false).hasMatch(w));
+  }
+
+  /// "change the call with Bilal to Thursday", "move the standup to 10am".
   WriteIntent? _editEvent(String clean, String lower) {
     final found = _earliestCue(lower, _editEventCues);
     if (found == null) return null;

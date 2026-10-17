@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The permission explanation is reachable on a first run.** "I have to close
+  the app and start again then i see the permission screen." The gate decided
+  the question once, at launch, and answered "nothing to ask about" for anybody
+  who had not finished onboarding — which is every genuinely fresh install. The
+  answer was then held in a field that was never recomputed, so onboarding
+  finished, the gate rebuilt, and the screen had already been ruled out for the
+  rest of the session. Only the second launch asked the question with
+  onboarding behind it. It is now decided the moment onboarding finishes, and the
+  read is bounded so a platform channel that never answers cannot leave somebody
+  standing on a loading screen.
+- **A question asked while an answer is arriving is asked.** "I ask a question,
+  I get an answer. I ask another question, I get the exact same answer."
+  `ask()` returned without sending anything whenever a turn was under way, and
+  the composer had already cleared itself, so the question was destroyed before
+  it left the building and the thread went on showing the previous answer — no
+  request was made, so nothing downstream of it could depend on the new input.
+  An answer on this phone takes about thirteen seconds, so that window was most
+  of the time somebody was reading the last answer and thinking of the next one.
+  A question asked during a turn is now held and sent as soon as that turn is
+  finished, carrying the exchange that came before it. The launch warm-up, which
+  is the one other thing that could be in flight, now waits behind a turn rather
+  than competing with it for the engine's single slot.
+- **The cloud engines are given the conversation.** OpenAI-format providers were
+  sent the earlier turns and Anthropic and Gemini were sent the bare question,
+  so a follow-up to those two was asked against the same records as the turn
+  before it with nothing to connect the two. All three now get the exchange with
+  the new question last, in the shape each one requires.
+- **A few sentences that read as the wrong record.** "change client Bilal status
+  to paid" was read as a client called "Bilal status", "delete the client called
+  Bilal" as a client called "called Bilal", "the shop is now done when the roof
+  is on" set progress to 100%, and "60% done" lost its percent sign before it was
+  read. All four are the same class of thing: a word the sentence needed treated
+  as part of a name, or a sign treated as punctuation.
+- **A write is reported as what it was.** An edit or a delete was announced with
+  the same "Added … You can undo this from Clients" as an addition, including for
+  the two things that cannot be undone. Each write now says what it did, and a
+  delete says plainly that there is no undo for it.
+
+### Added
+
+- **The model can change and remove projects, and write notes.**
+  `write_intent.dart` had intents for creating a client, editing one, deleting
+  one, creating a project and recording a payment, and nothing for the other
+  three. Editing a project (its name, what it is for, the plan, how far along),
+  deleting one, and adding a note to a client or a project are now recognised,
+  resolved against the real records, and proposed as a card to approve. They run
+  on both engines, because the parser runs before either is chosen. A delete is
+  styled and worded as a delete — clay rather than gold, and "Delete it" rather
+  than "Save it" — since that is the one card where the difference between what
+  is being added and what is being lost is the decision.
+
 ### Added
 
 - **The engine control in the chat's top bar opens the engine picker.** Tap the

@@ -81,8 +81,17 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
   /// Whether the permission explanation still owes this person a look. Null
   /// until the store and the platform have both answered, because deciding this
   /// from the stored flag alone is what hid the screen from every upgrading
-  /// user.
+  /// user, and because a first run has to decide it again the moment onboarding
+  /// finishes rather than carrying the answer it gave before onboarding existed.
   bool? _oweConsent;
+
+  /// Whether a decision is already on its way, so the launch path and the
+  /// onboarding path cannot both start one.
+  bool _deciding = false;
+
+  /// How long the consent read is given before the person is let in anyway.
+  /// Cancelled with the gate rather than left running behind it.
+  Timer? _patience;
 
   /// Whether the app is currently in the background.
   ///
@@ -131,6 +140,8 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
     // state object and a late lifecycle change into a disposed gate is an
     // exception in the log of every app switch on the way out.
     WidgetsBinding.instance.removeObserver(this);
+    _patience?.cancel();
+    _patience = null;
     super.dispose();
   }
 
@@ -138,23 +149,78 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
     final store = await ref.read(storeProvider.future);
     final done = await store.onboarded;
     if (!mounted) return;
+    ref.read(onboardedProvider.notifier).state = done;
+    setState(() => _ready = true);
     // Asked, not recorded: what the person actually holds is the only honest
     // answer to whether the screen is still worth showing. See
     // [PermissionConsent.shouldOffer] for why the old flag is not consulted.
-    final consent = done
-        ? await ref.read(permissionConsentProvider.future)
-        : PermissionConsent.nothingToAskAbout;
+    //
+    // Only for somebody who is already through onboarding, and only decided once.
+    // It used to be decided here for everybody, with everybody who had not
+    // onboarded answered "nothing to ask about" — and this field is never
+    // recomputed. So a genuine first run carried that answer for the rest of
+    // the session: onboarding finished, the gate rebuilt, `onboarded` was true
+    // and the consent screen was already ruled out. The reported symptom was
+    // "I have to close the app and start again then i see the permission
+    // screen", which is exactly it: the second launch is the first one where
+    // the question is asked with onboarding already behind it.
+    if (done) {
+      unawaited(_decideConsent());
+      // The stored conversation, once the gate knows who this is. The engine is
+      // not started here: that moved to initState, ahead of every await in this
+      // method, so it no longer waits on the store, on onboarding and on the
+      // permission consent in turn.
+      ref.read(chatProvider.notifier).load();
+    }
+  }
+
+  /// Asks what is genuinely still missing and records whether to offer the
+  /// explanation.
+  ///
+  /// Fired the moment the person finishes onboarding rather than at launch,
+  /// because before that there is nothing to ask: a half-built app asking for
+  /// notifications is the thing the explanation exists to argue against.
+  Future<void> _decideConsent() async {
+    if (_oweConsent != null || _deciding) return;
+    _deciding = true;
+    bool offer;
+    // Bounded, because this decides whether the person is let into their own
+    // app. It is normally a couple of round trips to the platform and nothing
+    // more, and a read that never finishes — a plugin that never answers, a
+    // channel that is gone — must not leave somebody standing on a loading
+    // screen with no way past it. Running out of patience here means the same
+    // thing as "nothing to ask about": in, with Settings still offering the
+    // prompts for as long as the app exists.
+    //
+    // A timer of this class's own rather than Future.timeout, so disposing the
+    // gate cancels it instead of leaving one pending behind a screen that has
+    // gone.
+    final patience = Completer<PermissionConsent>();
+    _patience = Timer(const Duration(seconds: 3), () {
+      if (!patience.isCompleted) {
+        patience.complete(PermissionConsent.nothingToAskAbout);
+      }
+    });
+    try {
+      final consent = await Future.any<PermissionConsent>([
+        ref.read(permissionConsentProvider.future),
+        patience.future,
+      ]);
+      offer = consent.shouldOffer;
+    } catch (_) {
+      // A read that could not finish is not a reason to strand somebody outside
+      // their own app. Nothing granted is not the same as nothing readable, and
+      // Settings still offers the same prompts for as long as the app exists.
+      offer = false;
+    } finally {
+      _patience?.cancel();
+      _patience = null;
+    }
     if (!mounted) return;
     setState(() {
-      _ready = true;
-      _oweConsent = consent.shouldOffer;
+      _oweConsent = offer;
+      _deciding = false;
     });
-    ref.read(onboardedProvider.notifier).state = done;
-    // The stored conversation, once the gate knows who this is. The engine is
-    // not started here: that moved to initState, ahead of every await in this
-    // method, so it no longer waits on the store, on onboarding and on the
-    // permission consent in turn.
-    if (done) ref.read(chatProvider.notifier).load();
   }
 
   /// Lets the splash go, once. Not tied to the engine: the loading bar under it
@@ -194,7 +260,18 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
     // over to the app. Holding a copy in a field meant the last button on the
     // last screen did nothing at all.
     final onboarded = ref.watch(onboardedProvider);
+    // Watched, so the moment onboarding writes the flag is the moment the
+    // permission question is asked. Deciding it once at launch is what made a
+    // fresh install never see the screen until it was restarted: see [_check].
+    ref.listen<bool>(onboardedProvider, (previous, next) {
+      if (previous == true || next != true) return;
+      unawaited(_decideConsent());
+    });
     if (!onboarded) return const OnboardingScreen();
+    // Decided, but not yet decided. Two platform round trips, and showing the
+    // app for them and then replacing it with the explanation is a flash of
+    // the wrong screen rather than a wait.
+    if (_oweConsent == null) return const ConsentCheckScreen();
     // The permission explanation, once, before the app itself, and only when
     // there is still something to ask for. Asked from a screen a person chose to
     // leave, and every line on it says what refusing costs.
@@ -207,6 +284,39 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
     // moment the user went to look at their clients.
     ref.watch(attentionPublisher);
     return const HomeShell();
+  }
+}
+
+/// Shown for the moment it takes to find out what is already allowed.
+///
+/// Two platform round trips, once, between onboarding finishing and the app.
+/// It exists so the wait is a wait and not a flash of the app that is then
+/// pulled out from under the reader and replaced by the explanation.
+class ConsentCheckScreen extends StatelessWidget {
+  const ConsentCheckScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: KoruColors.cream,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: KoruSpace.gutter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const KoruMascot(size: 96, semanticLabel: 'Koru, your helper'),
+              const SizedBox(height: KoruSpace.xl),
+              Text(
+                'Checking what is already allowed',
+                textAlign: TextAlign.center,
+                style: KoruType.bodyCompactStrong,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

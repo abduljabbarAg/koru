@@ -78,6 +78,10 @@ void main() {
         tester.element(find.byType(ChatScreen)),
       ).read(chatProvider.notifier);
 
+  /// The container behind the on-screen app, for reading state directly.
+  ProviderContainer container(WidgetTester tester) =>
+      ProviderScope.containerOf(tester.element(find.byType(ChatScreen)));
+
   Future<void> pump(WidgetTester tester, {int frames = 8}) async {
     for (var i = 0; i < frames; i++) {
       await tester.pump(const Duration(milliseconds: 40));
@@ -378,6 +382,113 @@ void main() {
       expect(find.textContaining('That one is mine'), findsOneWidget);
       final after = (await tester.runAsync(() => store.chat()))!.length;
       expect(after, before, reason: 'and it must not have rewritten anything');
+    });
+  });
+
+  /// Two questions, one after the other, the way a person actually asks them.
+  ///
+  /// The bug: "I ask a question, I get an answer. I ask another question, I get
+  /// the exact same answer." An answer on this phone takes about thirteen
+  /// seconds, so the second question is nearly always typed while the first is
+  /// still arriving — and `ask()` returned without sending anything whenever a
+  /// turn was under way, while the composer had already cleared itself. The
+  /// question was destroyed before it left the building and the screen went on
+  /// showing the previous answer. No request was made, so nothing downstream of
+  /// the request could depend on the new input either.
+  group('a second question asked while the first is still answering', () {
+    /// Types a question and presses send, without waiting for anything.
+    Future<void> fire(WidgetTester tester, String text) async {
+      await tester.enterText(find.byType(TextField).last, text);
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+    }
+
+    /// Pumps until both turns have finished, or gives up.
+    Future<void> pumpUntil(
+      WidgetTester tester,
+      bool Function() done,
+    ) async {
+      for (var i = 0; i < 160; i++) {
+        if (done()) return;
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+    }
+
+    testWidgets('is asked, and carries the exchange that came before it',
+        (tester) async {
+      final model = _TwoAnswerClient();
+      await boot(tester, engine: 'onDevice', model: model);
+
+      await fire(tester, 'who owes me money?');
+      // The second question is typed while the first answer is still arriving,
+      // which is the ordinary case on an engine that takes thirteen seconds and
+      // was the one that used to lose it.
+      await fire(tester, 'what about Sara?');
+
+      await pumpUntil(tester, () => model.calls == 2 && !container(tester).read(chatProvider).busy);
+
+      expect(model.questions, ['who owes me money?', 'what about Sara?'],
+          reason: 'both questions reached the model; the second was not dropped');
+
+      final second = model.turns[1];
+      expect(second.map((t) => t.content), contains('who owes me money?'),
+          reason: 'the second request has to carry the question it follows');
+      expect(second.map((t) => t.content), contains('first answer'),
+          reason: 'and the answer to it, or "what about Sara" is asked from '
+              'nothing and the model has no reason to answer it differently');
+      expect(second.last.role, 'assistant');
+
+      // The visible half of the complaint: two questions, two different answers,
+      // the second one being the answer to the second question.
+      final state = container(tester).read(chatProvider);
+      expect(
+        state.messages.where((m) => m.role == MsgRole.user).map((m) => m.text),
+        ['who owes me money?', 'what about Sara?'],
+      );
+      final answers = state.messages
+          .where((m) =>
+              m.role == MsgRole.koru && !m.pending && m.text != _greetingText)
+          .map((m) => m.text)
+          .toList();
+      expect(answers, ['first answer', 'second answer']);
+    });
+
+    testWidgets('the transcript holds both exchanges, in order', (tester) async {
+      // What somebody would find in the stored thread afterwards: a question
+      // with no answer under it, because the answer that was on screen belonged
+      // to the question before.
+      final model = _TwoAnswerClient();
+      await boot(tester, engine: 'onDevice', model: model);
+
+      await fire(tester, 'who owes me money?');
+      await fire(tester, 'what about Sara?');
+      await pumpUntil(tester, () => model.calls == 2 && !container(tester).read(chatProvider).busy);
+
+      final stored = await tester.runAsync(() async =>
+          (await store.chat()).map((r) => '${r.role}: ${r.text}').toList());
+      expect(
+        stored,
+        [
+          'user: who owes me money?',
+          'koru: first answer',
+          'user: what about Sara?',
+          'koru: second answer',
+        ],
+      );
+    });
+
+    testWidgets('three questions in a row all get asked', (tester) async {
+      // A queue of one would fix the report and lose the next one.
+      final model = _TwoAnswerClient();
+      await boot(tester, engine: 'onDevice', model: model);
+
+      await fire(tester, 'first question');
+      await fire(tester, 'second question');
+      await fire(tester, 'third question');
+      await pumpUntil(tester, () => model.calls == 3 && !container(tester).read(chatProvider).busy);
+
+      expect(model.questions,
+          ['first question', 'second question', 'third question']);
     });
   });
 
@@ -820,6 +931,40 @@ class _SlowClient extends LocalModelClient {
       onToken('${pieces[i]} ');
       // Yields, so a frame can be pumped with a partial reply on screen.
       await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    return LocalReply(reply, 4.0);
+  }
+}
+
+/// Answers differently each time, slowly, and records what it was asked.
+///
+/// The delay is the point. Every other fake in this file emits its whole answer
+/// in a tight synchronous loop, so by the time a test typed the next question
+/// the turn was already over and the case that matters could not be set up at
+/// all — which is how a dropped question survives a suite this size.
+class _TwoAnswerClient extends LocalModelClient {
+  int calls = 0;
+  final questions = <String>[];
+  final turns = <List<({String role, String content})>>[];
+
+  @override
+  Future<LocalModelResult> chatStream({
+    required String endpoint,
+    required String model,
+    required String system,
+    required String question,
+    required void Function(String delta) onToken,
+    void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
+    int maxTokens = 160,
+    double temperature = 0.7,
+  }) async {
+    questions.add(question);
+    turns.add(history);
+    final reply = calls++ == 0 ? 'first answer' : 'second answer';
+    for (final word in reply.split(' ')) {
+      onToken('$word ');
+      await Future<void>.delayed(const Duration(milliseconds: 30));
     }
     return LocalReply(reply, 4.0);
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:koru/attention_bridge.dart';
 import 'package:koru/handoff.dart';
 import 'package:koru/main.dart';
 import 'package:koru/mascot/mascot.dart';
@@ -8,6 +9,7 @@ import 'package:koru/models.dart';
 import 'package:koru/onboarding.dart';
 import 'package:koru/screens/business.dart';
 import 'package:koru/screens/chat.dart';
+import 'package:koru/screens/permissions_intro.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
 import 'package:koru/store.dart';
@@ -59,6 +61,13 @@ void main() {
           storeProvider.overrideWith((ref) async => store),
           cloudKeyProvider.overrideWith((ref, providerId) async => ''),
           secretsProvider.overrideWithValue(MemoryKeyStore()),
+          // What a phone that has granted nothing looks like, stated rather than
+          // left to a plugin that has no platform behind it in a test. The gate
+          // asks these before it will let anybody in, so an unanswerable channel
+          // here is a loading screen that never resolves.
+          healthProvider.overrideWith((ref) async =>
+              const KoruHealth(notifications: false, batteryExempt: false)),
+          calendarPermissionProvider.overrideWith((ref) async => false),
         ],
         child: MaterialApp(theme: buildKoruTheme(), home: child),
       ),
@@ -269,6 +278,15 @@ void main() {
       // Everything was answered on the way through, so nothing is flagged.
       expect(find.text('not set'), findsNothing);
       await tester.tap(find.text('Start'));
+      await pumpFrames(tester, frames: 12);
+
+      // The permission explanation is owed the moment onboarding finishes, on the
+      // first run and without a restart. It used not to be: the gate decided the
+      // question at launch, answered "nothing to ask about" because onboarding
+      // had not happened yet, and never asked again for the rest of the session.
+      expect(find.byType(PermissionsIntroScreen), findsOneWidget);
+
+      await tester.tap(find.text('Not now'));
       await pumpFrames(tester, frames: 12);
 
       expect(find.byType(OnboardingScreen), findsNothing);

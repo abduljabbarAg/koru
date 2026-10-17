@@ -297,7 +297,79 @@ class CloudAdapter {
     }
   }
 
+  /// The whole conversation in the shape this provider expects: earlier turns
+  /// first, the new question last.
+  ///
+  /// Every engine sends this. It used to be built for OpenAI only, with
+  /// Anthropic and Gemini given the bare question and nothing else — so a
+  /// follow-up reached those providers as a conversation of one, asked against
+  /// the same packet as the turn before it. That is the shape of "I asked
+  /// something else and got the same answer": the model was not ignoring the
+  /// question, it had nothing to tell the two apart.
+  ///
+  /// The rules are the wire formats', not this app's taste:
+  ///  * Gemini calls its assistant turns `model`, and takes `parts` rather than
+  ///    a string.
+  ///  * Anthropic wants the conversation to start with a user turn, and is
+  ///    refused outright otherwise — so a greeting that arrived as an assistant
+  ///    turn (which is how this app opens every chat) is dropped and two
+  ///    consecutive turns by the same speaker are joined.
+  static List<Map<String, Object?>> conversation(
+    CloudProvider provider,
+    List<({String role, String content})> history,
+    String question,
+  ) {
+    final gemini = provider.format == CloudWireFormat.gemini;
+    // Normalised to this app's own two roles first, so the wire rules are
+    // applied to a list rather than while it is being built.
+    final turns_ = <(String role, String content)>[];
+
+    void add(String role, String content) {
+      if (content.trim().isEmpty) return;
+      final wire = gemini ? (role == 'user' ? 'user' : 'model') : role;
+      if (provider.format == CloudWireFormat.anthropic &&
+          turns_.isEmpty &&
+          wire != 'user') {
+        // A conversation that opens with the assistant is a 400 here, and every
+        // chat in this app opens with one.
+        return;
+      }
+      if (turns_.isNotEmpty && turns_.last.$1 == wire) {
+        // Two turns in a row by the same speaker. Both formats reject that, and
+        // it happens legitimately here: a question the model could not answer,
+        // followed by the next one.
+        final last = turns_.removeLast();
+        turns_.add((wire, '${last.$2}\n\n$content'));
+        return;
+      }
+      turns_.add((wire, content));
+    }
+
+    for (final t in history) {
+      add(t.role == 'user' ? 'user' : 'assistant', t.content);
+    }
+    // Last, always. A turn whose question is not the final message is a
+    // conversation about something else.
+    add('user', question);
+
+    return [
+      for (final t in turns_)
+        if (gemini)
+          {
+            'role': t.$1,
+            'parts': [
+              {'text': t.$2}
+            ],
+          }
+        else
+          {'role': t.$1, 'content': t.$2},
+    ];
+  }
+
   /// One earlier turn, on its way to the provider.
+  ///
+  /// Kept as the plain role-mapping it has always been, for callers that want the
+  /// history on its own. [conversation] is what a request is built from.
   static List<Map<String, String>> turns(CloudProvider provider,
       List<({String role, String content})> history) {
     return [
@@ -341,11 +413,10 @@ class CloudAdapter {
             'model': model,
             'messages': [
               {'role': 'system', 'content': system},
-              // Earlier turns as real messages. The conversation used to be a
-              // single question every time, so the model had no memory of any
-              // kind and every follow up was asked from nothing.
-              ...turns(provider, history),
-              {'role': 'user', 'content': question},
+              // The whole conversation, newest question last. Every format gets
+              // it: a follow-up sent as a question with no history is a
+              // question the model has no reason to answer differently.
+              ...conversation(provider, history, question),
             ],
             'max_tokens': maxTokens,
             if (stream) 'stream': true,
@@ -368,9 +439,7 @@ class CloudAdapter {
             'model': model,
             'max_tokens': maxTokens,
             'system': system,
-            'messages': [
-              {'role': 'user', 'content': question},
-            ],
+            'messages': conversation(provider, history, question),
           }),
           providerId: provider.id,
           model: model,
@@ -386,14 +455,7 @@ class CloudAdapter {
                 {'text': system},
               ],
             },
-            'contents': [
-              {
-                'role': 'user',
-                'parts': [
-                  {'text': question},
-                ],
-              },
-            ],
+            'contents': conversation(provider, history, question),
             'generationConfig': {'maxOutputTokens': maxTokens},
           }),
           providerId: provider.id,

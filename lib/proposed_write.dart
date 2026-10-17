@@ -29,6 +29,23 @@ sealed class ProposedWrite {
   /// The app is held to the same rule as the model. The model must never claim a
   /// save it cannot make; the app must never report one it has not looked at.
   Future<String?> verify(ProfileStore store);
+
+  /// Whether approving this destroys something rather than adding to it.
+  ///
+  /// The card is styled and worded from this rather than from the type: a
+  /// delete that arrives on the same gold card as adding a client, under a
+  /// button that says "Save it", is a card nobody reads carefully. It is the one
+  /// signal that changes what the person is agreeing to rather than what they
+  /// are being told.
+  bool get isDestructive => false;
+
+  /// What to say once it has landed and been checked.
+  ///
+  /// Null falls back to the generic "Added <summary>", which is true of
+  /// everything that adds or changes. A delete is not an addition and there is
+  /// no undo for it in here, so it says so rather than borrowing a sentence that
+  /// claims one.
+  String? get applied => null;
 }
 
 class ProposedClient extends ProposedWrite {
@@ -128,6 +145,12 @@ class ProposedPayment extends ProposedWrite {
   String get summary => amount == null
       ? 'Record a payment from ${client.name}'
       : 'Record ${_plain(amount!)} from ${client.name}';
+
+  @override
+  String get applied => amount == null
+      ? 'Recorded a payment from ${client.name}. You can undo this from Clients.'
+      : 'Recorded ${_plain(amount!)} from ${client.name}. You can undo this from '
+          'Clients.';
 
   @override
   Future<void> apply(ProfileStore store) async {
@@ -480,6 +503,200 @@ class ProposedPlan extends ProposedWrite {
   }
 }
 
+/// A change to a project already on file.
+///
+/// Every field is optional and null means leave it alone, the same rule as
+/// [ProposedEditClient]. "the shop is half done" moves the number and touches
+/// nothing else, which is the only way a sentence about progress can be applied
+/// without rewriting the project's name by accident.
+class ProposedEditProject extends ProposedWrite {
+  const ProposedEditProject({
+    required this.project,
+    this.name,
+    this.target,
+    this.plan,
+    this.progress,
+  });
+
+  /// Resolved from the real projects, never from typed text.
+  final Project project;
+
+  final String? name;
+  final String? target;
+  final String? plan;
+  final double? progress;
+
+  @override
+  String get summary {
+    final bits = <String>[];
+    if (name != null) bits.add('name to $name');
+    if (target != null) bits.add('done when $target');
+    if (plan != null) bits.add('by: $plan');
+    if (progress != null) bits.add('${(progress! * 100).round()}% along');
+    return 'Change project ${project.name}: ${bits.join(', ')}';
+  }
+
+  @override
+  String get applied => 'The project ${project.name} now says '
+      '${summary.split(': ').last}.';
+
+  @override
+  Future<void> apply(ProfileStore store) async {
+    final now = DateTime.now().toIso8601String();
+    await store.updateProject(project.copyWith(
+      name: name ?? project.name,
+      target: target ?? project.target,
+      plan: plan ?? project.plan,
+      progress: progress ?? project.progress,
+      // Stamped, because the Projects screen orders by when work was last
+      // touched and an edit that does not move that number is invisible there.
+      updated: now,
+    ));
+    // Progress is read back out of the notes as well as off the row, so a change
+    // to the number is written as a note in the person's own words too. A
+    // progress bar that moved with no record of why is a number nobody can check.
+    if (progress != null || target != null || plan != null) {
+      await store.addProjectNote(ProjectNote(
+        projectId: project.id!,
+        body: _editNote(progress, target, plan),
+        created: now,
+      ));
+    }
+  }
+
+  static String _editNote(double? progress, String? target, String? plan) =>
+      [
+        if (progress != null)
+          'Progress: ${(progress * 100).round()}%'
+              '${progress >= 1 ? ' (done)' : ''}',
+        if (target != null) 'Done when: $target',
+        if (plan != null) 'Plan: $plan',
+      ].join('. ');
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = project.id;
+    if (id == null) return 'That project has no id, so I cannot confirm anything.';
+    final now = await store.project(id);
+    if (now == null) {
+      return '"${project.name}" is no longer in your projects, so there was '
+          'nothing to change. Nothing was saved.';
+    }
+    if (name != null && now.name != name) {
+      return '"${project.name}" is still called ${now.name}, not $name. '
+          'The change did not save.';
+    }
+    if (progress != null && (now.progress - progress!).abs() > 0.005) {
+      return '"${project.name}" still says ${(now.progress * 100).round()}%, '
+          'not ${(progress! * 100).round()}%. The change did not save.';
+    }
+    if (target != null && now.target != target) {
+      return '"${project.name}" still says ${now.target ?? 'nothing'} is what it '
+          'is for, not $target. The change did not save.';
+    }
+    return null;
+  }
+}
+
+/// Removes a project and the notes written under it.
+///
+/// The notes go with it because they are the project's history: a list of
+/// progress notes attached to nothing is not a record anybody can read.
+class ProposedDeleteProject extends ProposedWrite {
+  const ProposedDeleteProject({required this.project});
+
+  final Project project;
+
+  @override
+  bool get isDestructive => true;
+
+  @override
+  String get applied => 'Deleted the project ${project.name}, with its notes. '
+      'This one cannot be undone from the chat.';
+
+  @override
+  String get summary => 'Delete project ${project.name}, with its notes';
+
+  @override
+  Future<void> apply(ProfileStore store) => store.deleteProject(project.id!);
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = project.id;
+    if (id == null) return 'That project has no id, so I cannot confirm anything.';
+    if ((await store.projects()).any((p) => p.id == id)) {
+      return 'I said I deleted ${project.name} and it is still in your '
+          'projects. Nothing changed.';
+    }
+    return null;
+  }
+}
+
+/// A note written against a client.
+class ProposedClientNote extends ProposedWrite {
+  const ProposedClientNote({required this.client, required this.body});
+
+  final Client client;
+  final String body;
+
+  @override
+  String get summary => 'Add a note to ${client.name}: "$body"';
+
+  @override
+  String get applied => 'Noted on ${client.name}: "$body"';
+
+  @override
+  Future<void> apply(ProfileStore store) =>
+      store.updateClient(client.copyWith(note: body));
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = client.id;
+    if (id == null) return 'That client has no id, so I cannot confirm anything.';
+    final rows = (await store.clients()).where((c) => c.id == id).toList();
+    if (rows.isEmpty) {
+      return '${client.name} is no longer in your clients, so the note was not '
+          'saved anywhere.';
+    }
+    if (rows.single.note != body) {
+      return 'The note on ${client.name} did not save.';
+    }
+    return null;
+  }
+}
+
+/// A note written under a project.
+class ProposedProjectNote extends ProposedWrite {
+  const ProposedProjectNote({required this.project, required this.body});
+
+  final Project project;
+  final String body;
+
+  @override
+  String get summary => 'Add a note to project ${project.name}: "$body"';
+
+  @override
+  String get applied => 'Noted under ${project.name}: "$body"';
+
+  @override
+  Future<void> apply(ProfileStore store) => store.addProjectNote(ProjectNote(
+        projectId: project.id!,
+        body: body,
+        created: DateTime.now().toIso8601String(),
+      ));
+
+  @override
+  Future<String?> verify(ProfileStore store) async {
+    final id = project.id;
+    if (id == null) return 'That project has no id, so I cannot confirm anything.';
+    if ((await store.projectNotes(id)).any((n) => n.body == body)) {
+      return null;
+    }
+    return 'I said I added that note and it is not under ${project.name}. '
+        'Nothing was saved.';
+  }
+}
+
 /// A proposed import, tied to the text it came from.
 ///
 /// The fingerprint is what stops the same list being pasted twice and quietly
@@ -509,6 +726,10 @@ class ProposedEditClient extends ProposedWrite {
     if (status != null) parts.add('status to $status');
     return 'Change ${client.name}: ${parts.join(', ')}';
   }
+
+  @override
+  String get applied =>
+      '${client.name} now reads: ${summary.split(': ').last}.';
 
   @override
   Future<void> apply(ProfileStore store) async {
@@ -560,6 +781,13 @@ class ProposedDeleteClient extends ProposedWrite {
   const ProposedDeleteClient({required this.client});
 
   final Client client;
+
+  @override
+  bool get isDestructive => true;
+
+  @override
+  String get applied => 'Deleted ${client.name}. The payments they made are '
+      'still in your ledger, and this one cannot be undone from the chat.';
 
   @override
   String get summary =>
@@ -687,7 +915,7 @@ class WriteResolver {
 
       case RecordPaymentIntent():
         final clients = await store.clients();
-        final match = _match(clients, intent.clientName);
+        final match = _match(clients, intent.clientName, (c) => c.name);
         if (match.isEmpty) {
           return WriteResolution.problem(
             'I do not have a client called ${intent.clientName}. '
@@ -706,7 +934,7 @@ class WriteResolver {
         );
 
       case EditClientIntent():
-        final editMatch = _match(await store.clients(), intent.clientName);
+        final editMatch = _match(await store.clients(), intent.clientName, (c) => c.name);
         if (editMatch.isEmpty) {
           return WriteResolution.problem(
             'I do not have a client called ${intent.clientName}. '
@@ -729,7 +957,7 @@ class WriteResolver {
         );
 
       case DeleteClientIntent():
-        final delMatch = _match(await store.clients(), intent.clientName);
+        final delMatch = _match(await store.clients(), intent.clientName, (c) => c.name);
         if (delMatch.isEmpty) {
           return WriteResolution.problem(
             'I do not have a client called ${intent.clientName}, so there is '
@@ -761,7 +989,7 @@ class WriteResolver {
             ),
           );
         }
-        final forWhom = _match(await store.clients(), named);
+        final forWhom = _match(await store.clients(), named, (c) => c.name);
         if (forWhom.isEmpty) {
           return WriteResolution.problem(
             'I do not have a client called $named. Say "add client $named" and I '
@@ -782,6 +1010,77 @@ class WriteResolver {
             target: intent.target,
             plan: intent.plan,
           ),
+        );
+
+      case EditProjectIntent():
+        final projectMatch = _match(await store.projects(), intent.projectName, (p) => p.name);
+        if (projectMatch.isEmpty) {
+          return WriteResolution.problem(
+            'I do not have a project called ${intent.projectName}. Say "start a '
+            'project called ${intent.projectName}" and I will.',
+          );
+        }
+        if (projectMatch.length > 1) {
+          return WriteResolution.problem(
+            'More than one project matches ${intent.projectName}: '
+            '${projectMatch.map((p) => p.name).join(' and ')}. Tell me which one.',
+          );
+        }
+        return WriteResolution.proposed(ProposedEditProject(
+          project: projectMatch.single,
+          name: intent.name,
+          target: intent.target,
+          plan: intent.plan,
+          progress: intent.progress,
+        ));
+
+      case DeleteProjectIntent():
+        final gone = _match(await store.projects(), intent.projectName, (p) => p.name);
+        if (gone.isEmpty) {
+          return WriteResolution.problem(
+            'I do not have a project called ${intent.projectName}, so there is '
+            'nothing to delete.',
+          );
+        }
+        if (gone.length > 1) {
+          return WriteResolution.problem(
+            'More than one project matches ${intent.projectName}: '
+            '${gone.map((p) => p.name).join(' and ')}. Tell me which one, '
+            'because I am not going to guess which one you meant to lose.',
+          );
+        }
+        return WriteResolution.proposed(
+            ProposedDeleteProject(project: gone.single));
+
+      case AddNoteIntent():
+        // A note can belong to either kind of record, so both are searched and
+        // the caller is told when the name could be either rather than having
+        // one picked for them.
+        final named = _match(await store.clients(), intent.name, (c) => c.name);
+        final projects = _match(await store.projects(), intent.name, (p) => p.name);
+        if (named.isEmpty && projects.isEmpty) {
+          return WriteResolution.problem(
+            'I have nobody called ${intent.name} and no project by that name, '
+            'so the note has nowhere to go.',
+          );
+        }
+        final wantsProject = intent.on == NoteTarget.project;
+        final clientsFirst = named.isNotEmpty &&
+            (projects.isEmpty || !wantsProject) &&
+            named.length == 1;
+        if (clientsFirst) {
+          return WriteResolution.proposed(
+              ProposedClientNote(client: named.single, body: intent.body));
+        }
+        if (projects.length == 1 &&
+            (named.isEmpty || wantsProject)) {
+          return WriteResolution.proposed(
+              ProposedProjectNote(project: projects.single, body: intent.body));
+        }
+        return WriteResolution.problem(
+          'I cannot tell whether ${intent.name} is the client or the project. '
+          'Say "a note to client ${intent.name}" or "a note on the '
+          '${intent.name} project".',
         );
 
       case AddEventIntent():
@@ -850,19 +1149,20 @@ class WriteResolver {
     return scored.where((r) => r.$2 == best).map((r) => r.$1).toList();
   }
 
-  /// Clients whose name matches [typed], nearest match first.
+  /// Records whose name matches [typed], nearest match first.
   ///
-  /// Exact before prefix before contains, because "Bilal" should find "Bilal"
-  /// even when "Bilal Studio" is also on file, and the ambiguity is reported
-  /// rather than picked.
-  List<Client> _match(List<Client> clients, String typed) {
+  /// Generic over the record type because clients and projects are matched the
+  /// same way and by the same rules: exact before prefix before contains,
+  /// because "Bilal" should find "Bilal" even when "Bilal Studio" is also on
+  /// file, and the ambiguity is reported rather than picked.
+  List<T> _match<T>(List<T> rows, String typed, String Function(T) nameOf) {
     final needle = typed.trim().toLowerCase();
-    if (needle.isEmpty) return const [];
-    final exact = clients.where((c) => c.name.toLowerCase() == needle).toList();
+    if (needle.isEmpty) return <T>[];
+    final exact = rows.where((r) => nameOf(r).toLowerCase() == needle).toList();
     if (exact.isNotEmpty) return exact;
     final prefix =
-        clients.where((c) => c.name.toLowerCase().startsWith(needle)).toList();
+        rows.where((r) => nameOf(r).toLowerCase().startsWith(needle)).toList();
     if (prefix.isNotEmpty) return prefix;
-    return clients.where((c) => c.name.toLowerCase().contains(needle)).toList();
+    return rows.where((r) => nameOf(r).toLowerCase().contains(needle)).toList();
   }
 }
