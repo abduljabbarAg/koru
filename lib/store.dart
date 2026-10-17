@@ -31,7 +31,7 @@ class ProfileStore {
   /// than no test, so [transaction] and [close] refuse clearly instead.
   final Database? _root;
 
-  static const int schemaVersion = 9;
+  static const int schemaVersion = 10;
 
   static Future<ProfileStore> open({Directory? directory}) async {
     final dir = directory ?? await getApplicationDocumentsDirectory();
@@ -48,6 +48,7 @@ class ProfileStore {
         if (v >= 7) await _migrateToV7(d);
         if (v >= 8) await _migrateToV8(d);
         if (v >= 9) await _migrateToV9(d);
+        if (v >= 10) await _migrateToV10(d);
       },
       onUpgrade: (d, from, to) async {
         if (from < 2) await _migrateToV2(d);
@@ -58,9 +59,33 @@ class ProfileStore {
         if (from < 7) await _migrateToV7(d);
         if (from < 8) await _migrateToV8(d);
         if (from < 9) await _migrateToV9(d);
+        if (from < 10) await _migrateToV10(d);
       },
     );
     return ProfileStore(db);
+  }
+
+  /// A stored engine this build no longer has becomes the one that ships.
+  ///
+  /// The built-in engine is gone, and every install that had it selected still
+  /// has the literal string `'builtIn'` in the profile table. Rewriting it here
+  /// rather than only guarding the read is deliberate: the value is healed once,
+  /// on the device, so every later read — the app bar, the switcher, a backup —
+  /// sees an engine that exists instead of depending on each of them to remember
+  /// a fallback.
+  ///
+  /// An engine this build has never heard of is treated the same way. It can only
+  /// come from a downgrade, a restored backup or a truncated row, and all three
+  /// land on a phone where answering something is better than answering nothing.
+  ///
+  /// One statement, no read-modify-write, and no way for it to fail on real data:
+  /// the profile table has existed since v1 and value is NOT NULL, so the worst
+  /// case is a row that does not match and nothing happens.
+  static Future<void> _migrateToV10(Database d) async {
+    await d.execute(
+      "UPDATE profile SET value = 'onDevice' "
+      "WHERE key = 'engine' AND value NOT IN ('onDevice', 'cloud')",
+    );
   }
 
   /// Repeat rules for calendar entries.

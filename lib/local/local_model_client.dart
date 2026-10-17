@@ -49,9 +49,9 @@ class LocalFailed extends LocalModelResult {
 /// Nothing about the model is compiled into the app, so the APK stays small and
 /// the model can be replaced without shipping a release.
 ///
-/// The built-in engine stays available and instant. This is opt-in, because a
-/// model this size wants a few hundred megabytes of RAM a phone may not have
-/// spare.
+/// Every failure is a result rather than an exception, and the caller reports it
+/// rather than substituting an answer of its own: an unreachable model has to
+/// look unreachable, or the app appears to answer while nothing is running.
 class LocalModelClient {
   const LocalModelClient({this.timeout = const Duration(seconds: 180)});
 

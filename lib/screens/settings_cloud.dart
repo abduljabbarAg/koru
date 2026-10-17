@@ -36,7 +36,7 @@ class CloudSettingsScreen extends StatelessWidget {
             Text(
               'Any provider works. Pick one, paste the key, test it. Only '
               'questions about faith, health, medicine or law are ever sent, '
-              'and only when the online model is the engine.',
+              'and only when the cloud model is the engine.',
               style: KoruType.bodySmall,
             ),
           ],

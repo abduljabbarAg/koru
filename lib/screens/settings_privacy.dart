@@ -14,7 +14,7 @@ import 'legal.dart';
 /// the place nobody reads a privacy statement from.
 ///
 /// The routing table names the engines and says nothing about companies, so the
-/// two never collide here: "Online model" is the engine, and which company that
+/// two never collide here: "Cloud model" is the engine, and which company that
 /// model is served by is one page away under Cloud provider.
 class PrivacySettingsScreen extends ConsumerWidget {
   const PrivacySettingsScreen({super.key});
@@ -34,7 +34,7 @@ class PrivacySettingsScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'When the online model answers, only this is sent:',
+                    'When the cloud model answers, only this is sent:',
                     style: KoruType.bodyCompactStrong,
                   ),
                   const SizedBox(height: KoruSpace.sml),
@@ -66,8 +66,8 @@ class PrivacySettingsScreen extends ConsumerWidget {
             const KoruSection(
               label: 'Routing',
               children: [
-                _Route('Faith, mental health, medical, legal', 'Online model'),
-                _Route('Everything else', 'On this phone'),
+                _Route('Faith, mental health, medical, legal', 'Cloud model'),
+                _Route('Everything else', 'Local model'),
                 _Route('Crisis, diagnosis, legal ruling', 'Hand to a person'),
               ],
             ),

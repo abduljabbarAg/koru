@@ -152,8 +152,14 @@ class KoruMessageMeta extends StatelessWidget {
 /// One function, because two widgets say this and they must never disagree: the
 /// control in the app bar names the engine that is answering *now* and the small
 /// mark on a reply names the engine that wrote *that*. A second copy of the
-/// switch is how the bar ends up claiming a model is on this phone while a
-/// reply underneath it says the same thing in different words.
+/// switch is how the bar ends up claiming one thing while a reply underneath it
+/// says the same thing in different words.
+///
+/// The names are [KoruEngine.label] in small caps and nothing else — "LOCAL
+/// MODEL", "CLOUD MODEL". Four different ways of naming the same engine across
+/// four screens is what a person reads as "the app has two or three engines",
+/// which is worse than any one of the names being poor. The states that matter
+/// are appended, because they are the thing that changes and the name is not.
 ({String label, IconData icon, ({Color ink, Color fill}) tone}) koruEngineSummary({
   required KoruEngine? engine,
   bool starting = false,
@@ -174,25 +180,23 @@ class KoruMessageMeta extends StatelessWidget {
     // engine looking like it is on its way up.
     KoruEngine.onDevice => (
         label: switch ((failed, starting, progress)) {
-          (true, _, _) => 'THIS PHONE  NOT RUNNING',
-          (false, true, final int percent?) => 'THIS PHONE  $percent%',
-          (false, true, _) => 'THIS PHONE  STARTING',
+          (true, _, _) => 'LOCAL MODEL  NOT RUNNING',
+          // The copy out of the APK has no percentage. Saying so beats printing
+          // "-1%" or pretending it is 0.
+          (false, true, EngineProgress.unpacking) => 'LOCAL MODEL  UNPACKING',
+          (false, true, final int percent?) => 'LOCAL MODEL  $percent%',
+          (false, true, _) => 'LOCAL MODEL  STARTING',
           _ => speed == null
-              ? 'MODEL ON THIS PHONE'
-              : 'THIS PHONE  ${speed.toStringAsFixed(1)} TOK/S',
+              ? 'LOCAL MODEL'
+              : 'LOCAL MODEL  ${speed.toStringAsFixed(1)} TOK/S',
         },
         icon: Icons.memory_rounded,
         tone: failed ? KoruTones.clay : KoruTones.leaf,
       ),
     KoruEngine.cloud => (
-        label: 'ONLINE MODEL',
+        label: 'CLOUD MODEL',
         icon: Icons.cloud_outlined,
         tone: KoruTones.gold,
-      ),
-    KoruEngine.builtIn => (
-        label: 'FROM YOUR RECORDS',
-        icon: Icons.storage_rounded,
-        tone: KoruTones.leaf,
       ),
   };
 }
@@ -208,7 +212,7 @@ class KoruMessageMeta extends StatelessWidget {
 /// What is left here is the provenance. The engine that wrote a reply can be a
 /// different one from the engine that will write the next, and the difference
 /// has to be readable on the reply itself, so this says what is honest about a
-/// starting engine too: a label saying a model is on this phone while it is
+/// starting engine too: a label saying the local model is ready while it is
 /// still being copied out of the APK is the one thing this must never say,
 /// because the reader acts on it.
 class KoruEngineBadge extends StatelessWidget {
@@ -226,8 +230,8 @@ class KoruEngineBadge extends StatelessWidget {
 
   /// The engine is being brought up right now.
   ///
-  /// Only consulted for the on-device engine: the other two have nothing to
-  /// start, so a "starting" line on either of them would be noise.
+  /// Only consulted for the local engine: the other one has nothing to start, so
+  /// a "starting" line on it would be noise.
   final bool starting;
 
   /// How far the start has got, 0 to 100, while it is in one.
@@ -268,8 +272,8 @@ class KoruEngineBadge extends StatelessWidget {
 /// Two lines, because one cannot carry what is being asked for. The first is
 /// the engine's own name — including the starting and failed states, so a slow
 /// phone explains itself. The second is the detail that makes the name mean
-/// something: which model is on the phone, which company answers online, or how
-/// fast the last answer actually came back.
+/// something: which model the local engine is running, which company answers the
+/// cloud one, or how fast the last answer actually came back.
 class KoruEngineBarButton extends StatelessWidget {
   const KoruEngineBarButton({
     super.key,
@@ -420,10 +424,17 @@ class KoruEngineBanner extends StatelessWidget {
           const SizedBox(width: KoruSpace.sm),
           Expanded(
             child: Text(
+              // The copy out of the APK gets its own line rather than a
+              // percentage. It is the one part of a cold start that takes tens
+              // of seconds and reports nothing, and a bar sitting at zero for
+              // thirty seconds is what made the app look dead on first launch.
               failed
-                  ? 'The on-device model did not start. $problem'
-                  : 'Waking the local model up, $p%. You can carry on in the '
-                      'meanwhile.',
+                  ? 'The local model did not start. $problem'
+                  : p == EngineProgress.unpacking
+                      ? 'Unpacking the local model, 248 MB. Once, on first use. '
+                          'You can carry on in the meanwhile.'
+                      : 'Starting the local model, $p%. You can carry on in the '
+                          'meanwhile.',
               style: KoruType.bodyCompactStrong,
             ),
           ),

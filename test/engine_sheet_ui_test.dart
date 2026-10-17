@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/engine.dart';
+import 'package:koru/local/bundled_engine.dart';
+import 'package:koru/local/local_model_client.dart';
 import 'package:koru/screens/chat.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
@@ -10,6 +12,77 @@ import 'package:koru/theme.dart';
 import 'package:koru/widgets.dart';
 
 import 'test_store.dart';
+
+/// An engine that is already up, so a reply can be labelled honestly.
+///
+/// Without it the launch warm-up finds nothing to start, sets the "not running"
+/// problem, and the badge correctly says NOT RUNNING — which is right for a real
+/// phone with no model and wrong for what these tests are looking at.
+class _ReadyEngine extends BundledEngine {
+  const _ReadyEngine();
+
+  /// The model is on disk, so the start does not report a copy out of the APK.
+  ///
+  /// Also stops the platform channel being reached: a method channel with no
+  /// handler never answers inside a widget test, and a start that hangs there is
+  /// indistinguishable from a slow engine.
+  @override
+  Future<BundledEngineStatus> status() async => const BundledEngineStatus(
+        available: true,
+        modelAvailable: true,
+        modelBytes: BundledEngine.bundledModelBytes,
+      );
+
+  @override
+  Future<bool> get available async => true;
+
+  @override
+  Future<List<LocalModelFile>> models() async => const [
+        LocalModelFile(
+          label: 'Bonsai-1.7B-Q1_0 (bundled)',
+          path: '/data/models/Bonsai-1.7B-Q1_0.gguf',
+        ),
+      ];
+
+  @override
+  Future<BundledStartResult> start({
+    int port = BundledEngine.defaultPort,
+    String? modelPath,
+    Duration timeout = const Duration(seconds: 180),
+    Future<bool> Function() isHealthy = _neverHealthy,
+    void Function(int percent)? onProgress,
+  }) async =>
+      BundledStartResult.ready('http://127.0.0.1:$port');
+
+  static Future<bool> _neverHealthy() async => false;
+}
+
+/// A model that answers, so a reply has an engine to be labelled with.
+///
+/// The badge is only worth testing on a reply a model actually wrote. On a reply
+/// with nothing behind it there is deliberately no label at all, which is its own
+/// test above.
+class _AnsweringClient extends LocalModelClient {
+  const _AnsweringClient();
+
+  @override
+  Future<LocalModelResult> chatStream({
+    required String endpoint,
+    required String model,
+    required String system,
+    required String question,
+    required void Function(String delta) onToken,
+    void Function(int done, int total)? onProgress,
+    List<({String role, String content})> history = const [],
+    int maxTokens = 160,
+    double temperature = 0.7,
+  }) async {
+    onToken('Nobody owes you anything yet.');
+    // No measured speed: the badge prefers a rate when it has one, and this test
+    // is about which engine is named rather than how fast it was.
+    return const LocalReply('Nobody owes you anything yet.', null);
+  }
+}
 
 /// What the switcher sheet actually looks like.
 ///
@@ -41,7 +114,11 @@ void main() {
   }
 
   /// The chat on its own, with the engine control in its bar.
-  Future<void> mountChat(WidgetTester tester, {Brightness? brightness}) async {
+  Future<void> mountChat(
+    WidgetTester tester, {
+    Brightness? brightness,
+    LocalModelClient client = const LocalModelClient(),
+  }) async {
     if (brightness != null) KoruColors.setBrightness(brightness);
     await tester.pumpWidget(
       ProviderScope(
@@ -49,6 +126,8 @@ void main() {
           storeProvider.overrideWith((ref) async => store),
           cloudKeyProvider.overrideWith((ref, providerId) async => ''),
           secretsProvider.overrideWithValue(MemoryKeyStore()),
+          localModelClientProvider.overrideWithValue(client),
+          bundledEngineProvider.overrideWithValue(const _ReadyEngine()),
         ],
         child: MaterialApp(
           theme: buildKoruTheme(
@@ -122,10 +201,16 @@ void main() {
 
     testWidgets('the chosen engine is marked without relying on colour $name',
         (tester) async {
-      await tester.runAsync(store.completeOnboarding);
+      // A stored engine from before the built-in one was deleted, which is what
+      // an upgrading install actually holds. It must resolve to one of the two
+      // rows rather than to nothing.
+      await tester.runAsync(() async {
+        await store.completeOnboarding();
+        await store.put('engine', 'builtIn');
+      });
       await openSwitcher(tester, brightness: brightness);
 
-      final chosen = KoruEngine.builtIn.label;
+      final chosen = KoruEngine.parse('builtIn').label;
       final others =
           KoruEngine.values.map((e) => e.label).where((l) => l != chosen).toList();
 
@@ -163,8 +248,7 @@ void main() {
     });
   }
 
-  testWidgets(
-      'the app bar names the company, and the label on a reply opens nothing',
+  testWidgets('the app bar names the company when one is selected',
       (tester) async {
     await tester.runAsync(() async {
       await store.completeOnboarding();
@@ -173,25 +257,57 @@ void main() {
     await mountChat(tester);
 
     // Which company is the whole reason this is a bar control rather than a
-    // pill: "ONLINE MODEL" says something is answering, "OpenRouter" says who.
-    expect(find.text('ONLINE MODEL'), findsOneWidget);
+    // pill: "CLOUD MODEL" says something is answering, "OpenRouter" says who.
+    expect(find.text('CLOUD MODEL'), findsOneWidget);
     expect(find.text('OpenRouter'), findsOneWidget);
+  });
+
+  testWidgets('a reply with no engine behind it is not labelled as if it had one',
+      (tester) async {
+    // Cloud, with no key. The old app answered from the user's records in this
+    // state and stamped the reply FROM YOUR RECORDS, which is what made a
+    // missing key look like a working assistant.
+    await tester.runAsync(() async {
+      await store.completeOnboarding();
+      await store.put('engine', 'cloud');
+    });
+    await mountChat(tester);
 
     await tester.enterText(find.byType(TextField), 'who owes me money?');
     await tester.tap(find.byTooltip('Send'));
-    await pump(tester);
+    await pump(tester, frames: 12);
 
-    // The label on the reply still records where that answer came from, which
-    // is a different engine: an ordinary question is answered from the records
-    // even while the online model is the one selected.
+    expect(find.textContaining('cannot answer'), findsWidgets);
+    expect(find.text('Add a cloud key'), findsOneWidget);
+    // Nothing claims a model produced this sentence.
+    expect(find.text('LOCAL MODEL'), findsNothing);
+    expect(find.text('CLOUD MODEL'), findsOneWidget,
+        reason: 'the bar names what is selected, and nothing answered');
+  });
+
+  testWidgets('the label on a reply opens nothing', (tester) async {
+    await tester.runAsync(() async {
+      await store.completeOnboarding();
+      await store.put('engine', 'onDevice');
+    });
+    await mountChat(tester, client: const _AnsweringClient());
+
+    await tester.enterText(find.byType(TextField), 'who owes me money?');
+    await tester.tap(find.byTooltip('Send'));
+    await pump(tester, frames: 12);
+
     final badge = find.byType(KoruEngineBadge);
     expect(badge, findsWidgets);
-    expect(find.text('FROM YOUR RECORDS'), findsOneWidget);
-    expect(find.text('ONLINE MODEL'), findsOneWidget,
-        reason: 'the bar still names what is selected, not what answered');
+    // Scoped to the badge: the app bar above it names the same engine, so a
+    // bare text finder would match twice and prove nothing about the reply.
+    expect(
+      find.descendant(of: badge, matching: find.text('LOCAL MODEL')),
+      findsOneWidget,
+      reason: 'a model really did answer, so the reply says which one',
+    );
 
-    // And it is not a control any more: tapping it must not open the switcher,
-    // which is the thing that was wrong with it.
+    // And it is not a control: tapping it must not open the switcher, which is
+    // the thing that was wrong with it.
     await tester.tap(badge.first);
     await pump(tester);
     expect(find.text('Who answers'), findsNothing);

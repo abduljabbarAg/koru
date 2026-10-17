@@ -22,17 +22,18 @@ Future<void> showEngineSwitcher(BuildContext context) {
   return showKoruSheet<void>(
     context,
     title: 'Who answers',
-    subtitle: 'Choosing the model on this phone starts it here. There is no '
-        'setup step, and nothing to go and do first.',
+    subtitle: 'Choosing the local model starts it here. There is no setup step, '
+        'and nothing to go and do first.',
     builder: (_) => const _EngineSwitcher(),
   );
 }
 
 /// Which of the three questions the sheet is asking.
-///
-/// One sheet rather than three. The second and third only exist to complete a
-/// choice made in the first, and a stack of bottom sheets that each push the
-/// next is how somebody ends up two levels deep with no way back.
+  ///
+  /// One sheet rather than three, even though there are now only two engines:
+  /// the second and third stages still exist to complete a choice made in the
+  /// first, and a stack of bottom sheets that each push the next is how somebody
+  /// ends up two levels deep with no way back.
 enum _Stage { engines, cloud, models }
 
 class _EngineSwitcher extends ConsumerStatefulWidget {
@@ -74,9 +75,6 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
     await selectEngine(ref, engine);
     if (!mounted) return;
     switch (engine) {
-      case KoruEngine.builtIn:
-        // Nothing to start and nothing to pick. Closing is the whole answer.
-        Navigator.of(context).pop();
       case KoruEngine.cloud:
         setState(() => _stage = _Stage.cloud);
       case KoruEngine.onDevice:
@@ -195,20 +193,20 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
         onPressed: () => setState(() => _stage = _Stage.engines),
         icon: const Icon(Icons.arrow_back_rounded,
             size: KoruSize.iconSm),
-        label: const Text('All three'),
+        label: const Text('All engines'),
       ),
     );
   }
 
-  /// The three engines, each with what picking it actually costs.
+  /// The two engines, each with what picking it actually costs.
   ///
   /// Every row is a full-width tile rather than a pill or a bare radio so the
-  /// blurb has somewhere to go: the whole difference between "From your
-  /// records" and "a real model on this phone" is the sentence under the name,
-  /// and a control that cannot carry it is how somebody ended up expecting a
-  /// chatbot and got a lookup table.
+  /// blurb has somewhere to go: the whole difference between a local model and a
+  /// frontier model over the internet is the sentence under the name, and a
+  /// control that cannot carry it is how somebody ended up expecting a chatbot
+  /// and got a lookup table.
   Widget _engines() {
-    final current = ref.watch(engineProvider).valueOrNull ?? KoruEngine.builtIn;
+    final current = ref.watch(engineProvider).valueOrNull ?? KoruEngine.onDevice;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -218,7 +216,6 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
             blurb: engine.blurb,
             selected: current == engine,
             icon: switch (engine) {
-              KoruEngine.builtIn => Icons.storage_rounded,
               KoruEngine.onDevice => Icons.memory_rounded,
               KoruEngine.cloud => Icons.cloud_outlined,
             },
@@ -238,9 +235,9 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
 
   /// Which company answers online, and whether it has a key yet.
   ///
-  /// "Cloud" is used here and only here in the app, for the company. The engine
-  /// it serves is the "Online model" one step back, and saying both on one
-  /// screen is what made the two look like the same setting twice.
+  /// "Cloud provider" is used here and only here in the app, for the company.
+  /// The engine it serves is the "Cloud model" one step back, and saying both on
+  /// one screen is what made the two look like the same setting twice.
   Widget _cloud() {
     final selection = ref.watch(cloudSelectionProvider).valueOrNull;
     return Column(
@@ -300,9 +297,9 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Pick the one this phone should run. The bundled model is the fast '
-          'one and is inside the app already; anything else is a .gguf you '
-          'added, and it will be slower and sharper.',
+          'Pick which model runs. The bundled one is the fast one and is inside '
+          'the app already; anything else is a .gguf you added, and it will be '
+          'slower and sharper.',
           style: KoruType.caption.copyWith(height: 1.45),
         ),
         if (_importProblem != null)
@@ -314,7 +311,7 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
           )
         else if (_running)
           const KoruNotice(
-            title: 'Running on this phone',
+            title: 'Local model running',
             message: 'The choice below is saved. Picking a different model '
                 'restarts the engine on it.',
             icon: Icons.check_circle_rounded,
@@ -324,7 +321,7 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
           KoruNotice(
             title: 'No model found',
             message: 'This build has no bundled model, and no .gguf has been '
-                'added to this phone. Add one and it will show up here.',
+                'added here. Add one and it will show up in this list.',
             icon: Icons.memory_rounded,
             tone: KoruTones.gold,
           )
@@ -334,7 +331,7 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
               label: model.label,
               blurb: isBundledModel(model)
                   ? 'Inside the app. No download, no setup.'
-                  : 'On this phone. Sharper and slower.',
+                  : 'One you added. Sharper and slower.',
               selected: isBundledModel(model) ? chosen == null : chosen == model.path,
               icon: Icons.memory_rounded,
               onTap: () => _start(model),
@@ -374,17 +371,27 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         KoruNotice(
-          title: 'Starting the model on this phone',
+          title: 'Starting the local model',
           message: 'Unpacking $model and waking the server up. You can close '
               'this and ask something meanwhile.',
           icon: Icons.memory_rounded,
         ),
-        KoruProgressBar(value: at.clamp(0.0, 1.0), color: KoruColors.leaf),
+        KoruProgressBar(
+          // Null sweeps. The unpack has no number behind it, and a bar pinned
+          // at zero for thirty seconds is the thing this screen is meant to stop.
+          value: percent == EngineProgress.unpacking ? null : at.clamp(0.0, 1.0),
+          color: KoruColors.leaf,
+        ),
         const SizedBox(height: KoruSpace.sm),
         Text(
+          // The two halves of a cold start are told apart, because only one of
+          // them has a percentage. Measured on the phone the copy is the tens of
+          // seconds and the engine's own load is about three, so printing a
+          // percentage across both of them made the slow half look frozen.
           switch (percent) {
+            EngineProgress.unpacking =>
+              'Copying 248 MB out of the app. Once, on first use.',
             null => 'Getting it ready',
-            < 8 => 'Copying the model out of the app',
             _ => 'Waking the server up  $percent%',
           },
           style: KoruType.caption,
@@ -406,7 +413,7 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const KoruNotice(
-          title: 'Running on this phone',
+          title: 'Local model running',
           message: 'Nothing about your records left the device. The first '
               'answer takes a few seconds while it reads them.',
           icon: Icons.check_circle_rounded,
@@ -432,9 +439,9 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
 
   /// What went wrong, in the sheet, with a way to try again.
   ///
-  /// Falling back to the built-in assistant here would answer in milliseconds
-  /// and look like a fast model. The complaint that produced this was exactly
-  /// that: a choice that silently did nothing.
+  /// It used to be answered from the user's records instead, which returned in
+  /// milliseconds and looked exactly like a fast model. The complaint that
+  /// produced this panel was that: a choice that silently did nothing.
   Widget _failurePanel() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

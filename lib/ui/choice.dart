@@ -63,7 +63,7 @@ class KoruSelectableTile extends StatelessWidget {
   /// One line under the label saying what picking this actually gets you.
   ///
   /// There because a row that names a choice without saying what it costs is how
-  /// "the model on this phone" got picked by somebody expecting a chatbot and
+  /// "the local model" got picked by somebody expecting a chatbot and
   /// got a lookup table.
   final String? blurb;
 

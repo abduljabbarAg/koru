@@ -29,6 +29,7 @@ library;
 
 export 'ui/choice.dart';
 export 'ui/chrome.dart';
+export 'ui/engine_notice.dart';
 export 'ui/fields.dart';
 export 'ui/format.dart';
 export 'ui/marks.dart';

@@ -566,8 +566,8 @@ void main() {
     testWidgets('the empty state says the answer stays on the phone',
         (tester) async {
       await pumpApp(tester, const ChatScreen());
-      expect(find.textContaining('answered here, on this phone'), findsOneWidget);
-      expect(find.text('ONLINE MODEL'), findsNothing);
+      expect(find.textContaining('answered by the local model'), findsOneWidget);
+      expect(find.text('CLOUD MODEL'), findsNothing);
     });
 
     testWidgets('a blank question is not sent', (tester) async {
@@ -582,22 +582,39 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('a local question is answered from the records', (tester) async {
+    testWidgets('an unanswered question says the engine is not running, and offers '
+        'to start it', (tester) async {
+      // No model is serving in a widget test and there is no second engine to
+      // answer instead, which is exactly the state the deleted built-in
+      // assistant used to paper over with an answer out of the records. The
+      // question asked for the profile; the profile must not be read back as if
+      // a model had said it.
       await seed(tester, () async {
         await store.put('nickname', 'kami');
         await store.put('goals', 'two more clients');
         await store.completeOnboarding();
+        await store.put('engine', 'onDevice');
       });
       await pumpApp(tester, const ChatScreen());
 
       await tester.enterText(find.byType(TextField), 'what are my goals?');
       await tester.tap(find.byTooltip('Send'));
-      await pumpFrames(tester);
+      await pumpFrames(tester, frames: 20);
 
-      expect(find.textContaining('two more clients'), findsOneWidget);
-      // The badge names the engine, so it says which one answered rather than
-      // just claiming it was local.
-      expect(find.text('FROM YOUR RECORDS'), findsWidgets);
+      expect(find.textContaining('cannot answer'), findsWidgets);
+      expect(find.textContaining('two more clients'), findsNothing,
+          reason: 'the answer must not be written out of the records');
+      expect(find.text('Start the local model'), findsOneWidget);
+      // Nothing on the reply claims a model produced the sentence above it.
+      // Scoped to the badge, because the app bar above names the engine that is
+      // selected, which is a different claim and a true one.
+      expect(
+        find.descendant(
+          of: find.byType(KoruEngineBadge),
+          matching: find.text('LOCAL MODEL'),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('a question needing a person shows the handoff card', (tester) async {
@@ -617,9 +634,10 @@ void main() {
 
     testWidgets('a cloud question without a key says so instead of guessing',
         (tester) async {
-      // The cloud engine has to be selected first. With the built-in default,
-      // faith questions are answered on device, which is the point of the
-      // engine picker.
+      // The online engine has to be selected first, because the on-device one is
+      // the default and is what answers when nothing else can. It used to answer
+      // from the user's records with a bracketed note about the key underneath,
+      // which is how a missing key looked like a working assistant.
       await seed(tester, () async {
         await store.completeOnboarding();
         await store.put('engine', 'cloud');
@@ -628,9 +646,12 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'is this islam');
       await tester.tap(find.byTooltip('Send'));
-      await pumpFrames(tester);
+      await pumpFrames(tester, frames: 12);
 
-      expect(find.textContaining('key is set'), findsOneWidget);
+      expect(find.textContaining('key is set'), findsWidgets);
+      expect(find.textContaining('cannot answer'), findsWidgets);
+      // And the fix is offered rather than described in a privacy policy.
+      expect(find.text('Add a cloud key'), findsOneWidget);
     });
 
     testWidgets('the thread is written to the store', (tester) async {
@@ -639,7 +660,8 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
-      await pumpFrames(tester);
+      // Enough frames for the engine path to finish saying it cannot answer.
+      await pumpFrames(tester, frames: 20);
 
       final roles = await tester.runAsync(() async {
         final records = await store.chat();
@@ -654,7 +676,8 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
-      await pumpFrames(tester);
+      // Enough frames for the engine path to finish saying it cannot answer.
+      await pumpFrames(tester, frames: 20);
 
       await tester.tap(find.byTooltip('Clear conversation'));
       await pumpFrames(tester);

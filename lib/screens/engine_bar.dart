@@ -14,7 +14,7 @@ import 'engine_sheet.dart';
 /// type and colour — and this is the part that has to know what the store says
 /// and what the platform is doing right now.
 ///
-/// The detail line is the reason this is a bar control and not a pill. "ONLINE
+/// The detail line is the reason this is a bar control and not a pill. "CLOUD
 /// MODEL" tells somebody that something is answering; "OpenRouter" tells them
 /// who, and that is the question behind the complaint this was built for.
 class EngineBarControl extends ConsumerWidget {
@@ -22,7 +22,7 @@ class EngineBarControl extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final engine = ref.watch(engineProvider).valueOrNull ?? KoruEngine.builtIn;
+    final engine = ref.watch(engineProvider).valueOrNull ?? KoruEngine.onDevice;
     final chat = ref.watch(chatProvider);
 
     // Null while the platform is being asked, which is deliberately not read as
@@ -49,7 +49,6 @@ class EngineBarControl extends ConsumerWidget {
   /// "loading" next to a bar that is otherwise finished is noise, and the first
   /// line already says which engine is answering.
   String? _detail(WidgetRef ref, KoruEngine engine) => switch (engine) {
-        KoruEngine.builtIn => 'From your own records',
         KoruEngine.onDevice => _localModel(ref),
         KoruEngine.cloud => ref
                 .watch(cloudSelectionProvider)

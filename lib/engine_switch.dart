@@ -47,7 +47,7 @@ Future<void> selectCloudProvider(WidgetRef ref, String providerId) async {
   ref.invalidate(cloudSelectionProvider);
 }
 
-/// Points the engine at one of the .gguf files on this phone.
+/// Points the engine at one of the .gguf files this app can see.
 ///
 /// The bundled model is stored as an empty path rather than as its own path.
 /// That is what the launcher reads to decide between "start the default" and

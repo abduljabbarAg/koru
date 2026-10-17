@@ -44,7 +44,7 @@ class SettingsScreen extends ConsumerWidget {
       ),
       _Entry(
         title: 'Who answers',
-        subtitle: 'Which engine answers, and the model on this phone',
+        subtitle: 'Which model answers, and which one it runs on',
         icon: Icons.memory_rounded,
         page: EngineSettingsScreen(),
       ),
@@ -52,7 +52,7 @@ class SettingsScreen extends ConsumerWidget {
     _Group('What leaves this phone', [
       _Entry(
         title: 'What leaves this phone',
-        subtitle: 'The exact text an online model receives, and where questions go',
+        subtitle: 'The exact text the cloud model receives, and where questions go',
         icon: Icons.cloud_outlined,
         page: PrivacySettingsScreen(),
       ),

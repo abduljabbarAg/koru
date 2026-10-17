@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/backup.dart';
+import 'package:koru/local/bundled_engine.dart';
 import 'package:koru/local/local_model_client.dart';
 import 'package:koru/local/write_intent.dart';
 import 'package:koru/models.dart';
@@ -58,8 +59,9 @@ class _RecordingClient extends LocalModelClient {
 
 /// The greeting, so a test can tell it apart from a real reply.
 const _greetingText =
-    'I am here, and I run on this phone. Ask about your work, your money and '
-    'your deadlines. I will tell you when a person should answer instead of me.';
+    'I am here, and I answer with the local model. Ask about your work, your '
+    'money and your deadlines. I will tell you when a person should answer '
+    'instead of me.';
 
 void main() {
   late ProfileStore store;
@@ -86,6 +88,7 @@ void main() {
     WidgetTester tester, {
     required String engine,
     LocalModelClient? model,
+    BundledEngine? bundled,
   }) async {
     await store.put('engine', engine);
     await tester.pumpWidget(
@@ -95,6 +98,7 @@ void main() {
           cloudKeyProvider.overrideWith((ref, providerId) async => ''),
           secretsProvider.overrideWithValue(MemoryKeyStore()),
           localModelClientProvider.overrideWithValue(model ?? const LocalModelClient()),
+          if (bundled != null) bundledEngineProvider.overrideWithValue(bundled),
         ],
         child: const MaterialApp(home: ChatScreen()),
       ),
@@ -172,7 +176,7 @@ void main() {
 
   group('chat to database, end to end', () {
     testWidgets('a sentence creates a client that exists afterwards', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'add client Bilal for 2000');
 
       // It was understood as a write, not sent to any engine.
@@ -189,7 +193,7 @@ void main() {
     });
 
     testWidgets('discarding writes nothing at all', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'add client Sara for 900');
 
       await tapVisible(tester, find.text('Discard'));
@@ -200,7 +204,7 @@ void main() {
 
     testWidgets('a payment for an unknown client is refused, not invented',
         (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'Ghost paid 500');
 
       expect(find.textContaining('I do not have a client called Ghost'), findsOneWidget);
@@ -211,7 +215,7 @@ void main() {
 
     testWidgets('two clients, two payments, and a balance that adds up',
         (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
 
       await say(tester, 'add client Bilal for 2000');
       await tapVisible(tester, find.text('Save it'));
@@ -242,7 +246,7 @@ void main() {
     });
 
     testWidgets('a deadline asked for in chat lands with its date', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'add a deadline to send the invoice on 2026-07-04');
 
       await tapVisible(tester, find.text('Save it'));
@@ -255,7 +259,10 @@ void main() {
 
   group('a question is never a write', () {
     testWidgets('asking about money answers instead of proposing', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      // The model is not answering, so what comes back is the "cannot answer"
+      // card rather than anything at all. It still must not be a write: a
+      // question about money is not an instruction to record one.
+      await boot(tester, engine: 'onDevice', model: _ThrowingClient());
       await say(tester, 'how much does Bilal owe?');
 
       expect(find.text('Save it'), findsNothing);
@@ -280,9 +287,8 @@ void main() {
     // chat stayed dead until the app was restarted. The user reported it as
     // "edit breaks chat" and "my message does not even show".
     //
-    // Uses the slow model rather than the built-in one, because the built-in
-    // answer is synchronous and there is then no pending state and no Stop
-    // button to press.
+    // Uses a model that fails fast rather than a real socket, so the answer
+    // settles inside a handful of frames and Stop has something to interrupt.
     testWidgets('a message sent after Stop still appears', (tester) async {
       await boot(tester, engine: 'onDevice', model: _HangingClient('one two three'));
 
@@ -329,7 +335,7 @@ void main() {
       // The other half of the bug. The edit deleted the stored records and
       // trimmed the screen before checking whether it could finish, so an edit
       // during a reply wiped the conversation and added nothing.
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice', model: _ThrowingClient());
       await say(tester, 'who owes me money?');
       await say(tester, 'and the total?');
       final before = (await tester.runAsync(() => store.chat()))!.length;
@@ -351,7 +357,7 @@ void main() {
     });
 
     testWidgets('editing a message Koru sent says why', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice', model: _ThrowingClient());
       await say(tester, 'who owes me money?');
 
       final notifier = notifierOf(tester);
@@ -419,7 +425,7 @@ void main() {
         (tester) async {
       // The whole point of the feature, walked the way a person does it: paste,
       // see the plan, press the button, find the rows on the Business page.
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
 
       await tester.enterText(
         find.byType(TextField).last,
@@ -445,7 +451,7 @@ void main() {
     });
 
     testWidgets('pasting the same list twice does not double it', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       const list = 'Bilal 3000\nAcme 5000';
 
       await tester.enterText(find.byType(TextField).last, list);
@@ -467,7 +473,7 @@ void main() {
         (tester) async {
       // One line must not take the list path, or its amount stops being
       // correctable in the card.
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'add client Bilal for 3000');
       expect(find.byType(PlanCard), findsNothing);
       expect(find.byType(WriteCard), findsOneWidget);
@@ -538,7 +544,7 @@ void main() {
       final chat = await tester.runAsync(() => store.chat());
       expect(chat!.last.role, 'koru');
       expect(chat.last.text, contains('Bilal owes'));
-      expect(chat.last.why, contains('on this phone'));
+      expect(chat.last.why, contains('local model'));
     });
 
     testWidgets('the prompt carries the balances, so the model can discuss them',
@@ -558,21 +564,60 @@ void main() {
       expect(model.prompts.single, contains('Bilal owes 1500'));
     });
 
-    testWidgets('falls back to the built-in engine when the model is unreachable',
+    testWidgets('an unreachable model produces no answer at all, and says so',
         (tester) async {
+      // This is the complaint that removed the built-in engine. It used to fall
+      // back to one: a rules-based answer out of the user's records, produced in
+      // milliseconds, under a Koru badge, with a bracketed note about the model
+      // underneath. It read as a fast model and it was not one.
       final broken = _ThrowingClient();
       await boot(tester, engine: 'onDevice', model: broken);
 
       await say(tester, 'how am i doing?');
 
-      // An answer still arrived, and it said why the model did not.
-      expect(lastReply(tester), contains('did not answer'));
-    });
-  });
+      // Nothing from the records: the ledger is empty here, so a substitute
+      // answer would have been its own small talk, which is the point.
+      expect(lastReply(tester), contains('cannot answer'));
+      expect(find.text('Start the local model'), findsOneWidget);
 
-  group('the built-in assistant, end to end', () {
-    testWidgets('answers a status question from the ledger', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      // And the reason it could not answer is on the screen rather than in a
+      // log, because "it is broken" and "it did not answer" are different bugs.
+      expect(find.textContaining('Could not reach the local model'),
+          findsWidgets);
+    });
+
+    testWidgets('the card starts the engine rather than sending them elsewhere',
+        (tester) async {
+      // The complaint behind this was "I cannot select the local model": the
+      // choice existed, but starting it was a second job somewhere else. So the
+      // offer on the card is the same one-tap start the switcher makes.
+      final engine = _FakeBundledEngine();
+      await boot(
+        tester,
+        engine: 'onDevice',
+        model: _ThrowingClient(),
+        bundled: engine,
+      );
+
+      await say(tester, 'how am i doing?');
+      expect(find.byType(KoruEngineDownCard), findsOneWidget);
+
+      final before = engine.starts;
+      await tester.tap(find.text('Start the local model'));
+      await pump(tester, frames: 20);
+
+      expect(engine.starts, before + 1,
+          reason: 'the button starts the model where the question was asked');
+    });
+
+    testWidgets('no engine answers, and no record is read to fake it',
+        (tester) async {
+      // The strongest form of the property. With the model down and a client in
+      // the database, the reply must not contain the client's name or the
+      // balance: the deleted assistant's whole trick was answering from these
+      // very rows and passing it off as an answer.
+      final broken = _ThrowingClient();
+      await boot(tester, engine: 'onDevice', model: broken);
       final id = await tester.runAsync(
         () => store.addClient(const Client(name: 'Acme', amount: 5000, status: 'delivered')),
       );
@@ -582,20 +627,17 @@ void main() {
 
       await say(tester, 'how am i doing?');
 
-      expect(lastReply(tester), contains('3000'));
-      expect(lastReply(tester), isNot(contains('5000 AED booked')));
-    });
-
-    testWidgets('offers to record rather than record silently', (tester) async {
-      await boot(tester, engine: 'builtIn');
-      await say(tester, 'what can you do?');
-      expect(lastReply(tester), contains('add client'));
+      final said = lastReply(tester);
+      expect(said, isNot(contains('Acme')));
+      expect(said, isNot(contains('3000')));
+      // And nothing was written on the way to saying so.
+      expect(await tester.runAsync(() => store.clients()), hasLength(1));
     });
   });
 
   group('a backup survives the app being gone', () {
     testWidgets('exports what the chat just created', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'add client Bilal for 2000');
       await tapVisible(tester, find.text('Save it'));
       await say(tester, 'Bilal paid 500');
@@ -648,7 +690,7 @@ void main() {
 
   group('the assistant can add a project, in every mode', () {
     testWidgets('a personal project is proposed and lands', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'start a project called Learn Arabic');
 
       await tapVisible(tester, find.text('Save it'));
@@ -660,7 +702,7 @@ void main() {
     });
 
     testWidgets('"done when" is read into the project', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester,
           'start a project called the shop, done when the door is open');
 
@@ -673,7 +715,7 @@ void main() {
     });
 
     testWidgets('a project for a named client attaches to them', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'add client Bilal for 2000');
       await tapVisible(tester, find.text('Save it'));
 
@@ -689,14 +731,14 @@ void main() {
     });
 
     testWidgets('a project for someone who does not exist says so', (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'start a project called the rebrand for Zohaib');
       expect(lastReply(tester), contains('do not have a client called Zohaib'));
     });
 
     testWidgets('a project with no name asks rather than saving nothing',
         (tester) async {
-      await boot(tester, engine: 'builtIn');
+      await boot(tester, engine: 'onDevice');
       await say(tester, 'start a project');
       expect(find.text('Save it'), findsNothing);
       final projects = await tester.runAsync(() => store.projects());
@@ -708,9 +750,9 @@ void main() {
   group('every engine gets the same writes', () {
     // The claim worth testing is that the AI is an addition, not the mechanism:
     // a client, a project and a calendar entry are recorded the same way with
-    // no engine, with a local model and with a cloud model. If that ever stops
-    // being true the assistant has become a dependency of the records.
-    for (final engine in const ['builtIn', 'onDevice', 'cloud']) {
+    // the on-device model and with a cloud model. If that ever stops being true
+    // the assistant has become a dependency of the records.
+    for (final engine in const ['onDevice', 'cloud']) {
       testWidgets('$engine can add a client', (tester) async {
         await boot(tester, engine: engine, model: _SilentClient());
         await say(tester, 'add client Bilal for 2000');
@@ -816,6 +858,52 @@ class _HangingClient extends LocalModelClient {
     onToken(reply);
     return LocalReply(reply, 4.0);
   }
+}
+
+/// The bundled engine, standing in for the one that execs a binary.
+///
+/// Reports a start and comes straight back, which is all the card's button has
+/// to be shown doing.
+class _FakeBundledEngine extends BundledEngine {
+  int starts = 0;
+
+  /// The model is on disk, so the start does not report a copy out of the APK.
+  ///
+  /// Also stops the platform channel being reached: a method channel with no
+  /// handler never answers inside a widget test, and a start that hangs there is
+  /// indistinguishable from a slow engine.
+  @override
+  Future<BundledEngineStatus> status() async => const BundledEngineStatus(
+        available: true,
+        modelAvailable: true,
+        modelBytes: BundledEngine.bundledModelBytes,
+      );
+
+  @override
+  Future<bool> get available async => true;
+
+  @override
+  Future<List<LocalModelFile>> models() async => const [
+        LocalModelFile(
+          label: 'Bonsai-1.7B-Q1_0 (bundled)',
+          path: '/data/models/Bonsai-1.7B-Q1_0.gguf',
+        ),
+      ];
+
+  @override
+  Future<BundledStartResult> start({
+    int port = BundledEngine.defaultPort,
+    String? modelPath,
+    Duration timeout = const Duration(seconds: 180),
+    Future<bool> Function() isHealthy = _neverHealthy,
+    void Function(int percent)? onProgress,
+  }) async {
+    starts++;
+    onProgress?.call(0);
+    return BundledStartResult.ready('http://127.0.0.1:$port');
+  }
+
+  static Future<bool> _neverHealthy() async => false;
 }
 
 /// A local model that is not answering, standing in for glen not having started.

@@ -39,9 +39,11 @@ class AboutScreen extends StatelessWidget {
             'Somebody carrying a handful of clients who wants one place that knows '
             'the whole picture, without signing up for a CRM, creating an account '
             'or taking out a subscription.',
-            'It keeps working with no internet connection. The on-device assistant '
-            'answers from your own records, and the calendar, the capacity meter, '
-            'projects and backups all run locally.',
+            'It keeps working with no internet connection. The local model '
+            'reads your own records and answers from them, and the calendar, '
+            'the capacity meter, projects and backups all run here too. If that '
+            'model is not running, Koru says so rather than answering from its '
+            'own rules.',
           ],
         ),
         _DocSection(
@@ -104,7 +106,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             'There are no analytics, no advertising, no crash reporting and no '
                 'tracking of any kind. None of those exist in the app, and there '
                 'is no account, so there is nothing to identify you by.',
-            'Nothing is uploaded unless you turn on the online model and ask a '
+            'Nothing is uploaded unless you turn on the cloud model and ask a '
                 'question that is routed to it.',
             'Everything, including your provider keys, can be deleted from Settings '
             '> Data.',
@@ -132,15 +134,15 @@ class PrivacyPolicyScreen extends StatelessWidget {
             'Your nickname, and any real name you give it. The cloud rendering of '
                 'your context deliberately leaves the name out.',
             'Your client list, amounts, payments and deadlines. They are read on '
-            'the device. A client\'s name can only reach the online model if you type '
+            'the device. A client\'s name can only reach the cloud model if you type '
             'it into a question yourself.',
             'Any telemetry of any kind. There is none to send.',
           ],
         ),
         _DocSection(
-          'When the online model is switched on',
+          'When the cloud model is switched on',
           paragraphs: [
-            'The online model is off until you choose a cloud provider, paste your '
+            'The cloud model is off until you choose a provider, paste your '
             'own key and test it in Settings > Cloud provider. Questions about faith, '
             'health, medicine or law are then routed to it, everything else is answered '
             'on the device, and anything that reads like a crisis, a diagnosis or a '
@@ -160,18 +162,19 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ],
         ),
         _DocSection(
-          'The on-device model',
+          'The local model',
           paragraphs: [
-            'Requests for an on-device model go to the server address in Settings '
+            'Requests for the local model go to the server address in Settings '
             '> Who answers, which is 127.0.0.1 unless you change it. That is '
-            'traffic inside your phone. If you point it at another machine, that '
-            'machine receives the same prompt the online model would.',
+            'traffic inside your phone, to a process the app itself started. If '
+            'you point it at another machine, that machine receives the same '
+            'prompt the cloud model would.',
           ],
         ),
         _DocSection(
           'Permissions',
           bullets: [
-            'Internet, only for the online model and the provider you configured, '
+            'Internet, only for the cloud model and the provider you configured, '
                 'and for the local model address you set.',
             'Notifications, so what is due can remind you.',
             'Calendar, only if you switch on copying entries to your phone\'s own '
@@ -328,13 +331,13 @@ class DataPolicyScreen extends StatelessWidget {
           'What can leave',
           bullets: [
             'A routed question. Only one about faith, health, medicine or law, only '
-                'with the online model and a provider you configured yourself, and '
+                'with the cloud model and a provider you configured yourself, and '
                 'only with the pseudonymous context packet shown in Settings > What '
                 'leaves this phone: no nickname, no client names, no amounts.',
             'Your API key, to the provider it belongs to, as the header that '
             'authenticates the request. Nowhere else.',
-            'An on-device model request, to the address you set in Settings > '
-                'Engine. That is 127.0.0.1 unless you change it.',
+            'A local model request, to the address you set in Settings > Who '
+                'answers. That is 127.0.0.1 unless you change it.',
             'An approved calendar entry, into your phone\'s own calendar, and only '
                 'if you switch the copy on.',
             'A backup file, only when you tap Back up and choose where to share it.',

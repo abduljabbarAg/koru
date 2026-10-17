@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:koru/engine.dart';
 import 'package:koru/models.dart';
 import 'package:koru/store.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -126,6 +127,10 @@ void main() {
 
     await db.insert('profile', {'key': 'nickname', 'value': 'kami'});
     await db.insert('profile', {'key': 'onboarded', 'value': '1'});
+    // The engine every install had before the built-in one was deleted. It is
+    // the only value this migration has to heal, and it is not a value anybody
+    // typed: it was written by an older build of this app.
+    await db.insert('profile', {'key': 'engine', 'value': 'builtIn'});
     await db.insert('business', {
       'name': 'Bilal',
       'status': 'delivered',
@@ -267,7 +272,7 @@ void main() {
     });
   });
 
-  group('a fresh install', () {
+group('a fresh install', () {
     test('already has the retainer column and needs no upgrade', () async {
       final store = await openTestStore();
       addTearDown(store.close);
@@ -278,6 +283,60 @@ void main() {
       final c = (await store.clients()).singleWhere((x) => x.id == id);
       expect(c.monthly, 900);
       expect(c.isRetainer, isTrue);
+    });
+
+    test('leaves a stored engine alone, because there are only two now', () async {
+      final store = await openTestStore();
+      addTearDown(store.close);
+
+      for (final engine in const ['onDevice', 'cloud']) {
+        await store.put('engine', engine);
+        expect(await store.get('engine'), engine);
+      }
+    });
+  });
+
+  group('the stored engine', () {
+    // The engine that is not there any more, and everything that can reach a
+    // phone in a shape this build has never heard of. The rule is one sentence:
+    // an upgrade must never leave somebody with no engine to ask.
+    test('an install on the deleted built-in engine lands on one that works',
+        () async {
+      final dir = await seedOldDatabase(9);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      // Healed on disk, not only at the read, so nothing else has to know.
+      expect(await store.get('engine'), 'onDevice');
+      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.onDevice);
+    });
+
+    test('a value this build has never heard of lands on one that works',
+        () async {
+      final dir = await seedOldDatabase(9);
+      // Written after the fact, standing in for a restored backup or a
+      // truncated row: the migration has already run by this point, which is
+      // exactly when the read-side fallback is all that is left.
+      final store = await ProfileStore.open(directory: dir);
+      await store.put('engine', 'somethingElse');
+      addTearDown(store.close);
+
+      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.onDevice,
+          reason: 'the read must not depend on the migration having run');
+    });
+
+    test('a real engine survives the upgrade untouched', () async {
+      final dir = await seedOldDatabase(9);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      await store.put('engine', 'cloud');
+      // Re-opening is the only honest check: a migration that rewrote this row
+      // would have done it on the way up.
+      await store.close();
+      final again = await ProfileStore.open(directory: dir);
+      addTearDown(again.close);
+      expect(await again.get('engine'), 'cloud');
     });
   });
 }

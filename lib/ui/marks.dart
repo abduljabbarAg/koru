@@ -24,21 +24,39 @@ class KoruProgressBar extends StatelessWidget {
     this.height = 6,
   });
 
-  /// Zero to one.
-  final double value;
+  /// Zero to one, or null when nothing is being counted yet.
+  ///
+  /// Null is the honest state, not a missing one: the first-run copy of the
+  /// local model out of the APK takes tens of seconds and reports no percentage
+  /// at all, and a bar sitting at zero through all of it is a bar telling the
+  /// reader the app is stuck. So this is a different mark rather than a bar at
+  /// the start of its range — a pulsing sweep, the shape every phone uses for
+  /// "working, no number to give you".
+  final double? value;
 
   final Color color;
   final double height;
 
   @override
   Widget build(BuildContext context) {
+    final at = value;
+    if (at == null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(height),
+        child: LinearProgressIndicator(
+          minHeight: height,
+          backgroundColor: KoruColors.surfaceAlt,
+          valueColor: AlwaysStoppedAnimation(color),
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(height),
       child: Stack(
         children: [
           Container(height: height, color: KoruColors.surfaceAlt),
           FractionallySizedBox(
-            widthFactor: value.clamp(0.0, 1.0),
+            widthFactor: at.clamp(0.0, 1.0),
             child: Container(height: height, color: color),
           ),
         ],

@@ -126,7 +126,7 @@ class ContextSettingsScreen extends ConsumerWidget {
                 controller: nick,
                 decoration: const InputDecoration(
                   labelText: 'Nickname',
-                  helperText: 'Never sent to the online model',
+                  helperText: 'Never sent to the cloud model',
                 ),
               ),
               TextField(

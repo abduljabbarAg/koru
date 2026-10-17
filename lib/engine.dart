@@ -3,51 +3,162 @@ import 'packet.dart';
 
 /// Which engine answers a question.
 ///
-/// The default is [builtIn], and deliberately so: it needs no model, no RAM and
-/// no round trip, so the app is useful the moment it opens. The other two are
-/// opt-in, because both cost something real, a cloud key or a few hundred
-/// megabytes of RAM.
+/// Two, and both of them are models. There used to be a third: a deterministic
+/// assistant that answered out of the user's own records without any model
+/// running. It is gone, and it is gone deliberately — see [KoruEngine.parse] for
+/// what happens to an install that had it selected, and the note on
+/// [EngineUnavailable] for why it must never answer again.
 ///
-/// The names are about *where the answer comes from*, never about *who serves
-/// it*. "Cloud" was used for both at one point — the engine option was called
-/// "Cloud model" and the page holding the provider, model and key was called
-/// "Cloud model" as well — which made the same word mean the engine on one
-/// screen and the company behind it on the next. So the engine is named for the
-/// route it takes and the provider is named for the company it is; "cloud" is
-/// only ever the company, and nothing in the app calls the engine a cloud
-/// anything.
+/// The two names are the two words the person who tested this on a phone asked
+/// for: "Local model" and "Cloud model", and nothing else. The same engine had
+/// been called "On this phone", "Model on this phone", "MODEL ON THIS PHONE" and
+/// "on this phone" depending on which screen you were looking at, and every one
+/// of those made the engine describe *where the answer comes from* rather than
+/// say what it is. A label that explains itself is a label that has to be read
+/// twice. So: local, cloud, and the noun.
+///
+/// These are also the words used everywhere else — the switcher, the app bar,
+/// the badge on a reply, Settings, the legal copy and the failure card. The
+/// provider company behind the cloud engine is named for the company, on its own
+/// page, and is never what this enum calls an engine.
 enum KoruEngine {
-  /// Deterministic answers from the user's own records. Not a language model,
-  /// and the UI says so.
-  builtIn,
-
   /// A model served on this device over loopback. Real generation, no network.
   onDevice,
 
   /// A frontier model over the internet.
   cloud;
 
+  /// The one name this engine has anywhere in the app.
   String get label => switch (this) {
-        KoruEngine.builtIn => 'Built-in',
-        KoruEngine.onDevice => 'On this phone',
-        KoruEngine.cloud => 'Online model',
+        KoruEngine.onDevice => 'Local model',
+        KoruEngine.cloud => 'Cloud model',
       };
 
+  /// What picking it costs, in one sentence.
+  ///
+  /// Says what the model is rather than where it sits. "Running on this phone"
+  /// described the plumbing; what somebody choosing between two rows needs to
+  /// know is that one of them is free, offline and wants memory.
   String get blurb => switch (this) {
-        KoruEngine.builtIn =>
-          'Instant answers from your records. No model, no RAM, no network.',
         KoruEngine.onDevice =>
-          'A real model running on this phone. Slower, and it wants memory.',
+          'A real model that runs here. Slower, and it wants memory.',
         KoruEngine.cloud => 'A frontier model over the internet. Needs a key.',
       };
 
+  /// Reads a stored engine name, and always lands on a working one.
+  ///
+  /// The migration, and the reason it is a total function rather than a nullable
+  /// one. Installs that were on the deleted `builtIn` engine still have the
+  /// literal string `'builtIn'` in the profile table, and an install can hold
+  /// anything at all if the row was truncated or a later build writes a value
+  /// this build has never heard of. Both used to resolve to nothing usable, so
+  /// the only safe reading of an engine this build does not know is the one that
+  /// ships inside the app: [onDevice] needs no key, no account and no network,
+  /// and it is the engine the person already chose by installing this app.
+  ///
+  /// Landing on `onDevice` means a user upgrading from the built-in engine opens
+  /// a real model rather than an empty engine. They get the wait for a cold
+  /// start, which is honest, instead of a rules-based answer dressed as an AI.
   static KoruEngine parse(String? value) => KoruEngine.values.firstWhere(
         (e) => e.name == value,
-        orElse: () => KoruEngine.builtIn,
+        orElse: () => KoruEngine.onDevice,
       );
 }
 
-/// Builds the system prompt for a small on-device model.
+/// How far the local model has got coming up, as the number the whole app
+/// passes around.
+///
+/// A single int rather than a phase object because six widgets read it and none
+/// of them decides anything about it — they print a percentage or draw a bar.
+/// What they do need is to tell the two halves of a cold start apart, because
+/// only one of them has a percentage.
+///
+/// Measured on the phone: the first-run unpack of the 248 MB model is a copy
+/// with no progress behind it and takes tens of seconds, while the engine's own
+/// load after that is about 3 seconds and reports properly. Reporting both as
+/// "0%" is what made the splash look frozen for the whole of the slow part and
+/// then suddenly jump — so [unpacking] is its own value, outside the percentage
+/// range, and every surface switches on it.
+class EngineProgress {
+  const EngineProgress._();
+
+  /// Copying the model out of the APK. There is no percentage to report: the
+  /// platform does the copy and reports nothing until it is done.
+  ///
+  /// Negative, and therefore impossible to confuse with a real percentage. Any
+  /// surface that forgets to handle it shows a bar pinned to zero, which is the
+  /// one thing it must not do.
+  static const int unpacking = -1;
+}
+
+/// The one thing to do about an engine that could not answer.
+///
+/// Kept as a value rather than as a sentence per call site so the button on the
+/// card, the tests and the two failure paths cannot disagree about what "start
+/// it" means.
+enum EngineRecovery {
+  /// The local model is not up. The action starts it.
+  startLocalModel,
+
+  /// The selected cloud provider has no key. The action opens where keys are
+  /// entered.
+  addCloudKey,
+
+  /// Nothing is configured. The action opens the switcher.
+  chooseEngine,
+}
+
+/// What to say, and what to offer, when no engine could answer.
+///
+/// This is the whole of the answer for that turn, on purpose. The app had a third
+/// engine — a rules-based one that answered from the user's own records — and it
+/// reached for it whenever a model could not be reached: a missing key, a model
+/// that had not started, a crash. It produced a sentence immediately, so the
+/// model looked fast, and it produced rubbish, because it was matching phrases
+/// rather than understanding questions. Someone asking for an answer got an
+/// answer; they just never got one from a model, and nothing on screen said so.
+///
+/// So there is no fallback any more. If neither engine can answer, the app says
+/// which one is missing and offers the tap that fixes it.
+class EngineUnavailable {
+  const EngineUnavailable({required this.detail, required this.recovery});
+
+  /// What went wrong, in the engine's own terms. Always shown, never guessed at.
+  final String detail;
+
+  final EngineRecovery recovery;
+
+  /// The headline on the card under the reply.
+  String get title => switch (recovery) {
+        EngineRecovery.startLocalModel => 'The local model is not up',
+        EngineRecovery.addCloudKey => 'No key for the cloud model',
+        EngineRecovery.chooseEngine => 'No engine to ask',
+      };
+
+  /// The sentence that goes in the bubble.
+  ///
+  /// Says plainly that nothing answered. Anything softer — a hedge, a summary of
+  /// the records, an apology with an answer attached — is the behaviour this
+  /// replaced.
+  String get text => switch (recovery) {
+        EngineRecovery.startLocalModel =>
+          'I cannot answer that. The local model is not running'
+              '${detail.isEmpty ? '' : ': $detail'}.',
+        EngineRecovery.addCloudKey =>
+          'I cannot answer that. $detail, so there is nothing to ask.',
+        EngineRecovery.chooseEngine =>
+          'I cannot answer that. $detail, so there is no engine to ask.',
+      };
+
+  /// The label on the button that fixes it.
+  String get actionLabel => switch (recovery) {
+        EngineRecovery.startLocalModel => 'Start the local model',
+        EngineRecovery.addCloudKey => 'Add a cloud key',
+        EngineRecovery.chooseEngine => 'Choose who answers',
+      };
+}
+
+/// Builds the system prompt for a small local model.
 ///
 /// A 0.5B model needs a narrower brief than a frontier one. Long instructions
 /// wash out, so this is short, concrete, and repeats the one rule that matters
@@ -101,7 +212,7 @@ class LocalModelPrompt {
 
     // The model cannot see the database, so anything it should reason over has
     // to be spelled out here. This is the whole value of a local model: it can
-    // answer questions the built-in engine cannot phrase-match.
+    // answer questions the records were never written to be queried by.
     if (context.isNotEmpty) {
       buffer
         ..writeln()

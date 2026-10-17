@@ -244,7 +244,7 @@ class RoutingDecision {
     return const RoutingDecision(
       useCloud: false,
       needsHuman: false,
-      reason: 'Answered on device.',
+      reason: 'Answered by the local model.',
     );
   }
 }

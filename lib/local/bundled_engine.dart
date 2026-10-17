@@ -4,14 +4,15 @@ import 'package:flutter/services.dart';
 
 /// Controls the inference engine bundled inside the APK.
 ///
-/// The APK ships llama.cpp and a 1-bit 1.7B model, so choosing "On-device model"
+/// The APK ships llama.cpp and a 1-bit 1.7B model, so choosing "Local model"
 /// needs no setup at all: this starts the bundled server and points the client at
 /// it. If the engine is missing, or fails to start, the caller falls back and
 /// says so rather than leaving the user on a spinner.
 ///
 /// Everything here degrades. A build without the binary, a device that refuses
 /// to exec it, and a model that will not load all end in the same place: no
-/// bundled engine, and the built-in engine still works.
+/// bundled engine, and the app saying so rather than answering by some other
+/// means.
 class BundledEngine {
   const BundledEngine();
 

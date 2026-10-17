@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../engine.dart';
 import '../store.dart';
 import 'bundled_engine.dart';
 import 'local_model_client.dart';
@@ -12,7 +13,7 @@ import 'local_model_client.dart';
 String bundledEndpoint({int port = BundledEngine.defaultPort}) =>
     'http://127.0.0.1:$port';
 
-/// What came of trying to bring the on-device engine up.
+/// What came of trying to bring the local model up.
 class LocalEngineOutcome {
   const LocalEngineOutcome({
     required this.running,
@@ -43,8 +44,8 @@ class LocalEngineOutcome {
 /// Starts the engine that ships inside the APK, and reports how it went.
 ///
 /// No providers and no widgets: the chat, the engine switcher and Settings all
-/// hand it what it needs, which is the whole reason it is here. Choosing "model
-/// on this phone" used to mean choosing it and then walking to Settings to press
+/// hand it what it needs, which is the whole reason it is here. Choosing "the
+/// local model" used to mean choosing it and then walking to Settings to press
 /// a start button, with two copies of the start sequence that could drift apart
 /// and neither of which told the person who was tapping what it was doing. There
 /// is one sequence now and every caller sees the same progress.
@@ -81,13 +82,21 @@ class LocalEngineRunner {
     String? modelPath,
     void Function(int percent)? onProgress,
   }) async {
-    // Before anything else, because of what the first call costs. Listing the
-    // models is what makes the platform materialise the bundled one out of the
-    // APK, and that is a couple of hundred megabytes of copying with nothing to
-    // report into. Starting the count here is what lets the progress be honest
-    // about the slowest part rather than appearing to hang in silence and then
-    // jumping to a percentage.
-    onProgress?.call(0);
+    // Two phases, told apart, because they are two different waits.
+    //
+    // Listing the models is what makes the platform materialise the bundled one
+    // out of the APK: 248 MB of copying with nothing to report into, which on the
+    // target phone is the slowest thing this app ever does. The engine's own
+    // load after it is about 3 seconds and reports a real percentage. Both used
+    // to be reported as 0%, so the slow half looked like a frozen bar and then
+    // jumped, and the fast half looked like it was the thing that was slow.
+    //
+    // Asked whether it is needed rather than assumed, because reporting "copying
+    // 248 MB" on every launch of an app that has already done it once would be
+    // the same kind of lie in the other direction.
+    final status = await engine.status();
+    final copying = status.available && !status.modelAvailable;
+    onProgress?.call(copying ? EngineProgress.unpacking : 0);
 
     // One listing, used for three decisions below. The platform puts the
     // bundled model first and that ordering is part of the contract, not a
@@ -111,6 +120,12 @@ class LocalEngineRunner {
       }
       // Up on a different model. The engine serves one file for the life of the
       // process, so a start beside it would succeed and change nothing.
+      //
+      // The one place this app ever stops an engine, and deliberately so: the
+      // person asked for a different model, and the alternative is a restart
+      // that silently keeps serving the old file. Nothing else stops it — not
+      // backgrounding, not navigating away — because the next question would
+      // then pay a cold start for no reason anybody asked for.
       await engine.stop();
     }
 

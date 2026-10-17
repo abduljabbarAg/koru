@@ -17,6 +17,15 @@ enum KoruActivity {
   /// Waiting on the store or the router. Should be momentary.
   waking('Waking up'),
 
+  /// The engine is still coming up and the question is waiting for it.
+  ///
+  /// Its own line, because this is the one wait a person could mistake for a
+  /// hang: the question went in, nothing has come out, and the only difference
+  /// between "it is broken" and "the model has not finished starting" is
+  /// whether the app says which one it is. Named before the question is sent,
+  /// the moment the turn notices the engine is down.
+  startingLocalModel('Starting the local model'),
+
   /// Reading the prompt. This is the long silent part, and the part that used to
   /// look like a hang.
   reading('Reading your records'),

@@ -290,8 +290,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _intro() => _body(
         'A business partner that keeps the books.',
-        'Your clients, your money and what is due. It runs on this phone. '
-            'No account, no real name.',
+        'Your clients, your money and what is due. Nothing is sent anywhere to '
+            'answer them. No account, no real name.',
         [
           ClipRRect(
             borderRadius: BorderRadius.circular(KoruRadius.card),
@@ -418,7 +418,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         clip: KoruClip.wave,
         'What should I call you?',
         'A nickname, not a name. It stays on this device and is never attached '
-            'to anything sent to the online model.',
+            'to anything sent to the cloud model.',
         [
           TextField(
             controller: _nick,

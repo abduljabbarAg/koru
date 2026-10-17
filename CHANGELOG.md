@@ -6,8 +6,8 @@
 
 - **The engine control in the chat's top bar opens the engine picker.** Tap the
   control in the app bar — before anything has been asked, or in the middle of a
-  conversation — and it lists the three engines with what each one costs: the
-  same three Settings offers, written to the same key. Nothing about the engine
+  conversation — and it lists the two engines with what each one costs: the
+  same two Settings offers, written to the same key. Nothing about the engine
   is a trip to Settings any more, and nothing about it is hidden behind having a
   reply to tap.
 - The control shows the detail the pill never had room for: which model is on the
@@ -15,33 +15,70 @@
   has actually answered. The pill on a reply is now a label only — it still
   records where that reply came from, and it is no longer a control sitting in a
   different place on every message.
-- **Choosing "model on this phone" starts it there and then.** One tap, in the
-  sheet: the model is written, the engine is launched, and the sheet stays up
-  showing real progress until the server answers. On a cold install that is a
-  231 MB copy out of the APK, so the wait is reported rather than guessed at —
-  "Copying the model out of the app", then "Waking the server up 42%".
-- **Cloud and model sub-pickers.** Choosing the online model opens the provider
-  list, with the ones that already have a key marked; choosing on-device opens the
-  .gguf models on this phone, the bundled one first and ticked, plus anything
-  added with the file picker. Picking a different model while a cold start is
-  still running restarts the engine on that one rather than joining the start in
-  flight and quietly serving the other.
+- **Choosing "Local model" starts it there and then.** One tap, in the sheet:
+  the model is written, the engine is launched, and the sheet stays up showing
+  real progress until the server answers. On a cold install that is a 248 MB
+  copy out of the APK, so the wait is reported rather than guessed at —
+  "Copying 248 MB out of the app. Once, on first use.", then "Waking the server
+  up 42%".
+- **Cloud and model sub-pickers.** Choosing the cloud model opens the provider
+  list, with the ones that already have a key marked; choosing the local model
+  opens the .gguf models this app can see, the bundled one first and ticked, plus
+  anything added with the file picker. Picking a different model while a cold
+  start is still running restarts the engine on that one rather than joining the
+  start in flight and quietly serving the other.
 - **A failed start says what failed, in the sheet, with a retry.** The reason
   comes from the engine's own log. It used to fall back to the built-in
   assistant, which answers in milliseconds and is indistinguishable from a model
   being fast.
 
+### Removed
+
+- **The built-in engine. There are two engines now, and both are models.** It
+  answered out of the user's own records by phrase matching, produced a sentence
+  in milliseconds whatever was asked, and was reached for whenever a real model
+  could not be: a model that had not started, a key that was not set, a crash.
+  That is the shape of the complaint it caused — "the AI is there and it answers
+  rubbish" — because the app looked exactly as alive as a working assistant
+  while nothing was generating anything, and the difference was a parenthetical
+  note underneath a Koru badge. Nothing in Koru substitutes an answer for a model
+  now.
+- **The assistant it deleted:** `lib/local/local_assistant.dart`, the ~1,470-line
+  advice library under `lib/local/replies/`, and `lib/local/facts.dart`. Writes
+  never went through it — a plain parser resolves an instruction to record
+  something and comes back as a card to approve, on every engine — so clients,
+  projects, deadlines and calendar entries are recorded exactly as before.
+- **The fallback answering in both engines.** An unreachable model on this phone
+  no longer answers from the records with a note about it; a missing cloud key
+  no longer answers from the records at all.
+- Installs that were on the built-in engine still have `'builtIn'` in the
+  profile table. A v10 migration rewrites that to the model inside the app, and
+  the read falls back to it for anything this build does not recognise, so an
+  upgrading install lands on a working engine rather than on no engine. The
+  rules-based assistant was not carried over as the fallback: a cold start is
+  honest, a substitute answer is not.
+
 ### Changed
 
-- **"Cloud" now means one thing.** The engine option was called "Cloud model"
-  and the page holding the provider, model and key was called "Cloud model" as
-  well, so the index had two rows with the same name and no way to tell the
-  engine from the company. The engine is now **Built-in / On this phone / Online
-  model**, named for the route an answer takes; the company is **Cloud
-  provider**, named for what you hand the key to. The Settings index is grouped
-  under the two questions they answer — *What answers you* (Your context, Who
-  answers) and *What leaves this phone* (What leaves this phone, Cloud provider)
-  — with permissions below both.
+- **Nothing answers while the model is not running.** The reply says which engine
+  is missing and carries one button: start the local model, add a cloud key, or
+  choose who answers. The start is the same one-tap start the switcher makes, in
+  the thread where the question was asked, because "the model is not running, go
+  and find the button" is how "I cannot select the local model" felt.
+- **One name per engine, everywhere: "Local model" and "Cloud model".** The
+  local engine had four names across the app — *On this phone*, *Model on this
+  phone*, *MODEL ON THIS PHONE* and *on this phone* — and the cloud engine had
+  *Online model*, so the same two engines were four things to read across four
+  screens. Every one of those described where the answer comes from rather than
+  saying what it is, and a label that explains itself is a label that has to be
+  read twice. The two engines are now **Local model / Cloud model** in the
+  switcher, the app-bar control, the badge on a reply, Settings, onboarding, the
+  legal pages and every failure card. The provider behind the cloud engine keeps
+  its own name — **Cloud provider**, which is the company you hand the key to,
+  and never an engine. The Settings index is grouped under the two questions
+  they answer — *What answers you* (Your context, Who answers) and *What leaves
+  this phone* (What leaves this phone, Cloud provider) — with permissions below
+  both.
 - **The switcher sheet is a surface again.** It was opened with a transparent
   background and painted none of its own, so its tiles were drawn straight onto
   the page behind it: two near-identical creams on top of each other, which
@@ -71,6 +108,39 @@
 
 ### Fixed
 
+- **The engine now starts while the app is still opening.** The complaint was
+  "first token is too slow, and this model is smaller so why is it slower". It
+  is not the model: measured on the phone, streaming first token is 0.46 s and
+  non-streaming first byte is 23.98 s, generation is already streamed, and the
+  engine is ~3.0 s from process spawn to listening. That three seconds was being
+  spent *after* the question went in, because the warm-up could not begin until
+  the store was open, onboarding had been checked and the permission consent had
+  been resolved. It now runs first thing in `main.dart`, ahead of every one of
+  those, so the model is already up while the user reads the splash — and on a
+  first run the 248 MB unpack happens during onboarding, the one stretch of time
+  where it costs the user nothing. Nothing waits on it: the chat is readable and
+  typeable throughout.
+- **A question sent before the model was ready is answered, not refused.** It
+  used to ask a port that had nothing on it yet and come back "I cannot answer
+  that", one second before the model would have answered. Every local turn now
+  waits for a start that is already under way, and the bubble says *Starting the
+  local model* while it waits — the one wait a person could otherwise mistake
+  for a hang. No engine is ever silently swapped, and nothing is answered from
+  the app itself.
+- **Backgrounding no longer costs the engine.** Nothing stops the server on the
+  way out or on ordinary navigation, so the second question of a session is as
+  fast as the first. `MainActivity.onDestroy` still stops it, which is the right
+  place: that only runs when the activity is genuinely going away. Coming back
+  to the foreground asks for a start again if the model went away with the
+  process, which is the one case where it can have died unasked.
+- **The first-run unpack is honest about what it is.** Copying 248 MB out of the
+  APK and waiting for the engine are two different waits, and both used to be
+  reported as "0%", so the slow half looked like a frozen bar and then jumped.
+  The copy is now reported as its own state with a sweeping bar and a sentence
+  saying what is happening and how much — on the splash, on the engine bar, in
+  the switcher and in the chat banner — and it is only reported when the platform
+  says the model is not on disk yet, so a returning user is never told about a
+  copy that is not happening.
 - **The chat's engine banner never went away.** `ChatState.copyWith` could not
   set a field back to null, so `engineProgress: null` silently kept the last
   value and the banner above the composer went on saying the model was waking

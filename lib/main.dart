@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'attention.dart';
 import 'attention_bridge.dart';
 import 'deep_link.dart';
+import 'engine.dart';
+import 'engine_launch.dart';
 import 'mascot/mascot.dart';
 import 'onboarding.dart';
 import 'permission_consent.dart';
@@ -72,7 +74,7 @@ class RootGate extends ConsumerStatefulWidget {
   ConsumerState<RootGate> createState() => _RootGateState();
 }
 
-class _RootGateState extends ConsumerState<RootGate> {
+class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver {
   bool? _ready;
   bool _splashDone = false;
 
@@ -82,15 +84,54 @@ class _RootGateState extends ConsumerState<RootGate> {
   /// user.
   bool? _oweConsent;
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
+  /// Whether the app is currently in the background.
+  ///
+  /// Tracked rather than acted on directly, because the only thing worth doing
+  /// is what happens on the way *back*. Nothing is stopped on the way out: see
+  /// [resumeLocalEngine], which is where that decision is written down.
+  bool _away = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // First thing in the app, before anything that has to be awaited.
+    //
+    // The warm-up used to be reached through chatProvider.load(), which could not
+    // run until the store was open, onboarding had been checked, and the
+    // permission consent had been resolved — three platform round trips before a
+    // single byte of engine start. None of that has anything to do with bringing
+    // a model up, and all of it happens on every launch. About 3 seconds of
+    // engine spawn plus, on a first run, a 248 MB unpack, all of it now spent
+    // while the user is reading the splash rather than after they press send.
+    //
+    // Fire and forget on purpose. Nothing in the UI waits on this; the only
+    // thing it delays is the first question, and only for as long as the engine
+    // really takes.
+    unawaited(ref.read(engineWarmUpProvider.future));
+
     _check();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final away = state != AppLifecycleState.resumed;
+    if (away == _away) return;
+    _away = away;
+    // Nothing is stopped on the way out. See [resumeLocalEngine] for why, and for
+    // what is done instead on the way back in.
+    if (away || !mounted) return;
+    resumeLocalEngine(ref);
+  }
+
+  @override
+  void dispose() {
+    // Removed before the super call, because the observer list outlives this
+    // state object and a late lifecycle change into a disposed gate is an
+    // exception in the log of every app switch on the way out.
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _check() async {
@@ -109,14 +150,10 @@ class _RootGateState extends ConsumerState<RootGate> {
       _oweConsent = consent.shouldOffer;
     });
     ref.read(onboardedProvider.notifier).state = done;
-    // Started here rather than from the chat screen. The splash is where the
-    // model is actually being unpacked, so it is the only place that can show
-    // progress for it, and waiting until the chat screen meant the splash was
-    // already gone by the time the slow part began.
-    //
-    // Once. This used to be called a second time further down this method, left
-    // behind when the permissions moved out to the consent screen, which meant
-    // the engine's start sequence was queued twice on every launch.
+    // The stored conversation, once the gate knows who this is. The engine is
+    // not started here: that moved to initState, ahead of every await in this
+    // method, so it no longer waits on the store, on onboarding and on the
+    // permission consent in turn.
     if (done) ref.read(chatProvider.notifier).load();
   }
 
@@ -285,6 +322,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 class _EngineLoadingBar extends StatelessWidget {
   const _EngineLoadingBar({this.progress, this.health});
 
+  /// What the engine is doing, as [EngineProgress] describes it. Null while it
+  /// is not doing anything, which is not the same as doing nothing.
   final int? progress;
 
   /// Shown only once there is something worth saying about it.
@@ -293,6 +332,9 @@ class _EngineLoadingBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = progress;
+    // No percentage exists for the copy out of the APK, so the bar sweeps rather
+    // than lying about being stuck at zero.
+    final copying = p == EngineProgress.unpacking;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -301,8 +343,9 @@ class _EngineLoadingBar extends StatelessWidget {
           child: LinearProgressIndicator(
             minHeight: 3,
             // Null value means the bar sweeps, which is right when nothing is
-            // being reported yet and wrong once it is.
-            value: p == null ? null : (p / 100).clamp(0.0, 1.0),
+            // being reported yet, right while the copy is running because there
+            // is no percentage to report, and wrong once there is one.
+            value: (p == null || copying) ? null : (p / 100).clamp(0.0, 1.0),
             backgroundColor: KoruColors.line,
             valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
           ),
@@ -311,12 +354,16 @@ class _EngineLoadingBar extends StatelessWidget {
         SizedBox(
           child: Text(
             switch (p) {
+              // Copying 248 MB out of the APK is the slowest thing this app ever
+              // does, and it is not obvious why. Named, given its size, and put
+              // here rather than after the first question: this is a splash, and
+              // the user has nothing else to read yet.
+              EngineProgress.unpacking =>
+                'Unpacking the local model, 248 MB. Once, on first use.',
               null => 'Getting things ready',
-              // Copying half a gigabyte out of the APK is the slow part and it
-              // is not obvious why, so say what is happening.
-              <8 => 'Unpacking the model on this phone',
-              _ => 'Waking the model up  $p%',
+              _ => 'Starting the local model  $p%',
             },
+            textAlign: TextAlign.center,
             style: KoruType.caption,
           ),
         ),

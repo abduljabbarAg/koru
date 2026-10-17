@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/engine.dart';
+import 'package:koru/engine_launch.dart';
 import 'package:koru/local/bundled_engine.dart';
 import 'package:koru/local/local_model_client.dart';
 import 'package:koru/screens/chat.dart';
@@ -54,6 +55,17 @@ class _FakeEngine extends BundledEngine {
     if (!_held.isCompleted) _held.complete();
   }
 
+  /// The model is on disk, so the start does not report a copy out of the APK.
+  ///
+  /// Also stops the platform channel being reached: a method channel with no
+  /// handler never answers inside a widget test, and a start that hangs there is
+  /// indistinguishable from a slow engine.
+  @override
+  Future<BundledEngineStatus> status() async => const BundledEngineStatus(
+        available: true,
+        modelAvailable: true,
+        modelBytes: BundledEngine.bundledModelBytes,
+      );
   @override
   Future<bool> get available async => true;
 
@@ -130,11 +142,19 @@ void main() {
 
   /// The chat, with the two seams that would otherwise need a real phone: the
   /// engine that gets started, and the server it is started against.
+  ///
+  /// [engine] is stored before the chat mounts, which is what decides whether the
+  /// launch warm-up starts anything when it is asked for. Defaulting it to the
+  /// cloud engine keeps a start in these tests attributable to the tap that is
+  /// supposed to cause it, and the one test that is about the warm-up asks for
+  /// it explicitly.
   Future<void> mountChat(
     WidgetTester tester, {
     required _FakeEngine engine,
     _FakeClient client = const _FakeClient(),
+    String stored = 'cloud',
   }) async {
+    await tester.runAsync(() => store.put('engine', stored));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -172,8 +192,8 @@ void main() {
   }
 
   group('the engine control in the app bar', () {
-    testWidgets('opens the switcher, and all three engines are in it',
-        (tester) async {
+    testWidgets('opens the switcher, and both engines are in it and nothing '
+        'else', (tester) async {
       await tester.runAsync(store.completeOnboarding);
       final engine = _FakeEngine();
       await mountChat(tester, engine: engine);
@@ -185,11 +205,24 @@ void main() {
       for (final option in KoruEngine.values) {
         expect(find.text(option.label), findsOneWidget,
             reason: '${option.label} is offered without leaving the chat');
-        // Each row says what it costs, because the built-in engine is not a
-        // model and picking it by accident should not look like a downgrade
-        // somebody hid.
+        // Each row says what it costs. A model that is slower and wants memory is
+        // a different promise from a frontier model over the internet, and a
+        // bare list of two names hides that.
         expect(find.text(option.blurb), findsOneWidget);
       }
+
+      // Exactly two rows, counted in the tiles rather than by text: the app bar
+      // carries the provider and the model as its detail line, so the same words
+      // can legitimately be on screen twice.
+      final rows = find
+          .descendant(
+            of: find.byType(KoruSheetBody),
+            matching: find.byType(KoruSelectableTile),
+          )
+          .evaluate();
+      expect(rows, hasLength(2),
+          reason: 'there is no third engine, and no row for the one that is gone');
+      expect(KoruEngine.values, hasLength(2));
     });
 
     testWidgets('switching writes the engine and the app bar says so afterwards',
@@ -199,13 +232,13 @@ void main() {
 
       await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'Online model');
+      await tapInSheet(tester, 'Cloud model');
       await pump(tester);
       await tapInSheet(tester, 'OpenRouter');
       await pump(tester);
 
       expect(await tester.runAsync(() => store.get('engine')), 'cloud');
-      expect(find.text('ONLINE MODEL'), findsOneWidget,
+      expect(find.text('CLOUD MODEL'), findsOneWidget,
           reason: 'the app bar follows the store, so the two cannot disagree');
       // The provider chosen on the way through is kept too: choosing the
       // engine and choosing who answers it are two different decisions.
@@ -236,14 +269,14 @@ void main() {
       expect(provider('OpenRouter'), findsNothing);
       expect(model('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
 
-      await tapInSheet(tester, 'Online model');
+      await tapInSheet(tester, 'Cloud model');
       await pump(tester);
       expect(provider('OpenRouter'), findsOneWidget);
       expect(model('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
 
-      await tapInSheet(tester, 'All three');
+      await tapInSheet(tester, 'All engines');
       await pump(tester);
-      await tapInSheet(tester, 'On this phone');
+      await tapInSheet(tester, 'Local model');
       await pump(tester);
 
       // Choosing it starts the bundled model straight away, so what is on the
@@ -266,16 +299,16 @@ void main() {
 
       await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On this phone');
+      await tapInSheet(tester, 'Local model');
       await pump(tester);
 
       // The sheet is still up, reporting the start rather than closing and
       // leaving the person to wonder whether anything happened. One tap, no
       // Settings visit, no separate bundling step.
       expect(engine.starts, 1);
-      expect(find.text('Starting the model on this phone'), findsOneWidget);
+      expect(find.text('Starting the local model'), findsOneWidget);
       expect(find.text('Waking the server up  42%'), findsOneWidget);
-      expect(find.text('THIS PHONE  42%'), findsOneWidget,
+      expect(find.text('LOCAL MODEL  42%'), findsOneWidget,
           reason: 'the app bar behind it says the same thing, not that a model '
               'is already running');
 
@@ -284,8 +317,8 @@ void main() {
 
       expect(engine.starts, 1, reason: 'choosing the engine started it');
       expect(await tester.runAsync(() => store.get('engine')), 'onDevice');
-      expect(find.text('Running on this phone'), findsOneWidget);
-      expect(find.text('MODEL ON THIS PHONE'), findsOneWidget,
+      expect(find.text('Local model running'), findsOneWidget);
+      expect(find.text('LOCAL MODEL'), findsOneWidget,
           reason: 'and now that it is up, the app bar can say so');
     });
 
@@ -297,7 +330,7 @@ void main() {
 
       await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On this phone');
+      await tapInSheet(tester, 'Local model');
       await pump(tester);
       // The bundled model is already booting; asking for another one has to
       // actually restart the engine rather than join the start in flight.
@@ -332,11 +365,11 @@ void main() {
 
       await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On this phone');
+      await tapInSheet(tester, 'Local model');
       await pump(tester);
 
       expect(engine.starts, 0, reason: 'there was nothing to start');
-      expect(find.text('Running on this phone'), findsOneWidget);
+      expect(find.text('Local model running'), findsOneWidget);
     });
 
     testWidgets('a build with no model on it says so and offers to add one',
@@ -347,7 +380,7 @@ void main() {
 
       await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On this phone');
+      await tapInSheet(tester, 'Local model');
       await pump(tester);
 
       // Nothing was launched, and the app bar does not claim a model is on
@@ -357,7 +390,7 @@ void main() {
       expect(engine.starts, 0);
       expect(find.text('No model found'), findsOneWidget);
       expect(find.text('Add a model from this phone'), findsOneWidget);
-      expect(find.text('THIS PHONE  NOT RUNNING'), findsOneWidget);
+      expect(find.text('LOCAL MODEL  NOT RUNNING'), findsOneWidget);
     });
 
     testWidgets('a failed start says what failed and offers another go',
@@ -368,7 +401,7 @@ void main() {
 
       await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On this phone');
+      await tapInSheet(tester, 'Local model');
       await pump(tester);
       engine.letFinish();
       await pump(tester);
@@ -379,7 +412,7 @@ void main() {
       // wherever the person is standing.
       expect(find.textContaining('exec failed'), findsWidgets);
       expect(find.text('Try again'), findsOneWidget);
-      expect(find.text('Running on this phone'), findsNothing);
+      expect(find.text('Local model running'), findsNothing);
     });
   });
 
@@ -401,8 +434,8 @@ void main() {
         ),
       );
 
-      expect(find.text('THIS PHONE  42%'), findsOneWidget);
-      expect(find.text('MODEL ON THIS PHONE'), findsNothing);
+      expect(find.text('LOCAL MODEL  42%'), findsOneWidget);
+      expect(find.text('LOCAL MODEL'), findsNothing);
     });
 
     testWidgets('a failed engine says so rather than naming a model',
@@ -418,27 +451,34 @@ void main() {
         ),
       );
 
-      expect(find.text('THIS PHONE  NOT RUNNING'), findsOneWidget);
+      expect(find.text('LOCAL MODEL  NOT RUNNING'), findsOneWidget);
     });
 
     testWidgets('the chat says starting while the model is still being unpacked',
         (tester) async {
-      await tester.runAsync(() async {
-        await store.completeOnboarding();
-        await store.put('engine', 'onDevice');
-      });
+      await tester.runAsync(store.completeOnboarding);
       final engine = _FakeEngine();
-      await mountChat(tester, engine: engine);
+      await mountChat(tester, engine: engine, stored: 'onDevice');
 
-      // The launch warm-up is under way and is not finished.
-      expect(find.text('THIS PHONE  42%'), findsOneWidget);
-      expect(find.text('MODEL ON THIS PHONE'), findsNothing);
+      // Nothing has asked for the engine yet: the warm-up belongs to launch, and
+      // this is a chat screen mounted on its own.
+      expect(engine.starts, 0);
+      expect(find.text('LOCAL MODEL  42%'), findsNothing);
+
+      // This is what `main.dart` does first thing, and what the launch is for.
+      unawaited(ProviderScope.containerOf(tester.element(find.byType(ChatScreen)))
+          .read(engineWarmUpProvider.future));
+      await pump(tester);
+
+      // Under way and not finished.
+      expect(find.text('LOCAL MODEL  42%'), findsOneWidget);
+      expect(find.text('LOCAL MODEL'), findsNothing);
 
       engine.letFinish();
       await pump(tester);
 
-      // Only once it has answered is it a model on this phone.
-      expect(find.text('MODEL ON THIS PHONE'), findsOneWidget);
+      // Only once it has answered is the local model there.
+      expect(find.text('LOCAL MODEL'), findsOneWidget);
     });
   });
 }

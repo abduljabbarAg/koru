@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../currency.dart';
+import '../engine.dart';
 import '../guide.dart';
 import '../human_date.dart';
 import '../mascot/mascot.dart';
@@ -13,6 +14,8 @@ import '../widgets.dart';
 import '../widgets/thinking_dots.dart';
 import 'chat_reply.dart';
 import 'engine_bar.dart';
+import 'engine_sheet.dart';
+import 'settings_cloud.dart';
 
 /// The reply renderer lives beside this file and is re-exported, so a reply can
 /// still be driven on its own through `package:koru/screens/chat.dart`.
@@ -227,6 +230,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               onDiscard: () => ref
                                   .read(chatProvider.notifier)
                                   .discardWrite(),
+                              onFixEngine: (u) => _fixEngine(context, u),
                             );
                           },
                         ),
@@ -398,8 +402,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         const SizedBox(height: KoruSpace.sm),
         Text(
-          'Those questions are answered here, on this phone. '
-          'Faith, health, medicine and law go to a stronger model instead.',
+          'Those questions are answered by the local model. Faith, health, '
+          'medicine and law go to the cloud model instead.',
           textAlign: TextAlign.center,
           style: KoruType.bodySmall,
         ),
@@ -424,6 +428,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ],
     );
+  }
+
+  /// Carries out the action on a "no engine could answer" card.
+  ///
+  /// Three destinations and no fourth. The local model is started here rather
+  /// than by opening the switcher, because the person is already looking at the
+  /// question they asked and a start takes a moment: sending them somewhere to
+  /// arrange it is the thing that made "I cannot select the local model" feel
+  /// like a dead end.
+  Future<void> _fixEngine(BuildContext context, EngineUnavailable down) async {
+    switch (down.recovery) {
+      case EngineRecovery.startLocalModel:
+        await ref.read(chatProvider.notifier).ensureEngineRunning();
+      case EngineRecovery.addCloudKey:
+        if (!context.mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const CloudSettingsScreen()),
+        );
+      case EngineRecovery.chooseEngine:
+        if (!context.mounted) return;
+        await showEngineSwitcher(context);
+    }
   }
 
   Future<void> _editMessage(BuildContext context, int index, String current) async {
@@ -477,6 +503,7 @@ class _ChatBubble extends StatefulWidget {
     required this.onEdit,
     required this.onApprove,
     required this.onDiscard,
+    required this.onFixEngine,
     required this.engineStarting,
     required this.engineProgress,
     required this.engineProblem,
@@ -496,7 +523,7 @@ class _ChatBubble extends StatefulWidget {
   /// Set when this turn opens a new day in the thread.
   final String? dayDivider;
 
-  /// Whether the on-device engine is being brought up right now, and how far.
+  /// Whether the local model is being brought up right now, and how far.
   final bool engineStarting;
   final int? engineProgress;
   final String? engineProblem;
@@ -504,6 +531,9 @@ class _ChatBubble extends StatefulWidget {
   final void Function(String text) onEdit;
   final VoidCallback onApprove;
   final VoidCallback onDiscard;
+
+  /// Runs the action on the "no engine could answer" card, if this turn has one.
+  final void Function(EngineUnavailable down) onFixEngine;
 
   @override
   State<_ChatBubble> createState() => _ChatBubbleState();
@@ -562,6 +592,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
                       'Reading your records' => KoruActivity.reading,
                       'Writing an answer' => KoruActivity.writing,
                       'Waking up' => KoruActivity.waking,
+                      // The engine is not up yet. Named rather than left as a
+                      // generic wait, so the silence after send reads as a start
+                      // and not as a failure.
+                      'Starting the local model' =>
+                        KoruActivity.startingLocalModel,
                       'Reading your list' => KoruActivity.readingList,
                       'Checking what is due' => KoruActivity.checking,
                       'Looking up your clients' => KoruActivity.looking,
@@ -604,6 +639,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
             HandoffCard(
               plan: m.handoff!,
               onDismiss: () => setState(() => _handoffDismissed = true),
+            ),
+          if (m.unavailable != null)
+            KoruEngineDownCard(
+              unavailable: m.unavailable!,
+              onFix: () => widget.onFixEngine(m.unavailable!),
             ),
           if (m.proposed is ProposedPlan)
             PlanCard(

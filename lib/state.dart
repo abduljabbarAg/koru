@@ -18,7 +18,6 @@ import 'handoff.dart';
 import 'local/bulk_import.dart';
 import 'local/bundled_engine.dart';
 import 'local/engine_warm.dart';
-import 'local/local_assistant.dart';
 import 'local/local_model_client.dart';
 import 'local/write_intent.dart';
 import 'models.dart';
@@ -46,7 +45,7 @@ final packetProvider = FutureProvider<ContextPacket>((ref) async {
 });
 
 /// Where a reply came from. The chat screen shows this so the user can always
-/// tell an on-device answer from a cloud one.
+/// tell a local answer from a cloud one.
 enum AnswerSource { local, cloud, human }
 
 final cloudKeyProvider = FutureProvider.family<String, String>((ref, providerId) async {
@@ -80,6 +79,13 @@ class Msg {
   /// the message was understood as an instruction to record something.
   final ProposedWrite? proposed;
 
+  /// Set instead of an answer when the chosen engine could not answer at all.
+  ///
+  /// Carries the one tap that fixes it. The alternative used to be a substitute
+  /// answer from the app's own rules, which is worse than silence: it put a
+  /// sentence under a Koru badge and let the reader believe a model had spoken.
+  final EngineUnavailable? unavailable;
+
   const Msg(
     this.role,
     this.text, {
@@ -91,6 +97,7 @@ class Msg {
     this.handoff,
     this.tokensPerSecond,
     this.proposed,
+    this.unavailable,
   });
 
   Msg copyWith({String? text, bool? pending, ProposedWrite? proposed}) => Msg(
@@ -104,6 +111,7 @@ class Msg {
         handoff: handoff,
         tokensPerSecond: tokensPerSecond,
         proposed: proposed ?? this.proposed,
+        unavailable: unavailable,
       );
 
   /// The same message, stamped with when it arrived.
@@ -118,6 +126,7 @@ class Msg {
         handoff: handoff,
         tokensPerSecond: tokensPerSecond,
         proposed: proposed,
+        unavailable: unavailable,
       );
 
   AnswerSource get source {
@@ -142,9 +151,13 @@ class ChatState {
   final bool busy;
   final bool loaded;
 
-  /// Progress of the local engine warming up, 0 to 100, while null when it is
-  /// not happening. Shown on the splash and the chat rather than hidden in
-  /// Settings, because this is now something the app does on its own.
+  /// Progress of the local model warming up, 0 to 100, while null when it is not
+  /// happening. Shown on the splash and the chat rather than hidden in
+  /// Settings, because this is something the app does on its own.
+  ///
+  /// [EngineProgress.unpacking] is the one value that is not a percentage: the
+  /// first-run copy out of the APK reports nothing, and every surface that
+  /// draws this one has to switch on it rather than print it.
   final int? engineProgress;
 
   /// Set when the engine could not be brought up, so the failure is visible
@@ -191,9 +204,9 @@ class ChatState {
       );
 }
 
-const _greeting = 'I am here, and I run on this phone. Ask about your work, '
-    'your money and your deadlines. I will tell you when a person should '
-    'answer instead of me.';
+const _greeting = 'I am here, and I answer with the local model. Ask about '
+    'your work, your money and your deadlines. I will tell you when a person '
+    'should answer instead of me.';
 
 class ChatNotifier extends Notifier<ChatState> {
   @override
@@ -212,7 +225,10 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> load() async {
     if (state.loaded) return;
     final store = await ref.read(storeProvider.future);
-    _warmEngine(store);
+    // The engine is not warmed here. Launch owns that — `engineWarmUpProvider`
+    // — because a chat screen cannot mount before the gate has, so by the time
+    // this runs the warm-up is already under way and a second request from here
+    // would only queue a second start behind it.
     final records = await store.chat();
     if (records.isEmpty) {
       state = state.copyWith(loaded: true);
@@ -240,19 +256,6 @@ class ChatNotifier extends Notifier<ChatState> {
       loaded: true,
     );
   }
-
-  /// Everything the local assistant is allowed to know, gathered once.
-  Future<LocalFacts> _facts(ProfileStore store) async => LocalFacts(
-        nickname: (await store.get('nickname')) ?? '',
-        lifeStage: (await store.get('stage')) ?? '',
-        goals: (await store.get('goals')) ?? '',
-        clients: await store.clients(),
-        received: await store.receivedTotals(),
-        deadlines: await store.deadlines(),
-        projects: await store.projects(),
-        projectNotes: await _latestNotePerProject(store),
-        events: await store.events(),
-      );
 
   Future<void> ask(String question) async {
     final q = question.trim();
@@ -321,14 +324,28 @@ class ChatNotifier extends Notifier<ChatState> {
   /// servers onto one port.
   Future<bool>? _starting;
 
-  /// Brings the on-device engine up, and says how it is getting on.
+  /// Whether this session has watched the local model come up and answer.
   ///
-  /// Public because choosing "model on this phone" from the chat has to start it
-  /// there and then. The complaint behind this was having to pick the engine,
-  /// walk to Settings, press start there and walk back, with nothing on the way
-  /// saying which of those steps had already happened. The same method serves
-  /// that and the launch warm-up below, so the two can never start the engine
-  /// differently.
+  /// Set when a start succeeds and cleared when one fails, which is exactly the
+  /// pair of moments the engine's own state can move. Never probed for: a probe
+  /// is a round trip on the loopback port, and doing one per question to learn
+  /// something that cannot have changed is how a chat gets slower the longer it
+  /// runs.
+  bool _engineUp = false;
+
+  /// Whether the local model is up, as this session has seen it.
+  ///
+  /// Read by the resume hook, which asks for a start again only when the answer
+  /// might have changed while the app was away.
+  bool get engineUp => _engineUp;
+
+  /// Brings the local model up, and says how it is getting on.
+  ///
+  /// Public because choosing "Local model" from the chat has to start it there
+  /// and then. The complaint behind this was having to pick the engine, walk to
+  /// Settings, press start there and walk back, with nothing on the way saying
+  /// which of those steps had already happened. The same method serves that and
+  /// the launch warm-up, so the two can never start the engine differently.
   ///
   /// Returns whether something is answering when it finishes. Progress and any
   /// reason for a failure land in the chat state, which is what the banner, the
@@ -370,10 +387,11 @@ class ChatNotifier extends Notifier<ChatState> {
     } catch (e) {
       outcome = LocalEngineOutcome(
         running: false,
-        problem: 'The model on this phone did not start: $e',
+        problem: 'The local model did not start: $e',
       );
     }
     if (_gone) return outcome.running;
+    _engineUp = outcome.running;
 
     if (!outcome.running) {
       state = state.copyWith(
@@ -402,20 +420,24 @@ class ChatNotifier extends Notifier<ChatState> {
     return true;
   }
 
-  /// Brings the chosen engine up without being asked.
+  /// Brings the local model up without being asked.
   ///
-  /// Choosing "on-device model" means wanting the local engine, so the app starts
-  /// it rather than making that a second job for the person: the model is inside
-  /// the APK, and there is nothing about starting it that is their decision.
+  /// Choosing the local model means wanting it, so the app starts it rather than
+  /// making that a second job for the person: the model is inside the APK, and
+  /// there is nothing about starting it that is their decision.
   ///
-  /// Deliberately not awaited by load(). A cold start copies about half a
-  /// gigabyte out of the APK and takes tens of seconds, and blocking the chat
-  /// on it would make the app look dead on open. It reports progress instead.
-  void _warmEngine(ProfileStore store) {
-    unawaited(() async {
-      if (KoruEngine.parse(await store.get('engine')) != KoruEngine.onDevice) return;
-      await ensureEngineRunning();
-    }());
+  /// Public because the launch warm-up in `main.dart` asks for it before anything
+  /// else can be awaited. Measured on the target phone: about 3 seconds from
+  /// process spawn to listening, and — once, on the very first run — a 248 MB
+  /// unpack on top of that. Both are worth spending while the user is reading
+  /// onboarding rather than while they are waiting for an answer.
+  ///
+  /// Not awaited by its callers either. The chat must be readable while this is
+  /// under way; that is the whole difference between a warm model and a fast app.
+  Future<void> warmUpEngine() async {
+    final store = await ref.read(storeProvider.future);
+    if (KoruEngine.parse(await store.get('engine')) != KoruEngine.onDevice) return;
+    await ensureEngineRunning();
   }
 
   /// Prefills the real system prompt so the first question is not a cold start.
@@ -738,9 +760,11 @@ class ChatNotifier extends Notifier<ChatState> {
       );
     }
 
+    // Two engines, and both of them are models. There is no third path that
+    // answers out of the records instead, because that is the thing this app used
+    // to do whenever a model was not available and it is what made a broken
+    // engine look like a fast one.
     switch (KoruEngine.parse(await store.get('engine'))) {
-      case KoruEngine.builtIn:
-        return _askBuiltIn(q, routing, store);
       case KoruEngine.onDevice:
         return _askOnDevice(q, routing, store, history, isStale);
       case KoruEngine.cloud:
@@ -853,42 +877,47 @@ class ChatNotifier extends Notifier<ChatState> {
     state = state.copyWith(messages: messages);
   }
 
-  /// Deterministic answers from the user's own records. No model, no network,
-  /// no RAM. The default, because it works the instant the app opens.
-  Future<Msg> _askBuiltIn(String q, RoutingDecision routing, ProfileStore store) async {
-    // The last question before this one, so a follow-up that has no subject of
-    // its own can borrow one. Only the most recent user turn: the assistant
-    // never needs to reach further back, and looking further would let an
-    // unrelated old question supply the subject.
-    final priorUser = state.messages
-        .where((m) => m.role == MsgRole.user)
-        .map((m) => m.text)
-        .toList();
-    final previous = priorUser.length >= 2 ? priorUser[priorUser.length - 2] : null;
-    final answer = const LocalAssistant().answer(
-      question: q,
-      facts: await _facts(store),
-      previousQuestion: previous,
-    );
-    return Msg(
-      MsgRole.koru,
-      answer.text,
-      why: routing.reason,
-      local: true,
-      engine: KoruEngine.builtIn,
-    );
+  /// Waits for a local-model start that is already under way, and says so.
+  ///
+  /// Called at the top of every on-device turn, and the reason the answer to a
+  /// question typed straight after opening the app is a model answer rather than
+  /// a failure card. It used to ask a port that had nothing on it yet and report
+  /// "I cannot answer that" — one second before the model would have answered.
+  /// Nothing was wrong with the engine; it had not finished starting.
+  ///
+  /// Only a start already in flight is waited on: the launch warm-up, a start
+  /// from the switcher, or one from Settings. Anything not in flight is left
+  /// alone, on purpose. No probe, because the one thing this must not add to a
+  /// working chat is a round trip on the loopback port per question. And no new
+  /// start, because a turn that started its own engine would do so on *every*
+  /// question after any failure, turning one broken start into a channel of them.
+  /// With nothing to wait for, the turn streams and reports what came back: a
+  /// real answer, or the honest card with the engine's own words and the one tap
+  /// that starts it.
+  ///
+  /// Bounded by the engine's own start timeout rather than by anything here, so
+  /// a start that never finishes cannot leave the composer stuck on a spinner
+  /// with nothing to press.
+  Future<void> _awaitLocalModel() async {
+    final starting = _starting;
+    if (starting == null) return;
+    if (state.activity != 'Starting the local model') {
+      state = state.copyWith(activity: 'Starting the local model');
+    }
+    await starting;
   }
 
-  /// Real generation from a model served on this device over loopback.
+  /// Real generation from the model served on this device over loopback.
   ///
   /// Streams, because a median of about fifteen seconds of silence reads as a
   /// crash. Measured on the target phone: 2.57 tok/s decode with prefill
   /// dominating, so tokens are shown as they arrive.
   ///
-  /// Falls back to the built-in engine rather than failing outright, because
-  /// someone who picked the local model on a phone that has since filled up
-  /// should get an answer, not an error. The fallback says so, so nothing is
-  /// quietly downgraded behind their back.
+  /// Does not fall back to anything. It used to fall back to the deleted
+  /// built-in assistant, which answered from the records in milliseconds and was
+  /// therefore the reason a phone with no model running looked faster than a
+  /// frontier model. Now an unreachable engine is reported, with the tap that
+  /// starts it sitting under the answer.
   Future<Msg> _askOnDevice(
     String q,
     RoutingDecision routing,
@@ -896,9 +925,20 @@ class ChatNotifier extends Notifier<ChatState> {
     List<ChatTurn> history,
     bool Function() isStale,
   ) async {
-    final config = await ref.read(localModelProvider.future);
     final client = ref.read(localModelClientProvider);
     final routing2 = routing;
+
+    // Before anything else, because the engine being up is the one precondition
+    // for everything that follows, including the endpoint this asks at.
+    //
+    // It used to be assumed. A question sent while the launch warm-up was still
+    // going therefore asked a port with nothing on it and came back "I cannot
+    // answer that" — one second before the model would have answered. That is
+    // the worst possible moment to report an engine as down, and it is exactly
+    // what somebody who opened the app and typed straight away was shown.
+    await _awaitLocalModel();
+
+    final config = await ref.read(localModelProvider.future);
 
     final system = LocalModelPrompt.build(
       packet: await store.packet(),
@@ -953,14 +993,14 @@ class ChatNotifier extends Notifier<ChatState> {
             return Msg(
               MsgRole.koru,
               'I am stepping aside on this one. Here is who to talk to.',
-              why: 'The model on this phone drifted into an area that needs a person.',
+              why: 'The local model drifted into an area that needs a person.',
               handoff: handoffPlanFor(routing2, q),
             );
           }
           return Msg(
             MsgRole.koru,
             text,
-            why: 'Answered by the model on this phone.',
+            why: 'Answered by the local model.',
             local: true,
             engine: KoruEngine.onDevice,
             tokensPerSecond: tokensPerSecond,
@@ -974,11 +1014,20 @@ class ChatNotifier extends Notifier<ChatState> {
       failure = '$e';
     }
 
-    final fallback = await _askBuiltIn(q, routing, store);
-    final note = unavailable != null
-        ? 'I would have used the model on this phone but could not reach it: $unavailable'
-        : 'The local model did not answer: $failure';
-    return fallback.copyWith(text: '${fallback.text}\n\n($note)');
+    final down = EngineUnavailable(
+      detail: (unavailable ?? failure)?.toString().trim() ?? '',
+      recovery: EngineRecovery.startLocalModel,
+    );
+    // No engine ran, so no engine is stamped on the reply. A badge reading
+    // "LOCAL MODEL" under a sentence no model wrote is the lie this
+    // whole path exists to stop telling.
+    return Msg(
+      MsgRole.koru,
+      down.text,
+      why: 'The local model could not answer.',
+      local: true,
+      unavailable: down,
+    );
   }
 
   /// Replaces the text of the bubble currently being written.
@@ -1069,13 +1118,21 @@ class ChatNotifier extends Notifier<ChatState> {
           engine: KoruEngine.cloud,
         );
       case CloudUnavailable():
-        // No key. Answer from the records and say why, rather than passing off a
-        // weaker answer as the stronger one the user asked for.
-        final fallback = await _askBuiltIn(q, routing, store);
-        return fallback.copyWith(
-          text: '${_honestAboutWrites(fallback.text)}\n\n(I answered that '
-              'from your own records because no ${selection.provider.label} '
-              'key is set. Add one in Settings.)',
+        // No key, so nothing was asked of anybody. The old reply answered from
+        // the user's records and put "I answered that from your own records" in
+        // brackets underneath, which is an answer to a question about faith or
+        // law written by phrase matching. Now it says the key is missing and
+        // offers the screen that takes one.
+        final down = EngineUnavailable(
+          detail: 'No ${selection.provider.label} key is set',
+          recovery: EngineRecovery.addCloudKey,
+        );
+        return Msg(
+          MsgRole.koru,
+          down.text,
+          why: 'No cloud key is set for ${selection.provider.label}.',
+          local: false,
+          unavailable: down,
         );
       case CloudFailure(:final reason):
         return Msg(
@@ -1088,7 +1145,7 @@ class ChatNotifier extends Notifier<ChatState> {
     }
   }
 
-  /// Facts for the on-device model, in the shape its prompt wants.
+  /// Facts for the local model, in the shape its prompt wants.
   Future<LocalEngineFacts> _modelFacts(ProfileStore store) async => LocalEngineFacts(
         nickname: (await store.get('nickname')) ?? '',
         goals: (await store.get('goals')) ?? '',
@@ -1258,13 +1315,14 @@ final availableModelsProvider = FutureProvider<List<LocalModelFile>>((ref) async
   return ref.watch(bundledEngineProvider).models();
 });
 
-/// Whether the on-device engine could actually run.
+/// Whether the local model could actually run.
 ///
-/// Since 1.0.0 the binary and the 0.5B model are out of the APK, so selecting
-/// the on-device engine on a fresh install found nothing to start and silently
-/// fell back to the built-in assistant. That fallback answers in milliseconds,
-/// which is exactly why "the local model is so much faster than cloud" looked
-/// true: no model was running. The setting has to say so instead.
+/// Since 1.0.0 the binary and the model are out of the APK, so this is normally
+/// true and the question is only asked to keep a build without them honest. It
+/// used to matter more than that: a build that had no engine to start fell back
+/// to the built-in assistant, which answers in milliseconds, which is exactly
+/// why "the local model is so much faster than cloud" looked true — no model was
+/// running. Now the app refuses to answer at all in that case, and says so.
 final localEnginePresentProvider = FutureProvider<bool>((ref) async {
   if (!await ref.watch(bundledEngineProvider).available) return false;
   final models = await ref.watch(availableModelsProvider.future);
@@ -1448,7 +1506,7 @@ final guideFactsProvider = FutureProvider<ScreenFacts>((ref) async {
   );
 });
 
-/// Config for the on-device model, if one has been set up.
+/// Config for the local model, if one has been set up.
 final localModelProvider = FutureProvider<LocalModelConfig>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return localModelConfigFrom(await store.get('local_model'));

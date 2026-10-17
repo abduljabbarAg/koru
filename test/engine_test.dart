@@ -334,16 +334,66 @@ void main() {
     });
   });
   group('KoruEngine', () {
-    test('falls back to built in for an unknown stored value', () {
-      expect(KoruEngine.parse(null), KoruEngine.builtIn);
-      expect(KoruEngine.parse('nonsense'), KoruEngine.builtIn);
+    // The migration. This is the only thing standing between an install that was
+    // on the deleted built-in engine and a chat that cannot answer anything, so
+    // it is checked on the exact strings that are sitting in the profile table
+    // on somebody's phone rather than on the shape of the enum.
+    test('an install on the deleted built-in engine lands on a working one', () {
+      expect(KoruEngine.parse('builtIn'), KoruEngine.onDevice,
+          reason: "the literal string on disk today is 'builtIn'");
+    });
+
+    test('an unknown or corrupt stored value lands on a working one', () {
+      for (final stored in [null, '', 'nonsense', 'BUILTIN', 'on device', '0']) {
+        expect(KoruEngine.parse(stored), KoruEngine.onDevice,
+            reason: 'parse($stored) must not leave the app with no engine');
+      }
+    });
+
+    test('a stored value that is still a real engine is respected', () {
       expect(KoruEngine.parse('onDevice'), KoruEngine.onDevice);
       expect(KoruEngine.parse('cloud'), KoruEngine.cloud);
     });
+
+    test('there are two engines, and both are models', () {
+      expect(KoruEngine.values, [KoruEngine.onDevice, KoruEngine.cloud]);
+    });
+
     test('every engine explains itself', () {
       for (final engine in KoruEngine.values) {
         expect(engine.label, isNotEmpty);
         expect(engine.blurb, isNotEmpty);
+      }
+    });
+  });
+  group('EngineUnavailable', () {
+    // The wording is the feature. The old behaviour answered a question nobody
+    // asked with rules-based prose; what replaced it has to say what is missing
+    // and what to do about it, in that order, on every path.
+    test('a model that is not running says so and offers to start it', () {
+      const down = EngineUnavailable(
+        detail: 'Could not reach it',
+        recovery: EngineRecovery.startLocalModel,
+      );
+      expect(down.text, contains('cannot answer'));
+      expect(down.text, contains('not running'));
+      expect(down.actionLabel, 'Start the local model');
+    });
+
+    test('a missing key says which provider and offers to add one', () {
+      const down = EngineUnavailable(
+        detail: 'There is no OpenRouter key saved',
+        recovery: EngineRecovery.addCloudKey,
+      );
+      expect(down.text, contains('cannot answer'));
+      expect(down.text, contains('OpenRouter'));
+      expect(down.actionLabel, 'Add a cloud key');
+    });
+
+    test('no offer is phrased as an answer', () {
+      for (final recovery in EngineRecovery.values) {
+        final down = EngineUnavailable(detail: 'x', recovery: recovery);
+        expect(down.text, startsWith('I cannot answer that.'));
       }
     });
   });

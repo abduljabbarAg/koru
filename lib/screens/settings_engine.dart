@@ -13,7 +13,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'engine_log.dart';
 
-/// Which engine answers, and the model this phone can run.
+/// Which engine answers, and which model it runs.
 ///
 /// Titled the same words as the switcher sheet opens with, because it is the
 /// same question asked in the same place: "who answers". It used to be called
@@ -59,7 +59,7 @@ class _EnginePicker extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final engine = ref.watch(engineProvider).valueOrNull ?? KoruEngine.builtIn;
+    final engine = ref.watch(engineProvider).valueOrNull ?? KoruEngine.onDevice;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -69,7 +69,6 @@ class _EnginePicker extends ConsumerWidget {
             blurb: option.blurb,
             selected: engine == option,
             icon: switch (option) {
-              KoruEngine.builtIn => Icons.storage_rounded,
               KoruEngine.onDevice => Icons.memory_rounded,
               KoruEngine.cloud => Icons.cloud_outlined,
             },
@@ -90,14 +89,14 @@ class _EnginePicker extends ConsumerWidget {
   }
 }
 
-/// Says so when the on-device engine cannot run.
-///
-/// It used to be a permanent condition: the APK shipped no engine and no model,
-/// so choosing the on-device engine found nothing to start, fell back to the
-/// built-in assistant and answered in a few milliseconds, which reads exactly
-/// like a model being fast. Bundled builds no longer hit this, and a build where
-/// the engine could not be fetched still does — so it is stated when it is true
-/// rather than left in as a warning nobody can act on.
+/// Says so when there is no local model to run.
+  ///
+  /// There is no fallback any more, so a build with no engine and no model on it
+  /// cannot answer a question at all. That used to be hidden: choosing the local
+  /// model found nothing to start, fell back to a rules-based assistant and
+  /// answered in a few milliseconds, which reads exactly like a model being
+  /// fast. Now it says the model is missing, and offers the button below that
+  /// adds one.
 class _EngineAbsentNotice extends ConsumerWidget {
   const _EngineAbsentNotice();
 
@@ -108,10 +107,10 @@ class _EngineAbsentNotice extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: KoruSpace.md),
       child: KoruNotice(
-        title: 'No model on this phone',
-        message: 'So the on-device option will answer from your own records '
-            'instead. That is quick, but it is not a model. Add a .gguf below '
-            'to run a real one.',
+        title: 'No local model',
+        message: 'So Koru cannot answer while the local model is selected. It '
+            'will say so rather than guess. Add a .gguf below to run a real '
+            'one.',
         icon: Icons.memory_rounded,
         tone: KoruTones.gold,
       ),
@@ -119,8 +118,8 @@ class _EngineAbsentNotice extends ConsumerWidget {
   }
 }
 
-/// Points Koru at a model server running on this phone, and says plainly what
-/// it is and is not good for.
+/// Points Koru at a model server of the person's own, and says plainly what it
+/// is and is not good for.
 class _LocalModelCard extends ConsumerStatefulWidget {
   const _LocalModelCard();
 
@@ -262,12 +261,14 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
   }
 }
 
-/// Starts the engine that ships inside the APK.
+/// Starts the local model that ships inside the APK.
 ///
 /// This is the path a normal user should never have to think about: the binary
-/// and the model are already in the app, so "on-device model" works with no
-/// setup. The first start copies several hundred megabytes out of the APK, which
-/// takes a while, so the progress is shown rather than a spinner.
+/// and the model are already in the app, so the local model works with no setup.
+/// The first start copies 248 MB out of the APK, which takes a while, so the
+/// progress is shown rather than a spinner — and, since the app now does this
+/// for itself at launch, by the time anybody opens this page it is usually
+/// already done.
 class _BundledModelPanel extends ConsumerStatefulWidget {
   const _BundledModelPanel();
 
@@ -282,9 +283,9 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
 
   /// Picks a different local model.
   ///
-  /// The bundled 0.5B is not the best thing this phone can run, but it is the
+  /// The bundled one is not the best thing a phone can run, but it is the
   /// fastest, and the choice depends on what you are asking: a sharper model
-  /// three times slower is a good trade for a hard question and a bad one for
+  /// several times slower is a good trade for a hard question and a bad one for
   /// everything. So both are offered and neither is removed.
   ///
   /// Goes through the shared writer, so picking a model here and picking one in
@@ -327,7 +328,7 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
         Row(
           children: [
             Expanded(
-              child: Text('Model on this phone', style: KoruType.label),
+              child: Text('Models you can run', style: KoruType.label),
             ),
             TextButton.icon(
               onPressed: _importModel,
@@ -379,7 +380,7 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
       _starting = false;
       _ready = ok;
       _message = ok
-          ? 'Model running on this phone. It is now the active engine.'
+          ? 'Local model running. It is now the active engine.'
           : ref.read(chatProvider).engineProblem ?? 'The model did not start.';
     });
   }
@@ -432,8 +433,9 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
           ),
           const SizedBox(height: KoruSpace.sm),
           Text(
-            'A 0.5B model already inside this app. The first start copies it out '
-            'of the package, so expect it to take a minute.',
+            'The bundled model is already inside this app — 248 MB, unpacked out '
+            'of the package once, on first use. Koru starts it for you at launch, '
+            'so there is normally nothing to do here.',
             style: KoruType.caption,
           ),
           const SizedBox(height: KoruSpace.mdl),
@@ -444,12 +446,18 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
           if (_starting) ...[
             const SizedBox(height: KoruSpace.md),
             KoruProgressBar(
-              value: (progress ?? 0) / 100,
+              value: progress == EngineProgress.unpacking
+                  ? null
+                  : (progress ?? 0) / 100,
               color: KoruColors.leaf,
             ),
             const SizedBox(height: KoruSpace.xsm),
             Text(
-              'Loading the model... ${progress ?? 0}%',
+              // The copy out of the APK reports no percentage, and printing a
+              // zero for it is what made the first launch look frozen.
+              progress == EngineProgress.unpacking
+                  ? 'Unpacking the local model, 248 MB...'
+                  : 'Starting the local model... ${progress ?? 0}%',
               style: KoruType.caption,
             ),
           ],
@@ -470,7 +478,7 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
               ),
               onPressed: available == false ? null : _start,
               icon: const Icon(Icons.play_arrow_rounded, size: KoruSize.icon),
-              label: const Text('Start the bundled model'),
+              label: const Text('Start the local model'),
             ),
           ],
           // When it is unavailable, say why. A bare "NOT IN THIS BUILD" is what
@@ -514,9 +522,9 @@ class _EngineLogLink extends StatelessWidget {
           Text('If the model will not start', style: KoruType.rowTitleLarge),
           const SizedBox(height: KoruSpace.xs),
           Text(
-            'The engine writes down what went wrong on this phone. Read it, '
-            'and copy it in if you report it — it is the difference between '
-            '"it does not work" and an answer.',
+            'The engine writes down what went wrong, in a log on this phone. '
+            'Read it, and copy it in if you report it — it is the difference '
+            'between "it does not work" and an answer.',
             style: KoruType.bodySmall,
           ),
           const SizedBox(height: KoruSpace.md),
