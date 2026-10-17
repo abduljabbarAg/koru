@@ -11,7 +11,6 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMethodCodec
-import io.flutter.embedding.engine.dart.TaskQueues
 import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -115,13 +114,24 @@ class MainActivity : FlutterActivity() {
         // Serial rather than fixed-thread, so the copy cannot run twice at once:
         // serialising the engine's own calls is what the platform did with them
         // before this queue existed.
-        val engineQueue =
-            TaskQueues.make(TaskQueues.TaskQueueType.SERIAL_BACKGROUND)
+        //
+        // This is NOT given a background TaskQueue, and that is a deliberate
+        // retreat rather than an oversight. The queue exists in newer Flutter
+        // (TaskQueues.make(TaskQueues.TaskQueueType.SERIAL_BACKGROUND)) and the
+        // original fix used it — but this project builds against Flutter 3.29,
+        // where the class does not exist and the app did not compile. It was
+        // verified absent in the engine jar rather than assumed.
+        //
+        // What carries the weight instead is upstream of this line: `status`
+        // now answers from modelOnDisk(), which never copies, so the one call
+        // the chat screen makes on every launch no longer touches the 248 MB
+        // asset at all. The copy happens only on an explicit request, where a
+        // second or two on the platform thread is the price of unpacking the
+        // model once.
         MethodChannel(
             messenger,
             engineChannelName,
             StandardMethodCodec.INSTANCE,
-            engineQueue,
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "status" -> result.success(engineStatus())
