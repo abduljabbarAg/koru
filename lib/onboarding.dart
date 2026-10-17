@@ -418,7 +418,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         clip: KoruClip.wave,
         'What should I call you?',
         'A nickname, not a name. It stays on this device and is never attached '
-            'to anything sent to a cloud model.',
+            'to anything sent to the online model.',
         [
           TextField(
             controller: _nick,

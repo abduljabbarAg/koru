@@ -21,66 +21,80 @@ class ContextSettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Your context')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: [
-          packet.when(
-            loading: () => LinearProgressIndicator(color: KoruColors.leaf),
-            error: (e, _) => Text('$e'),
-            data: (p) => Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: [
+            packet.when(
+              // A named wait rather than a bare bar: the reader is on this page
+              // precisely to change what the app knows about them, and a spinner
+              // with no words is a worse thing to be staring at than "one
+              // moment" is.
+              loading: () => const KoruLoading(label: 'Reading what Koru knows'),
+              // Not the exception. A failed read here is a database message
+              // addressed to whoever is debugging it, and it is shown where the
+              // one thing this page can offer is still offered.
+              error: (e, _) => KoruErrorView(
+                onRetry: () => ref.invalidate(packetProvider),
+                what: 'read your context',
+              ),
+              data: (p) => KoruCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const KoruMark(size: 34),
-                        const SizedBox(width: 12),
+                        const KoruMark(size: KoruSize.badge),
+                        const SizedBox(width: KoruSpace.md),
                         Expanded(
-                          child: Text(p.nickname,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                          child: Text(
+                            p.nickname,
+                            style: KoruType.rowTitleLarge,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: KoruSpace.mdl),
                     if (p.lifeStage.isNotEmpty) _line('Stage', p.lifeStage),
                     if (p.business.isNotEmpty) _line('Work', p.business),
                     if (p.goals.isNotEmpty) _line('Goals', p.goals),
                     if (p.focus.isNotEmpty) _line('Focus', p.focus),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: KoruSpace.xsm),
                     OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize:
+                            const Size.fromHeight(KoruSize.buttonInCard),
+                      ),
                       onPressed: () => _editContext(context, ref),
-                      icon: const Icon(Icons.edit_outlined, size: 17),
+                      icon: const Icon(Icons.edit_outlined,
+                          size: KoruSize.iconSm),
                       label: const Text('Edit this context'),
                     ),
                   ],
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
+  /// One row of the card: what the field is called, and what is in it.
+  ///
+  /// The label column is the same width for every row so the values line up
+  /// under each other rather than stepping in and out with the label's length.
   Widget _line(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: KoruSpace.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 76,
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 12.5, color: KoruColors.inkFaint, fontWeight: FontWeight.w600)),
+            width: 72,
+            child: Text(label, style: KoruType.label),
           ),
-          Expanded(
-            child: Text(value,
-                style: TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4)),
-          ),
+          Expanded(child: Text(value, style: KoruType.bodyCompactStrong)),
         ],
       ),
     );
@@ -104,30 +118,37 @@ class ContextSettingsScreen extends ConsumerWidget {
       title: 'Your context',
       subtitle: 'This is what Koru knows about you. It stays on this device.',
       builder: (ctx) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: nick,
-            decoration: const InputDecoration(
-                labelText: 'Nickname', helperText: 'Never sent to a cloud model'),
+          KoruFieldStack(
+            children: [
+              TextField(
+                controller: nick,
+                decoration: const InputDecoration(
+                  labelText: 'Nickname',
+                  helperText: 'Never sent to the online model',
+                ),
+              ),
+              TextField(
+                controller: stage,
+                decoration: const InputDecoration(labelText: 'Stage'),
+              ),
+              TextField(
+                controller: business,
+                decoration: const InputDecoration(labelText: 'Work'),
+              ),
+              TextField(
+                controller: goals,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Goals'),
+              ),
+              TextField(
+                controller: focus,
+                decoration: const InputDecoration(labelText: 'Help me most with'),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          TextField(controller: stage, decoration: const InputDecoration(labelText: 'Stage')),
-          const SizedBox(height: 12),
-          TextField(
-              controller: business, decoration: const InputDecoration(labelText: 'Work')),
-          const SizedBox(height: 12),
-          TextField(
-            controller: goals,
-            maxLines: 3,
-            decoration: const InputDecoration(labelText: 'Goals'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: focus,
-            decoration: const InputDecoration(labelText: 'Help me most with'),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: KoruSpace.xl),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Save'),

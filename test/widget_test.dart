@@ -218,11 +218,11 @@ void main() {
 
     testWidgets('Start on the last step lands you in the app', (tester) async {
       useTallSurface(tester);
-      // A fresh install is also offered the permission explanation before the
-      // shell, so this store is marked as already having been asked. Otherwise
-      // this asserts the landing on HomeShell when the app is behaving exactly
-      // as designed and stopping one screen short.
-      await seed(tester, () => store.put('asked_permissions', '1'));
+      // No seeding needed. The permission explanation is only offered to somebody
+      // who has finished onboarding, and this starts them before onboarding, so
+      // it cannot be in the way. It used to seed asked_permissions='1' here to
+      // keep the screen out of the way, which is the flag whose meaning this
+      // change removed.
       await pumpApp(tester, const RootGate());
 
       // Splash first: it holds for a minimum time, and it only starts once the
@@ -567,7 +567,7 @@ void main() {
         (tester) async {
       await pumpApp(tester, const ChatScreen());
       expect(find.textContaining('answered here, on this phone'), findsOneWidget);
-      expect(find.text('CLOUD MODEL'), findsNothing);
+      expect(find.text('ONLINE MODEL'), findsNothing);
     });
 
     testWidgets('a blank question is not sent', (tester) async {

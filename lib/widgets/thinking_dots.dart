@@ -139,10 +139,10 @@ class _KoruThinkingDotsState extends State<KoruThinkingDots>
               );
             },
           ),
-        const SizedBox(width: KoruSpace.sm + 2),
+        const SizedBox(width: KoruSpace.sml),
         Text(
           widget.activity.label,
-          style: KoruType.bodySmall.copyWith(fontSize: 12.5, height: 1.2),
+          style: KoruType.meta.copyWith(height: 1.2),
         ),
       ],
     );

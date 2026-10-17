@@ -33,6 +33,14 @@ class KoruColors {
   static Color get onAccent => _active.onAccent;
   static Color get shadow => _active.shadow;
 
+  /// No paint at all.
+  ///
+  /// Written out as a number here so a screen asking for "paint nothing" is
+  /// asking the palette the same way it asks for everything else. The three
+  /// `Colors.transparent`s this replaced were the only raw colours left outside
+  /// this file, and a rule with a standing exception is not a rule.
+  static const Color nothing = Color(0x00000000);
+
   /// Darkened from #8A7F78.
   ///
   /// The original measured 3.68:1 on cream and 3.90:1 on white, against a
@@ -204,6 +212,13 @@ class KoruSize {
 
   /// An icon beside a label, or in a button.
   static const iconSm = 16.0;
+
+  /// An icon inside a pill or a badge, beside an 11-point bold label.
+  ///
+  /// Smaller than [iconSm] because the text it sits beside is: an icon at
+  /// [iconSm] inside a pill is taller than the word in it, and the pill stops
+  /// looking like one thing.
+  static const iconXs = 14.0;
 
   /// The smallest comfortable tap target.
   static const touch = 44.0;
@@ -397,6 +412,7 @@ class KoruType {
   static TextStyle get title => _active.title;
   static TextStyle get sheetTitle => _active.sheetTitle;
   static TextStyle get dialogTitle => _active.dialogTitle;
+  static TextStyle get pageTitle => _active.pageTitle;
   static TextStyle get metric => _active.metric;
   static TextStyle get stat => _active.stat;
   static TextStyle get rowTitle => _active.rowTitle;
@@ -411,6 +427,7 @@ class KoruType {
   static TextStyle get caption => _active.caption;
   static TextStyle get label => _active.label;
   static TextStyle get labelSmall => _active.labelSmall;
+  static TextStyle get tabLabel => _active.tabLabel;
   static TextStyle get micro => _active.micro;
   static TextStyle get button => _active.button;
   static TextStyle get badge => _active.badge;
@@ -468,6 +485,18 @@ class KoruTypeScale {
         fontWeight: FontWeight.w700,
         letterSpacing: -0.2,
         height: 1.25,
+        color: p.ink,
+      );
+
+  /// The one heading on a page that is mostly an icon and a paragraph.
+  ///
+  /// A step under [display]: these are asked once, are short, and are read with
+  /// the image above them rather than scanned on their own.
+  TextStyle get pageTitle => TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.8,
+        height: 1.14,
         color: p.ink,
       );
 
@@ -581,6 +610,18 @@ class KoruTypeScale {
         fontSize: 10.5,
         fontWeight: FontWeight.w700,
         letterSpacing: 1,
+        height: 1.2,
+        color: p.inkFaint,
+      );
+
+  /// A tab label under an icon in the bar at the bottom of the screen.
+  ///
+  /// Below [micro] because it is the one place a label is read rather than
+  /// scanned: it is looked at directly to find out where you are, in a row of
+  /// five, at the bottom of the screen, competing with nothing.
+  TextStyle get tabLabel => TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w500,
         height: 1.2,
         color: p.inkFaint,
       );

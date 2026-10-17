@@ -21,6 +21,12 @@ import 'surfaces.dart';
 /// list, the capacity grid — with three paddings and two different ways of
 /// showing the tick. Picking something is the most-repeated gesture in the app
 /// and it should look like the same gesture everywhere.
+///
+/// Chosen is marked three ways, not one. The fill alone fails the reader who
+/// cannot separate the two tints, on either brightness, and a hairline alone is
+/// invisible on the surface the tile sits on. So the chosen row gets the tint,
+/// a heavier outline, a tick, and the title in the accent — the tick being the
+/// part that carries it with colour switched off entirely.
 class KoruSelectableTile extends StatelessWidget {
   const KoruSelectableTile({
     super.key,
@@ -99,7 +105,11 @@ class KoruSelectableTile extends StatelessWidget {
                   large ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: KoruSize.icon, color: KoruColors.inkSoft),
+                  Icon(
+                    icon,
+                    size: KoruSize.icon,
+                    color: selected ? KoruColors.leaf : KoruColors.inkSoft,
+                  ),
                   const SizedBox(width: KoruSpace.md),
                 ],
                 Expanded(
@@ -114,14 +124,16 @@ class KoruSelectableTile extends StatelessWidget {
                         textAlign:
                             large ? TextAlign.center : TextAlign.start,
                         style: large
-                            ? KoruType.rowTitleLarge.copyWith(
-                                fontSize: 19,
-                                fontWeight:
-                                    selected ? FontWeight.w700 : FontWeight.w500,
+                            ? KoruType.dialogTitle.copyWith(
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: selected ? KoruColors.leaf : KoruColors.ink,
                               )
                             : KoruType.rowTitle.copyWith(
                                 fontWeight:
                                     selected ? FontWeight.w600 : FontWeight.w500,
+                                color: selected ? KoruColors.leaf : KoruColors.ink,
                               ),
                       ),
                       if (blurb != null && !large)
@@ -135,13 +147,19 @@ class KoruSelectableTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (trailing != null) trailing!
-                else if (selected && !large)
+                // The tick comes before whatever else the row says rather than
+                // instead of it. A chosen provider that also carries a status
+                // used to show the status and lose the tick, which is the one
+                // row on the sheet a reader could not tell was the answer.
+                if (selected && !large) ...[
                   Icon(
                     Icons.check_circle_rounded,
-                    size: 21,
+                    size: KoruSize.icon,
                     color: KoruColors.leaf,
                   ),
+                  if (trailing != null) const SizedBox(width: KoruSpace.sm),
+                ],
+                if (trailing != null) trailing!,
               ],
             ),
           ),
@@ -206,12 +224,20 @@ class KoruSelectablePill extends StatelessWidget {
                 ),
                 const SizedBox(width: KoruSpace.xs),
               ],
-              Text(
-                label,
-                style: KoruType.caption.copyWith(
-                  fontSize: dense ? 13 : 13.5,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected ? KoruColors.leaf : KoruColors.inkSoft,
+              // Flexible, so a label too long for the width wraps instead of
+              // overflowing the row. These labels are the questions the reader
+              // is being offered and the currencies they can pick; a chip that
+              // quietly cuts one of them in half is worse than a chip that is
+              // two lines tall. The longest suggestion does not fit on one line
+              // on a small phone, and it used to take the thread with it.
+              Flexible(
+                child: Text(
+                  label,
+                  style: (dense ? KoruType.bodySmall : KoruType.caption)
+                      .copyWith(
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: selected ? KoruColors.leaf : KoruColors.inkSoft,
+                  ),
                 ),
               ),
             ],

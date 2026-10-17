@@ -14,7 +14,18 @@ import '../widgets.dart';
 
 /// How far a row's separators start from the left edge, so they line up under
 /// the text rather than under the icon beside it: row padding, badge, gap.
-const double _rowTextInset = 16 + 34 + 12;
+///
+/// Named as the three tokens it is rather than as the sum, because a sum is
+/// three numbers that have to be found again by anyone who wants to know why it
+/// is that wide.
+const double _rowTextInset = KoruSpace.row + KoruSize.badge + KoruSpace.md;
+
+/// How far the follow-up button on an attention row is indented.
+///
+/// The sum of the three things in front of it rather than a number of its own,
+/// so moving any of them moves this with it instead of leaving a button sitting
+/// half under the text above it.
+const double _followUpInset = KoruSize.badge + KoruSpace.md + KoruSpace.lg;
 
 /// What needs doing today.
 ///
@@ -43,7 +54,7 @@ class TodayScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Today'),
         backgroundColor: KoruColors.cream,
-        surfaceTintColor: Colors.transparent,
+        surfaceTintColor: KoruColors.nothing,
       ),
       backgroundColor: KoruColors.cream,
       body: KoruSettle(
@@ -137,7 +148,14 @@ class TodayScreen extends ConsumerWidget {
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+        // The shared page padding, rather than the same four numbers written
+        // out here. It was already 20/10/20/40, so nothing moved.
+        padding: const EdgeInsets.fromLTRB(
+          KoruSpace.gutter,
+          KoruSpace.sml,
+          KoruSpace.gutter,
+          KoruSpace.tail,
+        ),
         children: children,
       ),
     );
@@ -186,7 +204,7 @@ class _Waiting extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.only(top: 56),
+      padding: EdgeInsets.only(top: KoruSpace.xxxl * 2),
       child: KoruLoading(label: 'Working out what is due'),
     );
   }
@@ -202,7 +220,7 @@ class _Broken extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 36),
+      padding: const EdgeInsets.only(top: KoruSpace.xxxl),
       child: KoruErrorView(onRetry: onRetry, what: 'work out what is due'),
     );
   }
@@ -231,41 +249,20 @@ class _Summary extends ConsumerWidget {
       if (balance > 0) owed += balance;
     }
     final symbol = ref.watch(currencyProvider).valueOrNull?.symbol ?? 'AED';
-    final text = Theme.of(context).textTheme;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: KoruColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KoruRadius.card),
-        side: BorderSide(color: KoruColors.line),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
-        child: Row(
+    return KoruCard(
+      padding: const EdgeInsets.all(KoruSpace.card),
+      child: Row(
           children: [
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'STILL OWED',
-                    style: text.labelSmall?.copyWith(
-                      color: KoruColors.inkFaint,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
+                  Text('STILL OWED', style: KoruType.label),
+                  const SizedBox(height: KoruSpace.xsm),
                   Text(
                     '$symbol ${_plain(owed)}',
-                    style: text.headlineSmall?.copyWith(
-                      color: KoruColors.ink,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.6,
-                      height: 1.15,
-                    ),
+                    style: KoruType.stat,
                   ),
                 ],
               ),
@@ -278,7 +275,6 @@ class _Summary extends ConsumerWidget {
                 icon: Icons.error_outline,
               ),
           ],
-        ),
       ),
     );
   }
@@ -302,12 +298,14 @@ class _AttentionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
     final tone = _toneFor(item.kind);
     final link = _followUpLink(ref);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.symmetric(
+        horizontal: KoruSpace.row,
+        vertical: KoruSpace.mdl,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -319,38 +317,25 @@ class _AttentionRow extends ConsumerWidget {
                 color: tone.tint,
                 background: tone.fill,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: KoruSpace.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.title,
-                      style: text.titleMedium?.copyWith(
-                        color: KoruColors.ink,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      item.detail,
-                      style: text.bodyMedium?.copyWith(
-                        color: KoruColors.inkSoft,
-                        height: 1.4,
-                      ),
-                    ),
+                    Text(item.title, style: KoruType.rowTitle),
+                    const SizedBox(height: KoruSpace.xxs),
+                    Text(item.detail, style: KoruType.bodyCompact),
                   ],
                 ),
               ),
             ],
           ),
           if (link != null) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: KoruSpace.xs),
             // Indented to the text, not the icon, so the button reads as part
             // of this row's words rather than as a new item in the list.
             Padding(
-              padding: const EdgeInsets.only(left: 46),
+              padding: const EdgeInsets.only(left: _followUpInset),
               child: _FollowUpButton(link: link),
             ),
           ],
@@ -439,19 +424,20 @@ class _FollowUpButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextButton.icon(
       onPressed: () => _open(context, link),
-      icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+      icon: const Icon(Icons.chat_bubble_outline_rounded,
+          size: KoruSize.iconSm),
       label: const Text('Follow up on WhatsApp'),
       style: TextButton.styleFrom(
         backgroundColor: KoruColors.leafSoft,
         foregroundColor: KoruColors.leaf,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(
+          horizontal: KoruSpace.mdl,
+          vertical: KoruSpace.xsm,
+        ),
         visualDensity: VisualDensity.compact,
-        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(KoruRadius.pill),
+        textStyle: KoruType.badge.copyWith(fontWeight: FontWeight.w700),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(KoruRadius.pill)),
         ),
       ),
     );
@@ -524,11 +510,13 @@ class _ProjectRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final personal = project.isPersonal;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+      padding: const EdgeInsets.symmetric(
+        horizontal: KoruSpace.row,
+        vertical: KoruSpace.mdl,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -537,44 +525,30 @@ class _ProjectRow extends StatelessWidget {
             color: personal ? KoruColors.clay : KoruColors.leaf,
             background: personal ? KoruColors.claySoft : KoruColors.leafSoft,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: KoruSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  project.name,
-                  style: text.titleMedium?.copyWith(
-                    color: KoruColors.ink,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3,
-                  ),
-                ),
+                Text(project.name, style: KoruType.rowTitle),
                 if (project.progressNote != null &&
                     project.progressNote!.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: KoruSpace.xxs),
                   Text(
                     project.progressNote!,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: text.bodyMedium?.copyWith(
-                      color: KoruColors.inkFaint,
-                      height: 1.35,
-                    ),
+                    style: KoruType.caption,
                   ),
                 ],
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              '${(project.progress * 100).round()}%',
-              style: text.labelLarge?.copyWith(
-                color: KoruColors.inkSoft,
-                fontWeight: FontWeight.w700,
-              ),
+          const SizedBox(width: KoruSpace.md),
+          Text(
+            '${(project.progress * 100).round()}%',
+            style: KoruType.rowTitleCompact.copyWith(
+              color: KoruColors.inkSoft,
             ),
           ),
         ],
@@ -592,7 +566,7 @@ class _AllClear extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: KoruSpace.xs),
       child: EmptyHint(
         icon: Icons.check_circle_outline,
         tint: KoruColors.leaf,
@@ -618,33 +592,25 @@ class _MorningLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final q = quoteFor(DateTime.now());
-    final text = Theme.of(context).textTheme;
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(top: 2),
-      padding: const EdgeInsets.only(top: 20),
+      margin: const EdgeInsets.only(top: KoruSpace.xxs),
+      padding: const EdgeInsets.only(top: KoruSpace.xl),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: KoruColors.line)),
+        border: Border(top: KoruBorders.hairline()),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             q.text,
-            style: text.bodyMedium?.copyWith(
+            style: KoruType.bodyCompact.copyWith(
               fontStyle: FontStyle.italic,
-              color: KoruColors.inkSoft,
               height: 1.55,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            q.by,
-            style: text.labelSmall?.copyWith(
-              color: KoruColors.inkFaint,
-              letterSpacing: 0.3,
-            ),
-          ),
+          const SizedBox(height: KoruSpace.xsm),
+          Text(q.by, style: KoruType.micro),
         ],
       ),
     );

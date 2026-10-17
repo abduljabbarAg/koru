@@ -8,7 +8,14 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-/// Provider, model, key, and a test that costs nothing.
+/// Which company answers online: provider, model, key, and a test that costs
+/// nothing.
+///
+/// Titled for the company rather than for the model, because the model is what
+/// the company serves and the company is what you give the key to. It was called
+/// "Cloud model", the same words the engine option in [EngineSettingsScreen]
+/// used, so the index had two rows called "Cloud model" and no way to tell the
+/// engine from the provider.
 ///
 /// Its own page because it is the one setting that asks for a secret: twenty
 /// providers, several models each, a key field, and a result that has to be
@@ -20,18 +27,20 @@ class CloudSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cloud model')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: [
-          const _CloudCard(),
-          const SizedBox(height: 8),
-          Text(
-            'Any provider works. Pick one, paste the key, test it. Only questions '
-            'about faith, health, medicine or law are ever sent.',
-            style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
-          ),
-        ],
+      appBar: AppBar(title: const Text('Cloud provider')),
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: [
+            const _CloudCard(),
+            Text(
+              'Any provider works. Pick one, paste the key, test it. Only '
+              'questions about faith, health, medicine or law are ever sent, '
+              'and only when the online model is the engine.',
+              style: KoruType.bodySmall,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -148,138 +157,142 @@ class _CloudCardState extends ConsumerState<_CloudCard> {
     final provider = providerById(_providerId);
     final hasKey = ref.watch(cloudKeyProvider(_providerId)).valueOrNull?.isNotEmpty ?? false;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search, because there are twenty providers and several models
-            // each. Scrolling a dropdown to find a model is the wrong interface,
-            // and someone looking for "glm" should not have to know whether that
-            // is Z.ai, Zhipu or a custom endpoint.
-            TextField(
-              controller: _cloudSearch,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: 'Find a provider or model',
-                hintText: 'atria, glm, grok, claude, qwen...',
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                suffixIcon: _cloudSearch.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                        onPressed: () => setState(() => _cloudSearch.clear()),
-                      ),
-              ),
+    return KoruCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search, because there are twenty providers and several models
+          // each. Scrolling a dropdown to find a model is the wrong interface,
+          // and someone looking for "glm" should not have to know whether that
+          // is Z.ai, Zhipu or a custom endpoint.
+          TextField(
+            controller: _cloudSearch,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              labelText: 'Find a provider or model',
+              hintText: 'atria, glm, grok, claude, qwen...',
+              prefixIcon: const Icon(Icons.search_rounded, size: KoruSize.icon),
+              suffixIcon: _cloudSearch.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close_rounded,
+                          size: KoruSize.iconSm),
+                      onPressed: () => setState(() => _cloudSearch.clear()),
+                    ),
             ),
-            const SizedBox(height: 12),
+          ),
+          const SizedBox(height: KoruSpace.md),
+          DropdownButtonFormField<String>(
+            value: _providerId,
+            decoration: const InputDecoration(labelText: 'Cloud provider'),
+            isExpanded: true,
+            items: (CloudSearch.providersMatching(_cloudSearch.text))
+                .map((p) => DropdownMenuItem(value: p.id, child: Text(p.label)))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) _pickProvider(v);
+            },
+          ),
+          if (provider.note != null) ...[
+            const SizedBox(height: KoruSpace.sm),
+            Text(provider.note!, style: KoruType.caption),
+          ],
+          const SizedBox(height: KoruSpace.mdl),
+          // "Which model this company serves", named that way because "Model"
+          // on its own is the word that used to mean both this and the engine.
+          if (provider.models.isNotEmpty)
             DropdownButtonFormField<String>(
-              value: _providerId,
-              decoration: const InputDecoration(labelText: 'Provider'),
+              value: provider.models.contains(_modelController.text)
+                  ? _modelController.text
+                  : provider.models.first,
+              decoration: const InputDecoration(labelText: 'Model they serve'),
               isExpanded: true,
-              items: (CloudSearch.providersMatching(_cloudSearch.text))
-                  .map((p) => DropdownMenuItem(value: p.id, child: Text(p.label)))
+              items: provider.models
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                   .toList(),
               onChanged: (v) {
-                if (v != null) _pickProvider(v);
+                if (v != null) setState(() => _modelController.text = v);
               },
-            ),
-            if (provider.note != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                provider.note!,
-                style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
-              ),
-            ],
-            const SizedBox(height: 14),
-            if (provider.models.isNotEmpty)
-              DropdownButtonFormField<String>(
-                value: provider.models.contains(_modelController.text)
-                    ? _modelController.text
-                    : provider.models.first,
-                decoration: const InputDecoration(labelText: 'Model'),
-                isExpanded: true,
-                items: provider.models
-                    .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _modelController.text = v);
-                },
-              )
-            else
-              TextField(
-                controller: _modelController,
-                decoration: const InputDecoration(labelText: 'Model id'),
-              ),
-            const SizedBox(height: 14),
+            )
+          else
             TextField(
-              controller: _controller,
-              obscureText: !_revealed,
-              decoration: InputDecoration(
-                labelText: provider.keyLabel,
-                hintText: provider.keyHint,
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (hasKey)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: Icon(Icons.lock_rounded, size: 16, color: KoruColors.leaf),
+              controller: _modelController,
+              decoration: const InputDecoration(labelText: 'Model id'),
+            ),
+          const SizedBox(height: KoruSpace.mdl),
+          TextField(
+            controller: _controller,
+            obscureText: !_revealed,
+            decoration: InputDecoration(
+              labelText: provider.keyLabel,
+              hintText: provider.keyHint,
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasKey)
+                    Padding(
+                      padding: const EdgeInsets.only(right: KoruSpace.xs),
+                      child: Icon(
+                        Icons.lock_rounded,
+                        size: KoruSize.iconSm,
+                        color: KoruColors.leaf,
                       ),
-                    IconButton(
-                      tooltip: _revealed ? 'Hide key' : 'Show key',
-                      icon: Icon(
-                        _revealed ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                        size: 19,
-                        color: KoruColors.inkFaint,
-                      ),
-                      onPressed: () => setState(() => _revealed = !_revealed),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Encrypted with the Android keystore, and kept per provider.',
-              style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                FilledButton(
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-                  onPressed: _busy ? null : _test,
-                  child: Text(_busy ? 'Testing...' : 'Test connection'),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                  onPressed: _busy ? null : _save,
-                  child: const Text('Save'),
-                ),
-                if (hasKey)
-                  TextButton(
-                    onPressed: () async {
-                      await ref.read(secretsProvider).clearKey(_providerId);
-                      ref.invalidate(cloudKeyProvider(_providerId));
-                      _controller.clear();
-                      if (context.mounted) toast(context, 'Key removed');
-                    },
-                    child: const Text('Remove'),
+                  IconButton(
+                    tooltip: _revealed ? 'Hide key' : 'Show key',
+                    icon: Icon(
+                      _revealed
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: KoruSize.icon,
+                      color: KoruColors.inkFaint,
+                    ),
+                    onPressed: () => setState(() => _revealed = !_revealed),
                   ),
-              ],
-            ),
-            if (_status != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _status!,
-                style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
+                ],
               ),
+            ),
+          ),
+          const SizedBox(height: KoruSpace.xsm),
+          Text(
+            'Encrypted with the Android keystore, and kept per provider.',
+            style: KoruType.caption,
+          ),
+          const SizedBox(height: KoruSpace.mdl),
+          Row(
+            children: [
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, KoruSize.buttonInCard),
+                ),
+                onPressed: _busy ? null : _test,
+                child: Text(_busy ? 'Testing...' : 'Test connection'),
+              ),
+              const SizedBox(width: KoruSpace.md),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, KoruSize.buttonInCard),
+                ),
+                onPressed: _busy ? null : _save,
+                child: const Text('Save'),
+              ),
+              if (hasKey)
+                TextButton(
+                  onPressed: () async {
+                    await ref.read(secretsProvider).clearKey(_providerId);
+                    ref.invalidate(cloudKeyProvider(_providerId));
+                    _controller.clear();
+                    if (context.mounted) toast(context, 'Key removed');
+                  },
+                  child: const Text('Remove'),
+                ),
             ],
+          ),
+          if (_status != null) ...[
+            const SizedBox(height: KoruSpace.md),
+            Text(_status!, style: KoruType.bodyCompactStrong),
           ],
-        ),
+        ],
       ),
     );
   }

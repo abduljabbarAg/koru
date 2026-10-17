@@ -11,8 +11,14 @@ import '../local/local_model_client.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'engine_log.dart';
 
 /// Which engine answers, and the model this phone can run.
+///
+/// Titled the same words as the switcher sheet opens with, because it is the
+/// same question asked in the same place: "who answers". It used to be called
+/// "Engine", which collided with the model underneath it — the page is about
+/// both, and the engine is only the first half of it.
 ///
 /// One page for both on purpose: [EngineAbsentNotice] ends by telling the user
 /// to add a .gguf "below", so separating the picker from the model panel would
@@ -23,65 +29,63 @@ class EngineSettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Engine')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: const [
-          _EnginePicker(),
-          _EngineAbsentNotice(),
-          SizedBox(height: 22),
-          _LocalModelCard(),
-        ],
+      appBar: AppBar(title: const Text('Who answers')),
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: const [
+            _EnginePicker(),
+            _EngineAbsentNotice(),
+            SizedBox(height: KoruSpace.section),
+            _LocalModelCard(),
+            SizedBox(height: KoruSpace.section),
+            _EngineLogLink(),
+          ],
+        ),
       ),
     );
   }
 }
 
 /// Picks which engine answers. Everything else on this screen depends on it.
+///
+/// The same [KoruSelectableTile] the switcher sheet uses, so a choice made here
+/// and a choice made in the chat are visibly the same act. They were a radio
+/// list and a stack of tiles respectively, which meant the two screens could not
+/// be compared by eye and nobody could tell from the chat whether the page had
+/// been changed.
 class _EnginePicker extends ConsumerWidget {
   const _EnginePicker();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final engine = ref.watch(engineProvider).valueOrNull ?? KoruEngine.builtIn;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final option in KoruEngine.values) ...[
-              RadioListTile<KoruEngine>(
-                value: option,
-                groupValue: engine,
-                // Through the shared writer, the same one the chat's badge
-                // uses. Two copies of this write is how Settings and the chat
-                // end up showing different engines on the same install.
-                onChanged: (value) {
-                  if (value != null) selectEngine(ref, value);
-                },
-                contentPadding: EdgeInsets.zero,
-                activeColor: KoruColors.leaf,
-                title: Text(
-                  option.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                ),
-                subtitle: Text(
-                  option.blurb,
-                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
-                ),
-              ),
-              if (option != KoruEngine.values.last) const Divider(height: 4),
-            ],
-            const SizedBox(height: 8),
-            Text(
-              'Anything about a crisis, a diagnosis or a court date goes to a '
-              'person instead, whichever engine is selected.',
-              style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final option in KoruEngine.values)
+          KoruSelectableTile(
+            label: option.label,
+            blurb: option.blurb,
+            selected: engine == option,
+            icon: switch (option) {
+              KoruEngine.builtIn => Icons.storage_rounded,
+              KoruEngine.onDevice => Icons.memory_rounded,
+              KoruEngine.cloud => Icons.cloud_outlined,
+            },
+            // Through the shared writer, the same one the chat's switcher uses.
+            // Two copies of this write is how Settings and the chat end up
+            // showing different engines on the same install.
+            onTap: () => selectEngine(ref, option),
+          ),
+        const SizedBox(height: KoruSpace.xs),
+        // Said where the choice is made rather than buried in a privacy policy.
+        Text(
+          'Anything about a crisis, a diagnosis or a court date goes to a '
+          'person instead, whichever engine is selected.',
+          style: KoruType.bodySmall,
         ),
-      ),
+      ],
     );
   }
 }
@@ -102,12 +106,14 @@ class _EngineAbsentNotice extends ConsumerWidget {
     final present = ref.watch(localEnginePresentProvider).valueOrNull;
     if (present != false) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        'No model on this phone, so the on-device option will answer from your '
-        'own records instead. That is quick, but it is not a model. Add a .gguf '
-        'below to run a real one.',
-        style: TextStyle(color: Theme.of(context).colorScheme.error),
+      padding: const EdgeInsets.only(bottom: KoruSpace.md),
+      child: KoruNotice(
+        title: 'No model on this phone',
+        message: 'So the on-device option will answer from your own records '
+            'instead. That is quick, but it is not a model. Add a .gguf below '
+            'to run a real one.',
+        icon: Icons.memory_rounded,
+        tone: KoruTones.gold,
       ),
     );
   }
@@ -180,80 +186,75 @@ class _LocalModelCardState extends ConsumerState<_LocalModelCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('On-device model'),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _endpoint,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Server address',
-                    hintText: 'http://127.0.0.1:8099',
-                    helperText: 'Anything that speaks the OpenAI chat API',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _modelId,
-                  decoration: const InputDecoration(
-                    labelText: 'Model id',
-                    hintText: 'qwen2.5-0.5b-instruct',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const _BundledModelPanel(),
-                const SizedBox(height: 6),
-                const Divider(height: 24),
-                Text(
-                  'Or point Koru at a server you already run',
-                  style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    FilledButton(
-                      style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-                      onPressed: _checking ? null : _check,
-                      child: Text(_checking ? 'Checking...' : 'Test connection'),
+        const SectionLabel('Your own server'),
+        KoruCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              KoruFieldStack(
+                children: [
+                  TextField(
+                    controller: _endpoint,
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(
+                      labelText: 'Server address',
+                      hintText: 'http://127.0.0.1:8099',
+                      helperText: 'Anything that speaks the OpenAI chat API',
                     ),
-                    const SizedBox(width: 10),
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                      onPressed: _save,
-                      child: const Text('Save'),
+                  ),
+                  TextField(
+                    controller: _modelId,
+                    decoration: const InputDecoration(
+                      labelText: 'Model id',
+                      hintText: 'qwen2.5-0.5b-instruct',
                     ),
-                  ],
-                ),
-                if (_status != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _status!,
-                    style: TextStyle(fontSize: 12.5, color: KoruColors.inkSoft, height: 1.4),
                   ),
                 ],
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: KoruColors.goldSoft,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: KoruColors.gold),
+              ),
+              const SizedBox(height: KoruSpace.lg),
+              const _BundledModelPanel(),
+              const SizedBox(height: KoruSpace.xs),
+              const Divider(height: KoruSpace.xxl),
+              Text(
+                'Or point Koru at a server you already run',
+                style: KoruType.caption,
+              ),
+              const SizedBox(height: KoruSpace.mdl),
+              Row(
+                children: [
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, KoruSize.buttonInCard),
+                    ),
+                    onPressed: _checking ? null : _check,
+                    child: Text(_checking ? 'Checking...' : 'Test connection'),
                   ),
-                  child: Text(
-                    'Measured on this phone: about 2.6 tokens a second once a '
-                    'short answer starts, so expect roughly ten to twenty '
-                    'seconds. Koru is built for short answers. It is not good '
-                    'with health numbers and must never be used instead of a '
-                    'person for anything urgent.',
-                    style: TextStyle(fontSize: 12.5, color: KoruColors.ink, height: 1.45),
+                  const SizedBox(width: KoruSpace.md),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, KoruSize.buttonInCard),
+                    ),
+                    onPressed: _save,
+                    child: const Text('Save'),
                   ),
-                ),
+                ],
+              ),
+              if (_status != null) ...[
+                const SizedBox(height: KoruSpace.md),
+                Text(_status!, style: KoruType.bodyCompactStrong),
               ],
-            ),
+              const SizedBox(height: KoruSpace.mdl),
+              KoruNotice(
+                message: 'Measured on this phone: about 2.6 tokens a second '
+                    'once a short answer starts, so expect roughly ten to '
+                    'twenty seconds. Koru is built for short answers. It is not '
+                    'good with health numbers and must never be used instead of '
+                    'a person for anything urgent.',
+                icon: Icons.speed_rounded,
+                tone: KoruTones.gold,
+                dense: true,
+              ),
+            ],
           ),
         ),
       ],
@@ -321,39 +322,40 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
 
   Widget _modelPicker(List<LocalModelFile> models, String? chosen) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            const Expanded(
-              child: Text('Model',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            Expanded(
+              child: Text('Model on this phone', style: KoruType.label),
             ),
             TextButton.icon(
               onPressed: _importModel,
-              icon: const Icon(Icons.upload_file_rounded, size: 16),
+              icon: const Icon(Icons.upload_file_rounded,
+                  size: KoruSize.iconSm),
               label: const Text('Add a model'),
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: KoruSpace.xs),
         Text(
           models.length <= 1
               ? 'Only the bundled model is here. Use "Add a model" to bring '
                   'your own .gguf onto this phone.'
               : 'A bigger model is sharper and slower. Switch when you need it, '
                   'not for everything.',
-          style: TextStyle(color: KoruColors.inkFaint, fontSize: 12),
+          style: KoruType.caption,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: KoruSpace.sml),
+        // The same tile the switcher sheet picks from, so a model chosen here and
+        // a model chosen there look like the same choice and cannot disagree
+        // about which one is the answer.
         for (final m in models)
-          RadioListTile<String>(
-            value: m.path,
-            groupValue: chosen ?? '',
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(m.label, style: const TextStyle(fontSize: 13.5)),
-            onChanged: (_) => _choose(m),
+          KoruSelectableTile(
+            label: m.label,
+            selected: isBundledModel(m) ? chosen == null : chosen == m.path,
+            icon: Icons.memory_rounded,
+            onTap: () => _choose(m),
           ),
       ],
     );
@@ -392,24 +394,27 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
     final progress = ref.watch(chatProvider).engineProgress;
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(KoruSpace.mdl),
       decoration: BoxDecoration(
-        color: _ready ? KoruColors.leafSoft : KoruColors.cream,
+        color: _ready ? KoruColors.leafSoft : KoruColors.surface,
         borderRadius: BorderRadius.circular(KoruRadius.field),
-        border: Border.all(color: _ready ? KoruColors.leaf : KoruColors.line),
+        border: Border.fromBorderSide(
+          _ready ? KoruBorders.selected() : KoruBorders.hairline(),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.memory_rounded, size: 19, color: KoruColors.leaf),
-              const SizedBox(width: 9),
-              const Expanded(
-                child: Text(
-                  'Bundled model',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
-                ),
+              KoruIconBadge(
+                icon: Icons.memory_rounded,
+                color: KoruColors.leaf,
+                background: KoruColors.leafSoft,
+              ),
+              const SizedBox(width: KoruSpace.md),
+              Expanded(
+                child: Text('Bundled model', style: KoruType.rowTitleLarge),
               ),
               if (available == false)
                 KoruPill(
@@ -425,70 +430,106 @@ class _BundledModelPanelState extends ConsumerState<_BundledModelPanel> {
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: KoruSpace.sm),
           Text(
             'A 0.5B model already inside this app. The first start copies it out '
             'of the package, so expect it to take a minute.',
-            style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
+            style: KoruType.caption,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: KoruSpace.mdl),
           _modelPicker(
             ref.watch(availableModelsProvider).valueOrNull ?? const [],
             ref.watch(chosenModelProvider).valueOrNull,
           ),
           if (_starting) ...[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(KoruRadius.pill),
-              child: LinearProgressIndicator(
-                value: (progress ?? 0) / 100,
-                minHeight: 6,
-                backgroundColor: KoruColors.line,
-                valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
-              ),
+            const SizedBox(height: KoruSpace.md),
+            KoruProgressBar(
+              value: (progress ?? 0) / 100,
+              color: KoruColors.leaf,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: KoruSpace.xsm),
             Text(
               'Loading the model... ${progress ?? 0}%',
-              style: TextStyle(fontSize: 12, color: KoruColors.inkFaint),
+              style: KoruType.caption,
             ),
           ],
           if (_message != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: KoruSpace.sml),
             Text(
               _message!,
-              style: TextStyle(
-                fontSize: 12.5,
-                height: 1.4,
+              style: KoruType.bodyCompactStrong.copyWith(
                 color: _ready ? KoruColors.leaf : KoruColors.clay,
               ),
             ),
           ],
           if (!_starting && !_ready) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: KoruSpace.sml),
             OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, KoruSize.buttonInCard),
+              ),
               onPressed: available == false ? null : _start,
-              icon: const Icon(Icons.play_arrow_rounded, size: 18),
+              icon: const Icon(Icons.play_arrow_rounded, size: KoruSize.icon),
               label: const Text('Start the bundled model'),
             ),
           ],
           // When it is unavailable, say why. A bare "NOT IN THIS BUILD" is what
           // made this hard to diagnose: the binary was in the package.
           if (_message == null && status != null && !status.available) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: KoruSpace.sml),
             Text(
               status.summary,
-              style: TextStyle(fontSize: 12, color: KoruColors.clay, height: 1.4),
+              style: KoruType.caption.copyWith(color: KoruColors.clay),
             ),
             if (status.path != null) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: KoruSpace.xxs),
               Text(
                 'looked in ${status.path}',
-                style: TextStyle(fontSize: 11, color: KoruColors.inkFaint),
+                style: KoruType.micro,
               ),
             ],
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The way to the engine's own log, always there.
+///
+/// Not shown only on failure, which is the obvious place to put it and the wrong
+/// one: a start that hangs, or one that is slow enough to look broken while it is
+/// actually working, never reaches a failure message at all. Someone deciding
+/// whether to uninstall needs this open next to a model that will not start,
+/// and that is precisely the person a failure-only link abandons.
+class _EngineLogLink extends StatelessWidget {
+  const _EngineLogLink();
+
+  @override
+  Widget build(BuildContext context) {
+    return KoruCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('If the model will not start', style: KoruType.rowTitleLarge),
+          const SizedBox(height: KoruSpace.xs),
+          Text(
+            'The engine writes down what went wrong on this phone. Read it, '
+            'and copy it in if you report it — it is the difference between '
+            '"it does not work" and an answer.',
+            style: KoruType.bodySmall,
+          ),
+          const SizedBox(height: KoruSpace.md),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, KoruSize.buttonInCard),
+            ),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const EngineLogScreen()),
+            ),
+            icon: const Icon(Icons.article_outlined, size: KoruSize.icon),
+            label: const Text('Read the engine log'),
+          ),
         ],
       ),
     );

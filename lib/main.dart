@@ -10,6 +10,7 @@ import 'attention_bridge.dart';
 import 'deep_link.dart';
 import 'mascot/mascot.dart';
 import 'onboarding.dart';
+import 'permission_consent.dart';
 import 'screens/business.dart';
 import 'screens/chat.dart';
 import 'screens/client_detail.dart';
@@ -58,7 +59,8 @@ class KoruApp extends ConsumerWidget {
   }
 }
 
-/// Decides once, at startup, between the splash, onboarding and the app.
+/// Decides once, at startup, between the splash, onboarding, the permission
+/// explanation and the app.
 ///
 /// The splash used to be a bare spinner with a glyph in it. It now shows Koru
 /// himself, because the first thing a person sees should be the thing they are
@@ -74,10 +76,11 @@ class _RootGateState extends ConsumerState<RootGate> {
   bool? _ready;
   bool _splashDone = false;
 
-  /// False until we know whether the permission explanation still needs showing.
-  bool _askedPermissions = true;
-
-
+  /// Whether the permission explanation still owes this person a look. Null
+  /// until the store and the platform have both answered, because deciding this
+  /// from the stored flag alone is what hid the screen from every upgrading
+  /// user.
+  bool? _oweConsent;
 
   @override
   void dispose() {
@@ -94,43 +97,50 @@ class _RootGateState extends ConsumerState<RootGate> {
     final store = await ref.read(storeProvider.future);
     final done = await store.onboarded;
     if (!mounted) return;
-    final asked = await store.get('asked_permissions') == '1';
+    // Asked, not recorded: what the person actually holds is the only honest
+    // answer to whether the screen is still worth showing. See
+    // [PermissionConsent.shouldOffer] for why the old flag is not consulted.
+    final consent = done
+        ? await ref.read(permissionConsentProvider.future)
+        : PermissionConsent.nothingToAskAbout;
     if (!mounted) return;
     setState(() {
       _ready = true;
-      _askedPermissions = asked;
+      _oweConsent = consent.shouldOffer;
     });
     ref.read(onboardedProvider.notifier).state = done;
-    if (done) ref.read(chatProvider.notifier).load();
     // Started here rather than from the chat screen. The splash is where the
     // model is actually being unpacked, so it is the only place that can show
     // progress for it, and waiting until the chat screen meant the splash was
     // already gone by the time the slow part began.
-    // Permissions are asked here, on the splash, before onboarding is ever
-    // shown. Asking them after onboarding finished meant a first run that ended
-    // with no prompt at all.
     //
-    // Deliberately not awaited past the health read, and bounded. A permission
-    // prompt opens a system Activity that a person can leave open indefinitely,
-    // and holding the start screen hostage to that is exactly how this deadlocked
-    // before. The prompts are raised, the flag is written, and the app carries on
-    // whatever was granted.
+    // Once. This used to be called a second time further down this method, left
+    // behind when the permissions moved out to the consent screen, which meant
+    // the engine's start sequence was queued twice on every launch.
     if (done) ref.read(chatProvider.notifier).load();
-    // Once there is a real screen to put a message on. Not before: a snackbar
-    // that explains permissions has to be readable, and during onboarding it
-    // sits directly on top of the Continue button. Asking while somebody is
-    // halfway through a form is also just rude.
   }
 
-  /// Checks permissions on first run after an upgrade, and never nags again.
-  ///
-  /// Asked once, and recorded as asked. A permission prompt that returns on
-  /// every launch is how an app teaches people to dismiss dialogs without
-  /// reading them, which costs the permission that actually mattered the first
-  /// time it came up.
+  /// Lets the splash go, once. Not tied to the engine: the loading bar under it
+  /// reports real progress, and a start screen that can be starved by a system
+  /// dialog or a slow model copy is how this deadlocked before.
   void _leaveSplash() {
     if (_splashDone) return;
     setState(() => _splashDone = true);
+  }
+
+  /// Records how the explanation was answered, and lets the person in.
+  ///
+  /// Both answers stop the screen coming back on the next launch, and neither
+  /// one stops it being reachable: Settings offers the same prompts again for
+  /// as long as the app exists.
+  Future<void> _answered(ConsentOutcome outcome) async {
+    if (!mounted) return;
+    setState(() => _oweConsent = false);
+    final store = ref.read(storeProvider).value;
+    if (store == null) return;
+    await store.put(permissionConsentKey, outcome.name);
+    // So Settings reads the answer back rather than the pre-consent state.
+    ref.invalidate(permissionConsentProvider);
   }
 
   @override
@@ -148,15 +158,11 @@ class _RootGateState extends ConsumerState<RootGate> {
     // last screen did nothing at all.
     final onboarded = ref.watch(onboardedProvider);
     if (!onboarded) return const OnboardingScreen();
-    // The permission explanation, once, before the app itself. Asked from a screen
-    // a person chose to leave, and every line on it says what refusing costs.
-    if (!_askedPermissions) {
-      return PermissionsIntroScreen(
-        onDone: () {
-          setState(() => _askedPermissions = true);
-          ref.read(storeProvider).value?.put('asked_permissions', '1');
-        },
-      );
+    // The permission explanation, once, before the app itself, and only when
+    // there is still something to ask for. Asked from a screen a person chose to
+    // leave, and every line on it says what refusing costs.
+    if (_oweConsent == true) {
+      return PermissionsIntroScreen(onAnswered: _answered);
     }
     // Watched from here so the notification is kept up to date for the whole
     // time the app is open, not only while a particular screen happens to be
@@ -251,14 +257,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               const KoruMascot(size: 148, semanticLabel: 'Koru, your helper'),
-              const SizedBox(height: 22),
-              Text('Koru', style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 6),
+              const SizedBox(height: KoruSpace.xl),
+              Text('Koru', style: KoruType.stat),
+              const SizedBox(height: KoruSpace.xsm),
               Text(
                 'An assistant that knows your life',
-                style: TextStyle(color: KoruColors.inkFaint, fontSize: 14.5),
+                style: KoruType.bodyCompactStrong,
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: KoruSpace.xxl),
               // Determinate when there is real progress to report, and honest
               // about what it is. The old bar swept forever regardless of
               // whether anything was happening, which is a bar that tells you
@@ -301,9 +307,8 @@ class _EngineLoadingBar extends StatelessWidget {
             valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: KoruSpace.sml),
         SizedBox(
-          height: 16,
           child: Text(
             switch (p) {
               null => 'Getting things ready',
@@ -312,28 +317,24 @@ class _EngineLoadingBar extends StatelessWidget {
               <8 => 'Unpacking the model on this phone',
               _ => 'Waking the model up  $p%',
             },
-            style: TextStyle(color: KoruColors.inkFaint, fontSize: 12),
+            style: KoruType.caption,
           ),
         ),
         if (health != null && !health!.complete) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: KoruSpace.mdl),
           // Named individually, because each of these can be refused on its own
           // and "something is not set up" gives the reader nothing to do.
           ...health!.problems.map(
             (problem) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.only(bottom: KoruSpace.xs),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.info_outline_rounded,
-                      size: 13, color: KoruColors.gold),
-                  const SizedBox(width: 6),
+                      size: KoruSize.iconSm, color: KoruColors.gold),
+                  const SizedBox(width: KoruSpace.xsm),
                   Flexible(
-                    child: Text(
-                      problem,
-                      style: TextStyle(
-                          color: KoruColors.inkSoft, fontSize: 11.5),
-                    ),
+                    child: Text(problem, style: KoruType.badge),
                   ),
                 ],
               ),
@@ -422,7 +423,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: KoruColors.surface,
-          border: Border(top: BorderSide(color: KoruColors.line)),
+          border: Border(top: KoruBorders.hairline()),
         ),
         child: SafeArea(
           top: false,
@@ -430,7 +431,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             // Grown from 62 for the fifth tab. Labels are kept rather than
             // dropped: an icon with no name is a worse affordance than a
             // slightly shorter row.
-            height: 64,
+            height: KoruSpace.xxxl * 2,
             child: Row(
               children: [
                 _tabButton(0, Icons.today_outlined, Icons.today_rounded, 'Today'),
@@ -464,14 +465,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(sel ? on : off,
-                  size: 21, color: sel ? KoruColors.leaf : KoruColors.inkFaint),
-              const SizedBox(height: 2),
+                  size: KoruSize.icon,
+                  color: sel ? KoruColors.leaf : KoruColors.inkFaint),
+              const SizedBox(height: KoruSpace.xxs),
               Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
+                style: KoruType.tabLabel.copyWith(
                   fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
                   color: sel ? KoruColors.leaf : KoruColors.inkFaint,
                 ),

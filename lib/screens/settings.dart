@@ -12,6 +12,7 @@ import 'settings_context.dart';
 import 'settings_data.dart';
 import 'settings_engine.dart';
 import 'settings_money.dart';
+import 'settings_permissions.dart';
 import 'settings_privacy.dart';
 
 /// The Settings index.
@@ -24,11 +25,17 @@ import 'settings_privacy.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
-  /// Grouped the way somebody arrives here: what the assistant knows and runs
-  /// on, what is allowed to leave the phone, the money and the calendar, the
-  /// files, then the legal pages.
+  /// Grouped the way somebody arrives here, and ordered so the two questions the
+  /// old index kept colliding are now the first two headings: what answers me,
+  /// and who I send things to.
+  ///
+  /// "Cloud" used to head one card inside the engine page and another card on
+  /// this index, meaning the engine on one and the company on the other, with
+  /// nothing on screen to tell them apart. So the two are named apart —
+  /// [EngineSettingsScreen] is "who answers", [CloudSettingsScreen] is "cloud
+  /// provider" — and "cloud" is only ever the company.
   static const _groups = <_Group>[
-    _Group('Assistant & Engine', [
+    _Group('What answers you', [
       _Entry(
         title: 'Your context',
         subtitle: 'What Koru knows about you, and the form that changes it',
@@ -36,24 +43,32 @@ class SettingsScreen extends ConsumerWidget {
         page: ContextSettingsScreen(),
       ),
       _Entry(
-        title: 'Engine',
+        title: 'Who answers',
         subtitle: 'Which engine answers, and the model on this phone',
         icon: Icons.memory_rounded,
         page: EngineSettingsScreen(),
       ),
     ]),
-    _Group('Privacy', [
+    _Group('What leaves this phone', [
       _Entry(
         title: 'What leaves this phone',
-        subtitle: 'The exact text a cloud model receives, and where questions go',
+        subtitle: 'The exact text an online model receives, and where questions go',
         icon: Icons.cloud_outlined,
         page: PrivacySettingsScreen(),
       ),
       _Entry(
-        title: 'Cloud model',
-        subtitle: 'Provider, model and key, tested before it is saved',
+        title: 'Cloud provider',
+        subtitle: 'Which company answers online, its model, and the key',
         icon: Icons.key_outlined,
         page: CloudSettingsScreen(),
+      ),
+    ]),
+    _Group('Phone permissions', [
+      _Entry(
+        title: 'Permissions',
+        subtitle: 'Reminders, background work, your calendar, and asking again',
+        icon: Icons.shield_outlined,
+        page: PermissionsSettingsScreen(),
       ),
     ]),
     _Group('Money', [
@@ -120,28 +135,35 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: [
-          KoruGuideBanner(
-            speech: guide == null ? null : Guide.forSettings(guide),
-            onTap: () {},
-          ),
-          for (final group in _groups) ...[
-            SectionLabel(group.title),
-            Card(
-              child: Column(
-                children: [
-                  for (var i = 0; i < group.entries.length; i++) ...[
-                    if (i > 0) const Divider(height: 1),
-                    _row(context, group.entries[i]),
-                  ],
-                ],
-              ),
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: [
+            KoruGuideBanner(
+              speech: guide == null ? null : Guide.forSettings(guide),
+              onTap: () {},
             ),
-            const SizedBox(height: 22),
+            for (var g = 0; g < _groups.length; g++) ...[
+              SectionLabel(_groups[g].title),
+              KoruCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _groups[g].entries.length; i++) ...[
+                      if (i > 0) const Divider(height: 1),
+                      _row(context, _groups[g].entries[i]),
+                    ],
+                  ],
+                ),
+              ),
+              // Space between the groups and not after the last one, because the
+              // page already ends in its own tail and a trailing gap reads as a
+              // card that lost its contents.
+              if (g < _groups.length - 1)
+                const SizedBox(height: KoruSpace.section),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -149,14 +171,19 @@ class SettingsScreen extends ConsumerWidget {
   /// Pushes rather than replaces, so the index is still underneath when the
   /// page is closed. Same shape as the Business screen opening a client.
   Widget _row(BuildContext context, _Entry entry) {
-    return ListTile(
-      leading: Icon(entry.icon, color: KoruColors.leaf),
-      title: Text(entry.title),
-      subtitle: Text(
-        entry.subtitle,
-        style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.35),
+    return KoruRow(
+      leading: KoruIconBadge(
+        icon: entry.icon,
+        color: KoruColors.leaf,
+        background: KoruColors.leafSoft,
       ),
-      trailing: Icon(Icons.chevron_right_rounded, size: 20, color: KoruColors.inkFaint),
+      title: entry.title,
+      subtitle: entry.subtitle,
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        size: KoruSize.icon,
+        color: KoruColors.inkFaint,
+      ),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(builder: (_) => entry.page),
       ),

@@ -210,7 +210,10 @@ class HandoffCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        margin: const EdgeInsets.only(top: 6, right: KoruSpace.xs),
+                        margin: const EdgeInsets.only(
+                          top: KoruSpace.xsm,
+                          right: KoruSpace.xs,
+                        ),
                         width: 6,
                         height: 6,
                         decoration: BoxDecoration(

@@ -4,21 +4,27 @@
 
 ### Added
 
-- **The engine badge in the chat opens the engine picker.** Tap the pill on a
-  reply — or on the chat's opening screen, before anything has been asked — and
-  it lists the three engines with what each one costs: the same three Settings
-  offers, written to the same key. Nothing about the engine is a trip to Settings
-  any more.
+- **The engine control in the chat's top bar opens the engine picker.** Tap the
+  control in the app bar — before anything has been asked, or in the middle of a
+  conversation — and it lists the three engines with what each one costs: the
+  same three Settings offers, written to the same key. Nothing about the engine
+  is a trip to Settings any more, and nothing about it is hidden behind having a
+  reply to tap.
+- The control shows the detail the pill never had room for: which model is on the
+  phone, which company answers online, and tokens a second once a local model
+  has actually answered. The pill on a reply is now a label only — it still
+  records where that reply came from, and it is no longer a control sitting in a
+  different place on every message.
 - **Choosing "model on this phone" starts it there and then.** One tap, in the
   sheet: the model is written, the engine is launched, and the sheet stays up
   showing real progress until the server answers. On a cold install that is a
   231 MB copy out of the APK, so the wait is reported rather than guessed at —
   "Copying the model out of the app", then "Waking the server up 42%".
-- **Cloud and model sub-pickers.** Choosing cloud opens the provider list, with
-  the ones that already have a key marked; choosing on-device opens the .gguf
-  models on this phone, the bundled one first and ticked, plus anything added
-  with the file picker. Picking a different model while a cold start is still
-  running restarts the engine on that one rather than joining the start in
+- **Cloud and model sub-pickers.** Choosing the online model opens the provider
+  list, with the ones that already have a key marked; choosing on-device opens the
+  .gguf models on this phone, the bundled one first and ticked, plus anything
+  added with the file picker. Picking a different model while a cold start is
+  still running restarts the engine on that one rather than joining the start in
   flight and quietly serving the other.
 - **A failed start says what failed, in the sheet, with a retry.** The reason
   comes from the engine's own log. It used to fall back to the built-in
@@ -27,6 +33,22 @@
 
 ### Changed
 
+- **"Cloud" now means one thing.** The engine option was called "Cloud model"
+  and the page holding the provider, model and key was called "Cloud model" as
+  well, so the index had two rows with the same name and no way to tell the
+  engine from the company. The engine is now **Built-in / On this phone / Online
+  model**, named for the route an answer takes; the company is **Cloud
+  provider**, named for what you hand the key to. The Settings index is grouped
+  under the two questions they answer — *What answers you* (Your context, Who
+  answers) and *What leaves this phone* (What leaves this phone, Cloud provider)
+  — with permissions below both.
+- **The switcher sheet is a surface again.** It was opened with a transparent
+  background and painted none of its own, so its tiles were drawn straight onto
+  the page behind it: two near-identical creams on top of each other, which
+  reads as a sheet that failed to render. Every sheet now paints its own
+  background, top edge and shadow, and a chosen row is marked by an outline, a
+  tick and its title as well as by its tint — so it is still obvious with the
+  colour taken away.
 - **The on-device model is now Bonsai-1.7B-Q1_0, not Qwen2.5-0.5B.** A 1-bit
   1.7B that is 231 MB on disk — half the download of the model it replaces and
   markedly sharper, at about the same resident size. It only works because the
@@ -59,6 +81,12 @@
   built from the committed tree. Found while building the first one.
 - The bundled-model panel labelled itself from the Qwen filename; it now takes
   the label from whichever model actually shipped.
+- **The longest suggested question overflowed the chat on a small phone.** The
+  chips holding the offered questions set their text without a bound, so on a
+  320-point screen "Schedule a call with Bilal tomorrow at 3pm" drew a striped
+  bar through the opening screen. Status pills in a row had the same problem with
+  a long one. Both now wrap or ellipsise. Every screen the app can be on is
+  checked at that width now.
 
 ## 1.5.0
 

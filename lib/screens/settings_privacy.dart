@@ -12,6 +12,10 @@ import 'legal.dart';
 /// Kept as its own page because this is the claim the rest of the app rests on.
 /// It used to be a card between the engine and the cloud key, which is exactly
 /// the place nobody reads a privacy statement from.
+///
+/// The routing table names the engines and says nothing about companies, so the
+/// two never collide here: "Online model" is the engine, and which company that
+/// model is served by is one page away under Cloud provider.
 class PrivacySettingsScreen extends ConsumerWidget {
   const PrivacySettingsScreen({super.key});
 
@@ -21,72 +25,65 @@ class PrivacySettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('What leaves this phone')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: [
+            KoruCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'When a cloud model is used, only this is sent:',
-                    style: TextStyle(fontSize: 13.5, color: KoruColors.inkSoft),
+                    'When the online model answers, only this is sent:',
+                    style: KoruType.bodyCompactStrong,
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: KoruSpace.sml),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(KoruSpace.md),
                     decoration: BoxDecoration(
-                      color: KoruColors.cream,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: KoruColors.line),
+                      color: KoruColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(KoruRadius.xs),
+                      border: Border.fromBorderSide(KoruBorders.hairline()),
                     ),
                     child: Text(
-                      packet.maybeWhen(data: (p) => p.renderForCloud(), orElse: () => '...'),
-                      style: TextStyle(
-                          fontSize: 12.5, color: KoruColors.ink, height: 1.5),
+                      packet.maybeWhen(
+                        data: (p) => p.renderForCloud(),
+                        orElse: () => '...',
+                      ),
+                      style: KoruType.mono,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: KoruSpace.md),
                   Text(
                     'Pseudonymous, not anonymous. It carries general context and '
                     'never your nickname, your name or your records.',
-                    style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
+                    style: KoruType.bodySmall,
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 22),
-          const SectionLabel('Routing'),
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Route('Faith, mental health, medical, legal', 'Cloud model'),
-                  SizedBox(height: 10),
-                  _Route('Everything else', 'On device'),
-                  SizedBox(height: 10),
-                  _Route('Crisis, diagnosis, legal ruling', 'Hand to a person'),
-                ],
+            const KoruSection(
+              label: 'Routing',
+              children: [
+                _Route('Faith, mental health, medical, legal', 'Online model'),
+                _Route('Everything else', 'On this phone'),
+                _Route('Crisis, diagnosis, legal ruling', 'Hand to a person'),
+              ],
+            ),
+            // The policy is the long version of this screen, so it is reachable
+            // from the place where somebody is already asking the question.
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const PrivacyPolicyScreen()),
               ),
+              icon: const Icon(Icons.lock_outline_rounded,
+                size: KoruSize.iconSm),
+              label: const Text('Read the full privacy policy'),
             ),
-          ),
-          const SizedBox(height: 18),
-          // The policy is the long version of this screen, so it is reachable
-          // from the place where somebody is already asking the question.
-          TextButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const PrivacyPolicyScreen()),
-            ),
-            icon: const Icon(Icons.lock_outline_rounded, size: 16),
-            label: const Text('Read the full privacy policy'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -101,16 +98,23 @@ class _Route extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(topic,
-              style: TextStyle(fontSize: 13.5, color: KoruColors.ink)),
-        ),
-        Text(where,
-            style: TextStyle(
-                fontSize: 12.5, color: KoruColors.leaf, fontWeight: FontWeight.w700)),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: KoruSpace.row,
+        vertical: KoruSpace.mdl,
+      ),
+      child: Row(
+        children: [
+          Expanded(child: Text(topic, style: KoruType.bodyCompactStrong)),
+          Text(
+            where,
+            style: KoruType.meta.copyWith(
+              color: KoruColors.leaf,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

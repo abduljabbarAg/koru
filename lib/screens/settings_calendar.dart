@@ -18,9 +18,9 @@ class CalendarSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Calendar')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: const [_CalendarSyncCard()],
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(children: const [_CalendarSyncCard()]),
       ),
     );
   }
@@ -39,9 +39,9 @@ class CapacitySettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Capacity')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: const [_CapacityCard()],
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(children: const [_CapacityCard()]),
       ),
     );
   }
@@ -95,21 +95,26 @@ class _CalendarSyncCardState extends ConsumerState<_CalendarSyncCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return KoruCard(
       child: SwitchListTile(
         value: _sync,
+        // Null until the stored value is back, so the switch cannot be turned
+        // off by somebody who never turned it on.
         onChanged: _loaded ? _set : null,
         activeColor: KoruColors.leaf,
-        contentPadding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
-        title: const Text(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: KoruSpace.card,
+          vertical: KoruSpace.xsm,
+        ),
+        title: Text(
           'Copy new entries to my phone calendar',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          style: KoruType.rowTitle,
         ),
         subtitle: Text(
           'When you approve a calendar entry in Talk, Koru also writes it to '
           'the calendar your phone already uses. The copy is one way: deleting '
           'it in your phone calendar does not touch Koru\u2019s.',
-          style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.4),
+          style: KoruType.caption,
         ),
       ),
     );
@@ -129,65 +134,43 @@ class _CapacityCard extends ConsumerWidget {
             .length ??
         0;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You are carrying $underway.',
-              style: TextStyle(fontSize: 13.5, color: KoruColors.ink, height: 1.4),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Pick the most you can serve properly. Koru tells you when you are '
-              'at it, so taking on a sixth client is a decision rather than an '
-              'accident.',
-              style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                for (final n in _options) ...[
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: InkWell(
-                        onTap: () async {
-                          final store = await ref.read(storeProvider.future);
-                          await store.putNumber('capacity', n.toDouble());
-                          ref.invalidate(capacityProvider);
-                        },
-                        borderRadius: BorderRadius.circular(KoruRadius.field),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: capacity == n ? KoruColors.leafSoft : KoruColors.surface,
-                            borderRadius: BorderRadius.circular(KoruRadius.field),
-                            border: Border.all(
-                              color: capacity == n ? KoruColors.leaf : KoruColors.line,
-                              width: capacity == n ? 1.6 : 1,
-                            ),
-                          ),
-                          child: Text(
-                            '$n',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: capacity == n ? FontWeight.w700 : FontWeight.w500,
-                              color: KoruColors.ink,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+    return KoruCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'You are carrying $underway.',
+            style: KoruType.bodyCompactStrong,
+          ),
+          const SizedBox(height: KoruSpace.xs),
+          Text(
+            'Pick the most you can serve properly. Koru tells you when you are '
+            'at it, so taking on a sixth client is a decision rather than an '
+            'accident.',
+            style: KoruType.bodySmall,
+          ),
+          const SizedBox(height: KoruSpace.mdl),
+          // The shared large tile, which is what onboarding's capacity question
+          // uses. This was a fifth hand-built version of it with its own
+          // padding, border weight and number size.
+          Row(
+            children: [
+              for (final n in _options) ...[
+                Expanded(
+                  child: KoruSelectableTile.large(
+                    label: '$n',
+                    selected: capacity == n,
+                    onTap: () async {
+                      final store = await ref.read(storeProvider.future);
+                      await store.putNumber('capacity', n.toDouble());
+                      ref.invalidate(capacityProvider);
+                    },
                   ),
-                ],
+                ),
               ],
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

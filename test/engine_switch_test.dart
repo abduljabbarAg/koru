@@ -157,7 +157,11 @@ void main() {
   /// same thing a person does, which is why it is done here rather than by
   /// reaching into the state.
   Future<void> tapInSheet(WidgetTester tester, String label) async {
-    final row = find.text(label);
+    // Scoped to a tile where there is one. The app bar names the provider and
+    // the model as its detail line, so the same words can be on screen twice
+    // and a plain text finder would land on whichever came first.
+    final tile = find.widgetWithText(KoruSelectableTile, label);
+    final row = tile.evaluate().isNotEmpty ? tile : find.text(label);
     for (var i = 0; i < 12 && row.evaluate().isEmpty; i++) {
       await tester.drag(find.byType(SingleChildScrollView).last, const Offset(0, -220));
       await pump(tester, frames: 1);
@@ -167,14 +171,14 @@ void main() {
     await tester.tap(row);
   }
 
-  group('the engine badge on a reply', () {
+  group('the engine control in the app bar', () {
     testWidgets('opens the switcher, and all three engines are in it',
         (tester) async {
       await tester.runAsync(store.completeOnboarding);
       final engine = _FakeEngine();
       await mountChat(tester, engine: engine);
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
 
       expect(find.text('Who answers'), findsOneWidget);
@@ -188,21 +192,21 @@ void main() {
       }
     });
 
-    testWidgets('switching writes the engine and the badge says so afterwards',
+    testWidgets('switching writes the engine and the app bar says so afterwards',
         (tester) async {
       await tester.runAsync(store.completeOnboarding);
       await mountChat(tester, engine: _FakeEngine());
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'Cloud model');
+      await tapInSheet(tester, 'Online model');
       await pump(tester);
       await tapInSheet(tester, 'OpenRouter');
       await pump(tester);
 
       expect(await tester.runAsync(() => store.get('engine')), 'cloud');
-      expect(find.text('CLOUD MODEL'), findsOneWidget,
-          reason: 'the badge follows the store, so the two cannot disagree');
+      expect(find.text('ONLINE MODEL'), findsOneWidget,
+          reason: 'the app bar follows the store, so the two cannot disagree');
       // The provider chosen on the way through is kept too: choosing the
       // engine and choosing who answers it are two different decisions.
       expect(
@@ -216,34 +220,41 @@ void main() {
       await tester.runAsync(store.completeOnboarding);
       await mountChat(tester, engine: _FakeEngine());
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
+
+      // Counted inside the tiles rather than by text alone: the app bar now
+      // carries the provider and the model name as its detail line, so the same
+      // words can legitimately be on screen twice — once as what is answering and
+      // once as what is being offered.
+      Finder provider(String name) => find.widgetWithText(KoruSelectableTile, name);
+      Finder model(String name) => find.widgetWithText(KoruSelectableTile, name);
 
       // Neither sub-picker is offered before the engine is chosen. Both were
       // reachable from the same row at one point, which made "where am I" the
       // first question the sheet had to answer.
-      expect(find.text('OpenRouter'), findsNothing);
-      expect(find.text('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
+      expect(provider('OpenRouter'), findsNothing);
+      expect(model('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
 
-      await tapInSheet(tester, 'Cloud model');
+      await tapInSheet(tester, 'Online model');
       await pump(tester);
-      expect(find.text('OpenRouter'), findsOneWidget);
-      expect(find.text('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
+      expect(provider('OpenRouter'), findsOneWidget);
+      expect(model('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
 
       await tapInSheet(tester, 'All three');
       await pump(tester);
-      await tapInSheet(tester, 'On-device model');
+      await tapInSheet(tester, 'On this phone');
       await pump(tester);
 
       // Choosing it starts the bundled model straight away, so what is on the
       // sheet is the wait rather than a list of models to pick from.
-      expect(find.text('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
-      expect(find.text('OpenRouter'), findsNothing);
+      expect(model('Bonsai-1.7B-Q1_0 (bundled)'), findsNothing);
+      expect(provider('OpenRouter'), findsNothing);
       await tapInSheet(tester, 'See the models');
       await pump(tester);
-      expect(find.text('Bonsai-1.7B-Q1_0 (bundled)'), findsOneWidget);
-      expect(find.text('Qwen3-4B-Q4_K_M (3900 MB)'), findsOneWidget);
-      expect(find.text('OpenRouter'), findsNothing);
+      expect(model('Bonsai-1.7B-Q1_0 (bundled)'), findsOneWidget);
+      expect(model('Qwen3-4B-Q4_K_M (3900 MB)'), findsOneWidget);
+      expect(provider('OpenRouter'), findsNothing);
     });
 
     testWidgets('choosing on-device starts the engine there and then',
@@ -253,9 +264,9 @@ void main() {
       await mountChat(tester, engine: engine);
       expect(engine.starts, 0, reason: 'nothing has asked for it yet');
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On-device model');
+      await tapInSheet(tester, 'On this phone');
       await pump(tester);
 
       // The sheet is still up, reporting the start rather than closing and
@@ -265,7 +276,7 @@ void main() {
       expect(find.text('Starting the model on this phone'), findsOneWidget);
       expect(find.text('Waking the server up  42%'), findsOneWidget);
       expect(find.text('THIS PHONE  42%'), findsOneWidget,
-          reason: 'the badge behind it says the same thing, not that a model '
+          reason: 'the app bar behind it says the same thing, not that a model '
               'is already running');
 
       engine.letFinish();
@@ -275,7 +286,7 @@ void main() {
       expect(await tester.runAsync(() => store.get('engine')), 'onDevice');
       expect(find.text('Running on this phone'), findsOneWidget);
       expect(find.text('MODEL ON THIS PHONE'), findsOneWidget,
-          reason: 'and now that it is up, the badge can say so');
+          reason: 'and now that it is up, the app bar can say so');
     });
 
     testWidgets('a model the person brought is started in preference to the '
@@ -284,9 +295,9 @@ void main() {
       final engine = _FakeEngine();
       await mountChat(tester, engine: engine);
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On-device model');
+      await tapInSheet(tester, 'On this phone');
       await pump(tester);
       // The bundled model is already booting; asking for another one has to
       // actually restart the engine rather than join the start in flight.
@@ -319,9 +330,9 @@ void main() {
         client: const _FakeClient(serving: true),
       );
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On-device model');
+      await tapInSheet(tester, 'On this phone');
       await pump(tester);
 
       expect(engine.starts, 0, reason: 'there was nothing to start');
@@ -334,13 +345,13 @@ void main() {
       final engine = _FakeEngine(catalog: const []);
       await mountChat(tester, engine: engine);
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On-device model');
+      await tapInSheet(tester, 'On this phone');
       await pump(tester);
 
-      // Nothing was launched, and the badge does not claim a model is on the
-      // phone. This is the shape of the failure that made the bundled build
+      // Nothing was launched, and the app bar does not claim a model is on
+      // the phone. This is the shape of the failure that made the bundled build
       // look broken: the engine was chosen, nothing came up, and the app
       // answered anyway as if it had.
       expect(engine.starts, 0);
@@ -355,9 +366,9 @@ void main() {
       final engine = _FakeEngine(failWith: 'exec failed for libllama-server.so');
       await mountChat(tester, engine: engine);
 
-      await tester.tap(find.byType(KoruEngineBadge).first);
+      await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester);
-      await tapInSheet(tester, 'On-device model');
+      await tapInSheet(tester, 'On this phone');
       await pump(tester);
       engine.letFinish();
       await pump(tester);
@@ -372,7 +383,7 @@ void main() {
     });
   });
 
-  group('what the badge claims', () {
+  group('what the engine is called', () {
     testWidgets('a starting engine is never announced as a running one',
         (tester) async {
       await tester.pumpWidget(

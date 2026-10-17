@@ -107,8 +107,9 @@ void main() {
       await mount(tester, const SettingsScreen());
 
       for (final group in [
-        'ASSISTANT & ENGINE',
-        'PRIVACY',
+        'WHAT ANSWERS YOU',
+        'WHAT LEAVES THIS PHONE',
+        'PHONE PERMISSIONS',
         'MONEY',
         'CALENDAR & CAPACITY',
         'DATA',
@@ -126,9 +127,9 @@ void main() {
 
       for (final (title, page) in <(String, Widget)>[
         ('Your context', const ContextSettingsScreen()),
-        ('Engine', const EngineSettingsScreen()),
+        ('Who answers', const EngineSettingsScreen()),
         ('What leaves this phone', const PrivacySettingsScreen()),
-        ('Cloud model', const CloudSettingsScreen()),
+        ('Cloud provider', const CloudSettingsScreen()),
         ('Currency', const CurrencySettingsScreen()),
         ('Calendar', const CalendarSettingsScreen()),
         ('Capacity', const CapacitySettingsScreen()),

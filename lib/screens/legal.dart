@@ -52,7 +52,7 @@ class AboutScreen extends StatelessWidget {
             'built around: your clients and your money are not training data for '
             'anyone else.',
             'Only questions that genuinely need a frontier model can go onward, only '
-            'if you have set up a cloud model yourself, and only a pseudonymous '
+            'if you have set up a cloud provider yourself, and only a pseudonymous '
             'summary of your context travels with them: never your nickname, your '
             'name, your client names or your amounts. Settings shows the exact text '
             'before anything is sent.',
@@ -104,10 +104,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
             'There are no analytics, no advertising, no crash reporting and no '
                 'tracking of any kind. None of those exist in the app, and there '
                 'is no account, so there is nothing to identify you by.',
-            'Nothing is uploaded unless you turn on a cloud model and ask a '
+            'Nothing is uploaded unless you turn on the online model and ask a '
                 'question that is routed to it.',
-            'Everything, including your cloud key, can be deleted from Settings > '
-            'Data.',
+            'Everything, including your provider keys, can be deleted from Settings '
+            '> Data.',
           ],
         ),
         _DocSection(
@@ -132,18 +132,18 @@ class PrivacyPolicyScreen extends StatelessWidget {
             'Your nickname, and any real name you give it. The cloud rendering of '
                 'your context deliberately leaves the name out.',
             'Your client list, amounts, payments and deadlines. They are read on '
-            'the device. A client\'s name can only reach a cloud model if you type '
+            'the device. A client\'s name can only reach the online model if you type '
             'it into a question yourself.',
             'Any telemetry of any kind. There is none to send.',
           ],
         ),
         _DocSection(
-          'When a cloud model is switched on',
+          'When the online model is switched on',
           paragraphs: [
-            'A cloud model is off until you choose a provider, paste your own key '
-            'and test it in Settings > Cloud model. Questions about faith, health, '
-            'medicine or law are then routed to it, everything else is answered on '
-            'the device, and anything that reads like a crisis, a diagnosis or a '
+            'The online model is off until you choose a cloud provider, paste your '
+            'own key and test it in Settings > Cloud provider. Questions about faith, '
+            'health, medicine or law are then routed to it, everything else is answered '
+            'on the device, and anything that reads like a crisis, a diagnosis or a '
             'court date is handed to a person instead of being answered by a model.',
             'When a question is routed, your phone contacts that provider directly '
             'and sends: the question exactly as you typed it; the context packet '
@@ -163,16 +163,16 @@ class PrivacyPolicyScreen extends StatelessWidget {
           'The on-device model',
           paragraphs: [
             'Requests for an on-device model go to the server address in Settings '
-            '> Engine, which is 127.0.0.1 unless you change it. That is traffic '
-            'inside your phone. If you point it at another machine, that machine '
-            'receives the same prompt a cloud model would.',
+            '> Who answers, which is 127.0.0.1 unless you change it. That is '
+            'traffic inside your phone. If you point it at another machine, that '
+            'machine receives the same prompt the online model would.',
           ],
         ),
         _DocSection(
           'Permissions',
           bullets: [
-            'Internet, only for the cloud model you configured and for the local '
-                'model address you set.',
+            'Internet, only for the online model and the provider you configured, '
+                'and for the local model address you set.',
             'Notifications, so what is due can remind you.',
             'Calendar, only if you switch on copying entries to your phone\'s own '
                 'calendar. Refused, the in-app calendar still works exactly as it '
@@ -263,9 +263,9 @@ class TermsScreen extends StatelessWidget {
           ],
         ),
         _DocSection(
-          'Cloud models',
+          'Cloud providers',
           paragraphs: [
-            'If you add a cloud model, your arrangement with that provider, payment, '
+            'If you add a cloud provider, your arrangement with them, payment, '
             'rate limits, what they do with what you send, and their own terms, is '
             'between you and them. Koru passes your question on and stops there.',
             'Koru itself charges nothing and creates no account. A provider you '
@@ -328,9 +328,9 @@ class DataPolicyScreen extends StatelessWidget {
           'What can leave',
           bullets: [
             'A routed question. Only one about faith, health, medicine or law, only '
-                'with a cloud model you configured yourself, and only with the '
-                'pseudonymous context packet shown in Settings > What leaves this '
-                'phone: no nickname, no client names, no amounts.',
+                'with the online model and a provider you configured yourself, and '
+                'only with the pseudonymous context packet shown in Settings > What '
+                'leaves this phone: no nickname, no client names, no amounts.',
             'Your API key, to the provider it belongs to, as the header that '
             'authenticates the request. Nowhere else.',
             'An on-device model request, to the address you set in Settings > '
@@ -376,27 +376,32 @@ class _DocScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final leadStyle =
-        (Theme.of(context).textTheme.bodyMedium ?? const TextStyle()).copyWith(
-      fontSize: 14.5,
-      height: 1.5,
-      color: KoruColors.inkSoft,
-    );
+    // Read from Koru's scale rather than from Theme.of, which is how the
+    // paragraphs below were still picking up Material's bodyMedium. One
+    // document that reads at 14.5 and the next at 14 is the reason these pages
+    // look assembled rather than designed.
+    final leadStyle = KoruType.bodyCompact.copyWith(height: 1.5);
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 2, bottom: 16),
-            child: Text(lead, style: leadStyle),
-          ),
-          for (var i = 0; i < sections.length; i++) ...[
-            sections[i],
-            if (i != sections.length - 1) const SizedBox(height: 18),
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(
+                left: KoruSpace.xxs,
+                bottom: KoruSpace.lg,
+              ),
+              child: Text(lead, style: leadStyle),
+            ),
+            for (var i = 0; i < sections.length; i++) ...[
+              sections[i],
+              if (i != sections.length - 1)
+                const SizedBox(height: KoruSpace.section),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -416,45 +421,44 @@ class _DocSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = (Theme.of(context).textTheme.bodyMedium ?? const TextStyle())
-        .copyWith(height: 1.5, color: KoruColors.inkSoft);
+    final style = KoruType.bodyCompact.copyWith(height: 1.5);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionLabel(heading),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < paragraphs.length; i++) ...[
-                  Text(paragraphs[i], style: style),
-                  if (i != paragraphs.length - 1 || bullets.isNotEmpty)
-                    const SizedBox(height: 10),
-                ],
-                for (final bullet in bullets)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 7, right: 10),
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: KoruColors.leaf,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        Expanded(child: Text(bullet, style: style)),
-                      ],
-                    ),
-                  ),
+        KoruCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < paragraphs.length; i++) ...[
+                Text(paragraphs[i], style: style),
+                if (i != paragraphs.length - 1 || bullets.isNotEmpty)
+                  const SizedBox(height: KoruSpace.sml),
               ],
-            ),
+              for (final bullet in bullets)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: KoruSpace.sm),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(
+                          top: KoruSpace.sm,
+                          right: KoruSpace.sml,
+                        ),
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: KoruColors.leaf,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Expanded(child: Text(bullet, style: style)),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ),
       ],

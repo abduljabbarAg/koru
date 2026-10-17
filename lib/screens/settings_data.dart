@@ -26,60 +26,76 @@ class DataSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(title: const Text('Data')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: [
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: Icon(Icons.ios_share_outlined, color: KoruColors.leaf),
-                  title: const Text('Back up my data'),
-                  subtitle: const Text(
-                      'Saves a readable copy of your clients, payments and deadlines'),
-                  onTap: () => _backup(context, ref),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.settings_backup_restore_rounded, color: KoruColors.leaf),
-                  title: const Text('Restore from a backup'),
-                  subtitle: const Text('Merges a saved file into what is already here'),
-                  onTap: () => _restore(context, ref),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.delete_sweep_outlined, color: KoruColors.clay),
-                  title: const Text('Clear conversation'),
-                  subtitle: const Text('Keeps your profile, clients and logs'),
-                  onTap: () async {
-                    await ref.read(chatProvider.notifier).clear();
-                    if (context.mounted) toast(context, 'Conversation cleared');
-                  },
-                ),
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SizedBox(
-                    width: double.infinity,
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: [
+            KoruCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  KoruRow(
+                    leading: KoruIconBadge(
+                      icon: Icons.ios_share_outlined,
+                      color: KoruColors.leaf,
+                      background: KoruColors.leafSoft,
+                    ),
+                    title: 'Back up my data',
+                    subtitle: 'Saves a readable copy of your clients, payments '
+                        'and deadlines',
+                    onTap: () => _backup(context, ref),
+                  ),
+                  const Divider(height: 1),
+                  KoruRow(
+                    leading: KoruIconBadge(
+                      icon: Icons.settings_backup_restore_rounded,
+                      color: KoruColors.leaf,
+                      background: KoruColors.leafSoft,
+                    ),
+                    title: 'Restore from a backup',
+                    subtitle: 'Merges a saved file into what is already here',
+                    onTap: () => _restore(context, ref),
+                  ),
+                  const Divider(height: 1),
+                  KoruRow(
+                    leading: KoruIconBadge(
+                      icon: Icons.delete_sweep_outlined,
+                      color: KoruColors.clay,
+                      background: KoruColors.claySoft,
+                    ),
+                    title: 'Clear conversation',
+                    subtitle: 'Keeps your profile, clients and logs',
+                    onTap: () async {
+                      await ref.read(chatProvider.notifier).clear();
+                      if (context.mounted) toast(context, 'Conversation cleared');
+                    },
+                  ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(KoruSpace.card),
                     child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: KoruColors.clay,
+                        side: KoruBorders.accent(KoruColors.clay),
+                      ),
                       onPressed: () => _deleteEverything(context, ref),
-                      icon: Icon(Icons.delete_outline_rounded, color: KoruColors.clay),
-                      label: Text('Delete all local data',
-                          style: TextStyle(color: KoruColors.clay)),
+                      icon: const Icon(Icons.delete_outline_rounded,
+                          size: KoruSize.icon),
+                      label: const Text('Delete all local data'),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'A backup is a plain JSON file, readable in any text editor, handed to '
-            'Android\'s share sheet. Where it goes after that is your choice: '
-            'nothing is uploaded on your behalf.',
-            style: TextStyle(fontSize: 12.5, color: KoruColors.inkFaint, height: 1.45),
-          ),
-        ],
+            const SizedBox(height: KoruSpace.lg),
+            Text(
+              'A backup is a plain JSON file, readable in any text editor, handed '
+              'to Android\u2019s share sheet. Where it goes after that is your '
+              'choice: nothing is uploaded on your behalf.',
+              style: KoruType.bodySmall,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -144,7 +160,8 @@ class DataSettingsScreen extends ConsumerWidget {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: KoruColors.clay)),
+            style: TextButton.styleFrom(foregroundColor: KoruColors.clay),
+            child: const Text('Delete'),
           ),
         ],
       ),

@@ -23,6 +23,7 @@ import 'local/local_model_client.dart';
 import 'local/write_intent.dart';
 import 'models.dart';
 import 'packet.dart';
+import 'permission_consent.dart';
 import 'proposed_write.dart';
 import 'secrets.dart';
 import 'store.dart';
@@ -1341,6 +1342,29 @@ Future<void> requestHealthPermissions(
   ref.invalidate(healthProvider);
   ref.invalidate(calendarPermissionProvider);
 }
+
+/// Whether the permission explanation still owes this person a look.
+///
+/// The old signal was the stored `asked_permissions` flag, and it was the wrong
+/// question. "Did we ask" is not "do they have anything", and the previous
+/// release set that flag for every user who was already onboarded — before any
+/// explanation existed to see — so the new screen could never appear for an
+/// upgrading install. The reported symptom was exactly that.
+///
+/// This asks the real one: what has actually been granted. The flag the old
+/// version wrote is still read, still on disk, and now only decides between
+/// "asked by a snackbar nobody could read" and "not asked at all", both of
+/// which resolve the same way.
+final permissionConsentProvider = FutureProvider<PermissionConsent>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  final health = await ref.watch(healthProvider.future);
+  final calendar = await ref.watch(calendarPermissionProvider.future);
+  return PermissionConsent.fromStore(
+    await store.all(),
+    health: health,
+    calendarGranted: calendar,
+  );
+});
 
 /// The payments ledger, newest first, for the money section.
 final paymentsProvider = FutureProvider<List<Payment>>((ref) async {

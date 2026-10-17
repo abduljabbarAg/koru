@@ -159,10 +159,21 @@ class KoruPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: KoruSize.iconSm - 2, color: color),
+            Icon(icon, size: KoruSize.iconXs, color: color),
             const SizedBox(width: KoruSpace.xs),
           ],
-          Text(label, style: KoruType.badge.copyWith(color: color)),
+          // Flexible, because a pill is almost always beside something else —
+          // a client name, a row action — and the row is what gives way. These
+          // are short labels, so this only bites on a long one, where cutting
+          // it off is still better than a striped bar through the list.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: KoruType.badge.copyWith(color: color),
+            ),
+          ),
         ],
       ),
     );

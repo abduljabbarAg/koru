@@ -5,6 +5,14 @@ import '../theme.dart';
 import 'marks.dart';
 import 'surfaces.dart';
 
+/// How wide the engine control's two lines may be before they give way.
+///
+/// Sized so the control still leaves room for the app bar's own actions on the
+/// narrowest phone this runs on, which is what a bound is for: a model name
+/// long enough to matter is exactly the one that would otherwise push the
+/// clear-conversation button off the edge.
+const double _engineBarWords = 120;
+
 /// One message in the thread.
 ///
 /// The bubble was written out inside the chat screen, where there was no way to
@@ -139,19 +147,70 @@ class KoruMessageMeta extends StatelessWidget {
   }
 }
 
-/// Says which engine answered, and is how the engine is changed.
+/// Says which engine answered, as one pill's worth of label.
 ///
-/// The whole point of the app is that you can see where an answer came from, and
-/// a local model is slow enough that an unexplained pause would look like a hang.
+/// One function, because two widgets say this and they must never disagree: the
+/// control in the app bar names the engine that is answering *now* and the small
+/// mark on a reply names the engine that wrote *that*. A second copy of the
+/// switch is how the bar ends up claiming a model is on this phone while a
+/// reply underneath it says the same thing in different words.
+({String label, IconData icon, ({Color ink, Color fill}) tone}) koruEngineSummary({
+  required KoruEngine? engine,
+  bool starting = false,
+  int? progress,
+  bool failed = false,
+  double? tokensPerSecond,
+}) {
+  final speed = tokensPerSecond;
+  return switch (engine) {
+    null => (
+        label: '',
+        icon: Icons.memory_rounded,
+        tone: KoruTones.neutral,
+      ),
+    // The three states that are not "running" come first inside this case,
+    // because a start that failed has already been through the branch that
+    // reported it starting, and a stale progress value must not keep a dead
+    // engine looking like it is on its way up.
+    KoruEngine.onDevice => (
+        label: switch ((failed, starting, progress)) {
+          (true, _, _) => 'THIS PHONE  NOT RUNNING',
+          (false, true, final int percent?) => 'THIS PHONE  $percent%',
+          (false, true, _) => 'THIS PHONE  STARTING',
+          _ => speed == null
+              ? 'MODEL ON THIS PHONE'
+              : 'THIS PHONE  ${speed.toStringAsFixed(1)} TOK/S',
+        },
+        icon: Icons.memory_rounded,
+        tone: failed ? KoruTones.clay : KoruTones.leaf,
+      ),
+    KoruEngine.cloud => (
+        label: 'ONLINE MODEL',
+        icon: Icons.cloud_outlined,
+        tone: KoruTones.gold,
+      ),
+    KoruEngine.builtIn => (
+        label: 'FROM YOUR RECORDS',
+        icon: Icons.storage_rounded,
+        tone: KoruTones.leaf,
+      ),
+  };
+}
+
+/// Names the engine on a reply. A label, never a control.
 ///
-/// Tappable, because the badge is the only place on this screen that knows which
-/// engine is selected and the answer to "who is answering" is the first question
-/// most people have once they have asked one. Reaching Settings to change it made
-/// the badge a label; making it the control is what makes it the answer.
+/// It used to open the switcher, and that is the thing it must not do again:
+/// changing who answers is a decision about the app, not about the sentence
+/// above it, and a control sitting on each reply means the place you change it
+/// is somewhere different every time you look. The control lives in the app bar,
+/// which is always in the same place.
 ///
-/// Honest about a starting engine, which is the part that has to be right: a pill
-/// saying a model is on this phone while it is still being copied out of the APK
-/// is the one thing this widget must never say, because the person acts on it.
+/// What is left here is the provenance. The engine that wrote a reply can be a
+/// different one from the engine that will write the next, and the difference
+/// has to be readable on the reply itself, so this says what is honest about a
+/// starting engine too: a label saying a model is on this phone while it is
+/// still being copied out of the APK is the one thing this must never say,
+/// because the reader acts on it.
 class KoruEngineBadge extends StatelessWidget {
   const KoruEngineBadge({
     super.key,
@@ -160,7 +219,6 @@ class KoruEngineBadge extends StatelessWidget {
     this.starting = false,
     this.progress,
     this.failed = false,
-    this.onTap,
   });
 
   final KoruEngine? engine;
@@ -178,67 +236,135 @@ class KoruEngineBadge extends StatelessWidget {
   /// The last attempt to start it did not work.
   final bool failed;
 
-  /// Opens the switcher. Null leaves the pill as a label, which is what a badge
-  /// on a message nobody is choosing anything needs to be.
-  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) {
+    final engine = this.engine;
+    if (engine == null) return const SizedBox.shrink();
+
+    final summary = koruEngineSummary(
+      engine: engine,
+      tokensPerSecond: tokensPerSecond,
+      starting: starting,
+      progress: progress,
+      failed: failed,
+    );
+    return KoruPill(
+      label: summary.label,
+      color: summary.tone.ink,
+      background: summary.tone.fill,
+      icon: summary.icon,
+    );
+  }
+}
+
+/// The engine control for the chat's app bar.
+///
+/// Where the switcher is opened from. It lives in the bar rather than on a
+/// reply because the answer to "who is answering, and can I change it" is a
+/// property of the screen, not of any one message: a control that is only
+/// reachable once a conversation exists is a control nobody finds while they are
+/// still deciding who they are talking to.
+///
+/// Two lines, because one cannot carry what is being asked for. The first is
+/// the engine's own name — including the starting and failed states, so a slow
+/// phone explains itself. The second is the detail that makes the name mean
+/// something: which model is on the phone, which company answers online, or how
+/// fast the last answer actually came back.
+class KoruEngineBarButton extends StatelessWidget {
+  const KoruEngineBarButton({
+    super.key,
+    required this.engine,
+    required this.detail,
+    required this.onTap,
+    this.tokensPerSecond,
+    this.starting = false,
+    this.progress,
+    this.failed = false,
+  });
+
+  final KoruEngine? engine;
+
+  /// The model, the provider company, or the speed — whichever this engine can
+  /// be honest about. Empty means "not known yet", and the line is left out
+  /// rather than filled with a placeholder.
+  final String? detail;
+
+  final VoidCallback onTap;
+  final double? tokensPerSecond;
+  final bool starting;
+  final int? progress;
+  final bool failed;
 
   @override
   Widget build(BuildContext context) {
     final engine = this.engine;
     if (engine == null) return const SizedBox.shrink();
 
-    final speed = tokensPerSecond;
-    final pill = switch (engine) {
-      // The three states that are not "running" come first inside this case,
-      // because a start that failed has already been through the branch that
-      // reported it starting, and a stale progress value must not keep a dead
-      // engine looking like it is on its way up.
-      KoruEngine.onDevice => KoruPill(
-          label: switch ((failed, starting, progress)) {
-            (true, _, _) => 'THIS PHONE  NOT RUNNING',
-            (false, true, final int percent?) => 'THIS PHONE  $percent%',
-            (false, true, _) => 'THIS PHONE  STARTING',
-            _ => speed == null
-                ? 'MODEL ON THIS PHONE'
-                : 'THIS PHONE  ${speed.toStringAsFixed(1)} TOK/S',
-          },
-          color: failed ? KoruColors.clay : KoruColors.leaf,
-          background: failed ? KoruColors.claySoft : KoruColors.leafSoft,
-          icon: Icons.memory_rounded,
-        ),
-      KoruEngine.cloud => KoruPill(
-          label: 'CLOUD MODEL',
-          color: KoruColors.gold,
-          background: KoruColors.goldSoft,
-          icon: Icons.cloud_outlined,
-        ),
-      KoruEngine.builtIn => KoruPill(
-          label: 'FROM YOUR RECORDS',
-          color: KoruColors.leaf,
-          background: KoruColors.leafSoft,
-          icon: Icons.storage_rounded,
-        ),
-    };
+    final summary = koruEngineSummary(
+      engine: engine,
+      tokensPerSecond: tokensPerSecond,
+      starting: starting,
+      progress: progress,
+      failed: failed,
+    );
+    final detail = this.detail?.trim();
+    // The speed is already in the label for a local model that has answered, so
+    // saying it twice in two different type sizes reads as a mistake.
+    final second = detail == null || detail.isEmpty || detail == summary.label
+        ? null
+        : detail;
 
-    final tap = onTap;
-    if (tap == null) return pill;
-
-    // The chevron is the affordance. A pill that looks like a label and opens
-    // something is how a control ends up being a label for six months.
     return Semantics(
       button: true,
-      label: 'Change who answers',
+      label: 'Change who answers. ${summary.label}'
+          '${second == null ? '' : '. $second'}',
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-          onTap: tap,
-          borderRadius: BorderRadius.circular(KoruRadius.pill),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(KoruRadius.field),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: KoruSpace.xxs),
+            padding: const EdgeInsets.symmetric(
+              horizontal: KoruSpace.sm,
+              vertical: KoruSpace.xxs,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                pill,
+                Icon(
+                  summary.icon,
+                  size: KoruSize.iconSm,
+                  color: summary.tone.ink,
+                ),
+                const SizedBox(width: KoruSpace.xsm),
+                // Bounded rather than wrapped: a long model name has to give way
+                // before it can push the bar's own actions off the screen.
+                ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: _engineBarWords),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        summary.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: KoruType.rowTitleCompact,
+                      ),
+                      if (second != null)
+                        Text(
+                          second,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: KoruType.micro,
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: KoruSpace.xxs),
+                // The affordance. A control shaped like a label is how a control
+                // ends up being a label for six months.
                 Icon(
                   Icons.expand_more_rounded,
                   size: KoruSize.iconSm,
@@ -348,7 +474,7 @@ class KoruComposer extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: KoruColors.cream,
-        border: Border(top: BorderSide(color: KoruColors.line)),
+        border: Border(top: KoruBorders.hairline()),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -420,7 +546,7 @@ class KoruJumpToNewest extends StatelessWidget {
         boxShadow: KoruElevation.raised,
       ),
       child: Material(
-        color: Colors.transparent,
+        color: KoruColors.nothing,
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(

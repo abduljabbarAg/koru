@@ -7,6 +7,15 @@ import 'packet.dart';
 /// no round trip, so the app is useful the moment it opens. The other two are
 /// opt-in, because both cost something real, a cloud key or a few hundred
 /// megabytes of RAM.
+///
+/// The names are about *where the answer comes from*, never about *who serves
+/// it*. "Cloud" was used for both at one point — the engine option was called
+/// "Cloud model" and the page holding the provider, model and key was called
+/// "Cloud model" as well — which made the same word mean the engine on one
+/// screen and the company behind it on the next. So the engine is named for the
+/// route it takes and the provider is named for the company it is; "cloud" is
+/// only ever the company, and nothing in the app calls the engine a cloud
+/// anything.
 enum KoruEngine {
   /// Deterministic answers from the user's own records. Not a language model,
   /// and the UI says so.
@@ -20,8 +29,8 @@ enum KoruEngine {
 
   String get label => switch (this) {
         KoruEngine.builtIn => 'Built-in',
-        KoruEngine.onDevice => 'On-device model',
-        KoruEngine.cloud => 'Cloud model',
+        KoruEngine.onDevice => 'On this phone',
+        KoruEngine.cloud => 'Online model',
       };
 
   String get blurb => switch (this) {

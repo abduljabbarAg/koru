@@ -188,6 +188,14 @@ class KoruSettle extends StatelessWidget {
 /// Four sheets — new client, new project, change entry, edit message — each
 /// drew their own. This is the one they all draw now, so a sheet opened from
 /// Projects looks like a sheet opened from Business.
+///
+/// The surface is painted here rather than left to the sheet behind it, and
+/// that is a bug fixed rather than a style chosen. The sheet is opened
+/// transparent, so nothing was painted under the content at all: the engine
+/// switcher drew its white tiles straight onto the cream chat behind it, which
+/// is two near-identical colours on top of each other and reads as a sheet that
+/// failed to render. The sheet owns its own background, its own top edge and its
+/// own shadow, so it is a surface wherever it is opened from.
 class KoruSheetBody extends StatelessWidget {
   const KoruSheetBody({
     super.key,
@@ -207,45 +215,57 @@ class KoruSheetBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: KoruSpace.xl,
-        right: KoruSpace.xl,
-        top: KoruSpace.md,
-        bottom: KoruSpace.xl + MediaQuery.viewInsetsOf(context).bottom,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: KoruColors.cream,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(KoruRadius.sheet),
+        ),
+        // A hairline along the top edge is what separates the sheet from the
+        // page on a light palette, where the two are close to the same colour.
+        border: Border(top: KoruBorders.hairline()),
+        boxShadow: KoruElevation.raised,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 38,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: KoruSpace.lg),
-              decoration: BoxDecoration(
-                color: KoruColors.line,
-                borderRadius: BorderRadius.circular(2),
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: KoruSpace.xl,
+          right: KoruSpace.xl,
+          top: KoruSpace.md,
+          bottom: KoruSpace.xl + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: KoruSpace.lg),
+                decoration: BoxDecoration(
+                  color: KoruColors.line,
+                  borderRadius: BorderRadius.circular(KoruRadius.pill),
+                ),
               ),
             ),
-          ),
-          if (title != null) ...[
-            Text(title!, style: KoruType.sheetTitle),
-            const SizedBox(height: KoruSpace.xs),
+            if (title != null) ...[
+              Text(title!, style: KoruType.sheetTitle),
+              const SizedBox(height: KoruSpace.xs),
+            ],
+            if (subtitle != null)
+              Text(subtitle!, style: KoruType.bodySmall),
+            SizedBox(height: title != null ? KoruSpace.lg : KoruSpace.xs),
+            Flexible(
+              child: SingleChildScrollView(
+                child: MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: child,
+                ),
+              ),
+            ),
           ],
-          if (subtitle != null)
-            Text(subtitle!, style: KoruType.bodySmall),
-          SizedBox(height: title != null ? KoruSpace.lg : KoruSpace.xs),
-          Flexible(
-            child: SingleChildScrollView(
-              child: MediaQuery.removePadding(
-                context: context,
-                removeTop: true,
-                child: child,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -262,7 +282,10 @@ Future<T?> showKoruSheet<T>(
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.transparent,
+    // The body paints its own surface, its own top edge and its own shadow, so
+    // the sheet needs no background of its own and cannot be left transparent
+    // by the next caller that forgets one.
+    backgroundColor: KoruColors.nothing,
     barrierColor: KoruColors.shadow,
     builder: (ctx) => KoruSheetBody(
       title: title,
@@ -284,8 +307,8 @@ void toast(BuildContext context, String message) {
       content: Text(message),
       behavior: SnackBarBehavior.floating,
       backgroundColor: KoruColors.ink,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(KoruRadius.field),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(KoruRadius.field)),
       ),
     ));
 }
@@ -346,7 +369,10 @@ class KoruGuideBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.only(top: 1, right: KoruSpace.sm),
+                    padding: const EdgeInsets.only(
+                      top: KoruSpace.xxs,
+                      right: KoruSpace.sm,
+                    ),
                     child: Icon(
                       Icons.format_quote_rounded,
                       size: KoruSize.iconSm,

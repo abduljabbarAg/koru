@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../permission_consent.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -16,9 +17,12 @@ import '../widgets.dart';
 /// fully without one of them, and the worst outcome is a reminder that never
 /// arrives — which is said out loud rather than implied.
 class PermissionsIntroScreen extends ConsumerStatefulWidget {
-  const PermissionsIntroScreen({required this.onDone, super.key});
+  const PermissionsIntroScreen({required this.onAnswered, super.key});
 
-  final VoidCallback onDone;
+  /// Reports how the person answered, so both answers can be recorded as what
+  /// they are. "Not now" used to be recorded as the same thing as having granted
+  /// everything, which is the same single-bit mistake the old startup flag was.
+  final Future<void> Function(ConsentOutcome outcome) onAnswered;
 
   @override
   ConsumerState<PermissionsIntroScreen> createState() =>
@@ -27,8 +31,16 @@ class PermissionsIntroScreen extends ConsumerStatefulWidget {
 
 class _PermissionsIntroScreenState
     extends ConsumerState<PermissionsIntroScreen> {
-  final PageController _pages = PageController();
-  final int _page = 0;
+  /// Which page is being read. Not final, and not a PageView.
+  ///
+  /// This was `final int _page = 0` driving a [PageController] that was never
+  /// attached to anything, so "Next" called `nextPage` on a controller with no
+  /// position — it threw — and `_page` could never become anything but zero, so
+  /// the branch that actually raises the permissions was unreachable. The only
+  /// way out of the screen was "Not now", which requested nothing. That is the
+  /// second half of "permissions don't ask": even a correct gate would have led
+  /// to a screen that could not ask.
+  int _page = 0;
 
   static const _asks = [
     _Ask(
@@ -65,16 +77,14 @@ class _PermissionsIntroScreenState
 
   @override
   void dispose() {
-    _pages.dispose();
     super.dispose();
   }
 
+  /// The button, which is "next page" until the last one and the actual request
+  /// on it.
   void _next() {
     if (_page < _asks.length - 1) {
-      _pages.nextPage(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-      );
+      setState(() => _page++);
       return;
     }
     _continue();
@@ -88,7 +98,15 @@ class _PermissionsIntroScreenState
     final messenger = ScaffoldMessenger.maybeOf(context);
     await requestHealthPermissions(ref, messenger: messenger);
     if (!mounted) return;
-    widget.onDone();
+    await widget.onAnswered(ConsentOutcome.granted);
+  }
+
+  Future<void> _notNow() async {
+    // Not now is a real answer, and recorded as itself rather than as consent.
+    // What somebody is shown here is enough to make the refusal permanent, which
+    // is the thing a person cannot undo and did not mean to agree to.
+    if (!mounted) return;
+    await widget.onAnswered(ConsentOutcome.declined);
   }
 
   @override
@@ -128,7 +146,7 @@ class _PermissionsIntroScreenState
               const SizedBox(height: KoruSpace.xxl),
               Text(ask.subtitle.toUpperCase(), style: KoruType.label),
               const SizedBox(height: KoruSpace.sm),
-              Text(ask.title, style: KoruType.display.copyWith(fontSize: 26)),
+              Text(ask.title, style: KoruType.pageTitle),
               const SizedBox(height: KoruSpace.md),
               Text(ask.body, style: KoruType.bodyStrong),
               const SizedBox(height: KoruSpace.lg),
@@ -139,7 +157,9 @@ class _PermissionsIntroScreenState
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(
-                        top: 3, right: KoruSpace.sm + 2),
+                      top: KoruSpace.xxs,
+                      right: KoruSpace.sml,
+                    ),
                     child: Container(
                       width: 6,
                       height: 6,
@@ -168,11 +188,7 @@ class _PermissionsIntroScreenState
               const SizedBox(height: KoruSpace.xs),
               Center(
                 child: TextButton(
-                  onPressed: () {
-                    // Not now is a real answer. Recorded so the app stops asking,
-                    // and the permission can still be granted later from Settings.
-                    widget.onDone();
-                  },
+                  onPressed: _notNow,
                   style: TextButton.styleFrom(foregroundColor: KoruColors.inkFaint),
                   child: const Text('Not now'),
                 ),
@@ -185,7 +201,7 @@ class _PermissionsIntroScreenState
                   child: Text(
                     'The app works fully without any of this.',
                     textAlign: TextAlign.center,
-                    style: KoruType.bodySmall.copyWith(fontSize: 12.5),
+                    style: KoruType.meta,
                   ),
                 ),
               ),

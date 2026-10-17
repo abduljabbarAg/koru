@@ -9,11 +9,13 @@ import '../local/bundled_engine.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'engine_log.dart';
 
-/// Opens the switcher that the engine badge on a reply opens.
+/// Opens the switcher that the engine control in the app bar opens.
 ///
-/// Titled "Who answers" rather than "Settings" on purpose: the person tapping it
-/// wants to change this, not go somewhere. Everything it writes goes through
+/// Titled "Who answers" rather than "Settings" on purpose, and the same words
+/// the Settings index uses for the same page: the person tapping it wants to
+/// change this, not go somewhere. Everything it writes goes through
 /// [selectEngine] and friends, so Settings and the chat cannot end up showing
 /// different engines.
 Future<void> showEngineSwitcher(BuildContext context) {
@@ -131,14 +133,31 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
         .read(chatProvider.notifier)
         .ensureEngineRunning(modelPath: model.path);
     if (!mounted) return;
+    final problem = ok ? null : ref.read(chatProvider).engineProblem;
+    // Read after the start, not before: the interesting reason is usually about
+    // what just happened, and a status read taken beforehand says nothing about
+    // the attempt.
+    final why = ok ? null : problem ?? await _whyItDidNotStart();
+    if (!mounted) return;
     setState(() {
       _starting = null;
       _running = ok;
-      _failure = ok
-          ? null
-          : ref.read(chatProvider).engineProblem ??
-              'The model did not start. Free space is the usual cause.';
+      _failure = why;
     });
+  }
+
+  /// The platform's own account, when the start itself produced no message.
+  ///
+  /// Only used as a fallback, and deliberately never a guess. Every earlier
+  /// version ended on "free space is the usual cause", which is a hypothesis
+  /// shown to somebody who already knows something is wrong and cannot act on
+  /// it. Where the platform can name the cause it is named.
+  Future<String> _whyItDidNotStart() async {
+    final status = await ref.read(bundledEngineStatusProvider.future);
+    if (status.modelProblem != null) return status.modelProblem!;
+    if (!status.available) return status.summary;
+    return 'The engine launched but never answered on its port. The log says '
+        'what it did in the meantime.';
   }
 
   /// Brings in a .gguf from the phone's own storage, so "your own model" is a tap
@@ -174,12 +193,20 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
         onPressed: () => setState(() => _stage = _Stage.engines),
-        icon: const Icon(Icons.arrow_back_rounded, size: 16),
+        icon: const Icon(Icons.arrow_back_rounded,
+            size: KoruSize.iconSm),
         label: const Text('All three'),
       ),
     );
   }
 
+  /// The three engines, each with what picking it actually costs.
+  ///
+  /// Every row is a full-width tile rather than a pill or a bare radio so the
+  /// blurb has somewhere to go: the whole difference between "From your
+  /// records" and "a real model on this phone" is the sentence under the name,
+  /// and a control that cannot carry it is how somebody ended up expecting a
+  /// chatbot and got a lookup table.
   Widget _engines() {
     final current = ref.watch(engineProvider).valueOrNull ?? KoruEngine.builtIn;
     return Column(
@@ -209,14 +236,19 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
     );
   }
 
+  /// Which company answers online, and whether it has a key yet.
+  ///
+  /// "Cloud" is used here and only here in the app, for the company. The engine
+  /// it serves is the "Online model" one step back, and saying both on one
+  /// screen is what made the two look like the same setting twice.
   Widget _cloud() {
     final selection = ref.watch(cloudSelectionProvider).valueOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Which company answers. The key for each one is kept separately, in '
-          'Settings, so switching does not need a new key.',
+          'Which company answers online. The key for each one is kept '
+          'separately, in Settings, so switching does not need a new key.',
           style: KoruType.caption.copyWith(height: 1.45),
         ),
         const SizedBox(height: KoruSpace.md),
@@ -309,14 +341,18 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
             ),
         const SizedBox(height: KoruSpace.xs),
         OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(KoruSize.buttonInCard),
+          ),
           onPressed: _importModel,
-          icon: const Icon(Icons.upload_file_rounded, size: 18),
+          icon: const Icon(Icons.upload_file_rounded, size: KoruSize.icon),
           label: const Text('Add a model from this phone'),
         ),
         if (starting != null || _running)
           OutlinedButton(
-            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(KoruSize.buttonInCard),
+            ),
             onPressed: () => setState(() => _listRequested = true),
             child: Text(_running ? 'Use a different model' : 'See the models'),
           ),
@@ -355,7 +391,9 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
         ),
         const SizedBox(height: KoruSpace.md),
         OutlinedButton(
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(KoruSize.buttonInCard),
+          ),
           onPressed: () => setState(() => _listRequested = true),
           child: const Text('See the models'),
         ),
@@ -374,13 +412,17 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
           icon: Icons.check_circle_rounded,
         ),
         FilledButton(
-          style: FilledButton.styleFrom(minimumSize: const Size(0, 46)),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(KoruSize.button),
+          ),
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Ask it something'),
         ),
         const SizedBox(height: KoruSpace.sm),
         OutlinedButton(
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+          style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(KoruSize.buttonInCard),
+            ),
           onPressed: () => setState(() => _listRequested = true),
           child: const Text('Use a different model'),
         ),
@@ -399,6 +441,10 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
       children: [
         KoruNotice(
           title: 'It did not start',
+          // The platform's own words when it has any. "The model did not start.
+          // Free space is the usual cause." is a shrug written by this app about
+          // something the platform knows precisely — how much room the copy needs
+          // and how much the phone has — and a person cannot act on a shrug.
           message: _failure!,
           icon: Icons.error_outline_rounded,
           tone: KoruTones.clay,
@@ -407,7 +453,9 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
           children: [
             Expanded(
               child: FilledButton(
-                style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, KoruSize.buttonInCard),
+                ),
                 onPressed: _startChosen,
                 child: const Text('Try again'),
               ),
@@ -415,7 +463,9 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
             const SizedBox(width: KoruSpace.sm),
             Expanded(
               child: OutlinedButton(
-                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, KoruSize.buttonInCard),
+                ),
                 onPressed: () => setState(() {
                   _failure = null;
                   _listRequested = true;
@@ -424,6 +474,18 @@ class _EngineSwitcherState extends ConsumerState<_EngineSwitcher> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: KoruSpace.xs),
+        // The full log, one tap from the failure that pointed here. A sheet is
+        // where somebody is when the engine has just refused, so that is where the
+        // next step has to be.
+        TextButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const EngineLogScreen()),
+          ),
+          icon: const Icon(Icons.article_outlined,
+            size: KoruSize.iconSm),
+          label: const Text('Read the engine log'),
         ),
       ],
     );

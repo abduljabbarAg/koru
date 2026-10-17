@@ -48,6 +48,8 @@ class BundledEngine {
         executable: raw['executable'] == true,
         modelPath: raw['modelPath'] as String?,
         modelAvailable: raw['modelAvailable'] == true,
+        modelBytes: (raw['modelBytes'] as num?)?.toInt() ?? 0,
+        modelProblem: raw['modelProblem'] as String?,
         reason: raw['reason'] as String?,
       );
     } catch (e) {
@@ -238,6 +240,8 @@ class BundledEngineStatus {
     this.executable = false,
     this.modelPath,
     this.modelAvailable = false,
+    this.modelBytes = 0,
+    this.modelProblem,
     this.reason,
   });
 
@@ -247,7 +251,9 @@ class BundledEngineStatus {
         exists = false,
         executable = false,
         modelPath = null,
-        modelAvailable = false;
+        modelAvailable = false,
+        modelBytes = 0,
+        modelProblem = null;
 
   final bool available;
   final String? path;
@@ -255,16 +261,26 @@ class BundledEngineStatus {
   final bool executable;
   final String? modelPath;
   final bool modelAvailable;
+
+  /// How much room the model on disk is taking, once there is one.
+  final int modelBytes;
+
+  /// Why the bundled model is not on disk, when it is not.
+  ///
+  /// This is the platform saying what happened rather than this app guessing.
+  /// A copy of a few hundred megabytes that runs out of room used to surface as
+  /// "free space is the usual cause", which is a hypothesis shown to somebody who
+  /// already knows something is wrong and cannot tell what. The numbers are
+  /// here so the person can act on it.
+  final String? modelProblem;
+
   final String? reason;
 
   /// One line for the settings screen.
   String get summary {
-    if (available) {
-      return modelAvailable
-          ? 'Engine and model are on disk.'
-          : 'Engine is on disk, but the model has not been unpacked yet.';
-    }
-    return reason ?? 'The bundled engine is not available.';
+    if (!available) return reason ?? 'The bundled engine is not available.';
+    if (modelAvailable) return 'Engine and model are on disk.';
+    return modelProblem ?? 'Engine is on disk, but the model has not been unpacked yet.';
   }
 }
 

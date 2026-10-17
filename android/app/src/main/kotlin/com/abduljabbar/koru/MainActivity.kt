@@ -1,6 +1,7 @@
 package com.abduljabbar.koru
 
 import android.content.Context
+import android.os.StatFs
 import android.util.Log
 import android.content.Intent
 import android.security.keystore.KeyGenParameterSpec
@@ -9,8 +10,9 @@ import android.util.Base64
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMethodCodec
+import io.flutter.plugin.common.TaskQueues
 import java.io.File
-import java.io.IOException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -99,7 +101,28 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        MethodChannel(messenger, engineChannelName).setMethodCallHandler { call, result ->
+        // A serial background queue, which is not a detail.
+        //
+        // Every engine method can end up copying the model out of the APK, and
+        // that is a couple of hundred megabytes. Method channel handlers run on
+        // the platform thread unless a task queue is given, so `status` — which
+        // the chat screen watches just to decide what its badge should say — was
+        // doing a 248 MB asset copy on the main thread and freezing the app
+        // during launch. A phone that showed "Koru isn't responding" on a first
+        // run had been told nothing about why, and no model was the obvious
+        // suspect for the wrong reason.
+        //
+        // Serial rather than fixed-thread, so the copy cannot run twice at once:
+        // serialising the engine's own calls is what the platform did with them
+        // before this queue existed.
+        val engineQueue =
+            TaskQueues.make(TaskQueues.TaskQueueType.SERIAL_BACKGROUND)
+        MethodChannel(
+            messenger,
+            engineChannelName,
+            StandardMethodCodec.INSTANCE,
+            engineQueue,
+        ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "status" -> result.success(engineStatus())
                 "diagnose" -> result.success(
@@ -201,9 +224,12 @@ class MainActivity : FlutterActivity() {
     private fun engineStatus(): Map<String, Any?> {
         val candidate = File(applicationInfo.nativeLibraryDir, "libllama-server.so")
         val usable = candidate.exists() && candidate.canExecute()
-        val model = modelFile()
-        // modelFile() has already been called above, so a first run has
-        // materialised it.
+        // Only what is already on disk. This used to call modelFile(), so the
+        // cheapest possible question — "is there a bundled model" — was also the
+        // one that copied 248 MB out of the APK. The chat screen watches the
+        // status to decide what its badge should say, so a launch could freeze
+        // on a question nobody asked for.
+        val model = modelOnDisk()
         val reason = when {
             usable -> null
             !candidate.exists() ->
@@ -221,17 +247,67 @@ class MainActivity : FlutterActivity() {
             "executable" to candidate.canExecute(),
             "modelPath" to model?.absolutePath,
             "modelAvailable" to (model != null),
+            "modelBytes" to (model?.length() ?: 0L),
+            "modelProblem" to modelProblem,
             "reason" to reason,
         )
     }
 
     /**
-     * The model, copied out of the APK's assets on first use.
+     * Why the bundled model is not on disk, in numbers a person can act on.
      *
-     * Assets cannot be mmapped directly out of the compressed APK, so the file is
-     * materialised into the app's own storage where the engine's mmap loader can use
-     * it.
+     * Null whenever the model is fine or has simply not been unpacked yet. Set
+     * by [modelFile] on the way to giving up, and read by the status call and by
+     * the failure message, because "the model could not be unpacked" on its own
+     * sent people looking for a missing file rather than for a full disk.
      */
+    @Volatile
+    private var modelProblem: String? = null
+
+    /**
+     * Headroom left on top of the model itself.
+     *
+     * The copy is 248 MB and the engine mmaps it while running, so a disk that
+     * passes the copy can still fail to load it. 120 MB is enough that the
+     * system keeps room to breathe, and the APK itself has already been written
+     * by this point, so this is checked against space genuinely available now.
+     */
+    private const val MODEL_HEADROOM = 120L * 1024 * 1024
+
+    /**
+     * How big the bundled model is, mirroring BundledEngine.bundledModelBytes.
+     *
+     * Only used to phrase a failure, and only for the one message that cannot be
+     * phrased from a measurement: when the asset is stored compressed there is
+     * no file descriptor to take a length from, so the copy runs and discovers
+     * the disk is full the only way it can. Duplicated here rather than passed
+     * over the channel because it is a sentence, not a decision.
+     */
+    private const val BUNDLED_MODEL_BYTES = 248302272L
+
+    /** What is left to unpack into, in bytes. */
+    private fun freeBytes(): Long =
+        try {
+            StatFs(filesDir.absolutePath).availableBytes
+        } catch (e: Exception) {
+            // A device that will not answer cannot be promised anything, but it
+            // must not stop the app trying: the copy itself is the real test.
+            Long.MAX_VALUE
+        }
+
+    private fun megabytes(bytes: Long): String = "${bytes / (1024 * 1024)} MB"
+
+    /**
+     * The bundled model, if it is already on disk. Never copies anything.
+     */
+    private fun modelOnDisk(): File? {
+        for (name in bundledModelNames) {
+            val target = File(filesDir, "models/$name")
+            if (target.exists() && target.length() > 1_000_000) return target
+        }
+        return null
+    }
+
     /**
      * Where a dropped model can be found.
      *
@@ -285,11 +361,21 @@ class MainActivity : FlutterActivity() {
         "qwen2.5-0.5b-instruct-q4_k_m.gguf",
     )
 
+    /**
+     * The bundled model, copied out of the APK's assets on first use.
+     *
+     * Assets cannot be mmapped directly out of the compressed APK, so the file is
+     * materialised into the app's own storage where the engine's mmap loader can
+     * use it.
+     *
+     * Returns the file already on disk when there is one, so this is safe to ask
+     * repeatedly. Runs on the engine thread rather than the platform thread,
+     * because the copy is a couple of hundred megabytes. When it cannot produce
+     * a model it leaves [modelProblem] saying why, in numbers where numbers help,
+     * rather than returning null and letting the caller guess.
+     */
     private fun modelFile(): File? {
-        for (name in bundledModelNames) {
-            val target = File(filesDir, "models/$name")
-            if (target.exists() && target.length() > 1_000_000) return target
-        }
+        modelOnDisk()?.let { return it }
         // Flutter puts app assets under assets/flutter_assets/, so the asset
         // that sits at assets/flutter_assets/assets/models/ in the package is
         // reached as flutter_assets/assets/models/ here. Asking for the shorter
@@ -301,19 +387,83 @@ class MainActivity : FlutterActivity() {
             )
         }
         for (assetName in assetNames) {
-            val target = File(filesDir, "models/" + assetName.substringAfterLast('/'))
-            try {
-                assets.open(assetName).use { input ->
-                    target.parentFile?.mkdirs()
-                    target.outputStream().use { output -> input.copyTo(output, 1 shl 16) }
+            val name = assetName.substringAfterLast('/')
+            val target = File(filesDir, "models/$name")
+            // Reported while nothing has gone wrong yet, so a status call made
+            // during the copy does not claim a fault that has not happened.
+            modelProblem = null
+            val needed = try {
+                assets.openFd(assetName).use { it.length }
+            } catch (e: Exception) {
+                // Not at this path, or stored compressed with no descriptor.
+                // Fall through to the streaming copy, which can still read it.
+                -1L
+            }
+            if (needed > 0) {
+                val free = freeBytes()
+                val want = needed + MODEL_HEADROOM
+                if (free < want) {
+                    // Checked before the copy rather than reported afterwards,
+                    // because a copy that runs out of room leaves a truncated
+                    // file behind, and the next launch happily accepts a
+                    // half-written model because it is bigger than the length
+                    // check below. The numbers are the diagnosis: "free space is
+                    // likely the cause" asked the user to go and find out.
+                    modelProblem =
+                        "There is not enough room to unpack the model. It needs " +
+                            "${megabytes(want)} free (${megabytes(needed)} for the model, " +
+                            "plus ${megabytes(MODEL_HEADROOM)} kept spare) and this phone has " +
+                            "${megabytes(free)}. Free some space and try again — the model " +
+                            "unpacks once, not every launch."
+                    return null
                 }
-                if (target.exists() && target.length() > 1_000_000) return target
-            } catch (e: IOException) {
-                // Not at this path; try the next one.
+            }
+            try {
+                val partial = File(target.parentFile, "$name.part")
+                target.parentFile?.mkdirs()
+                // Written aside and renamed, never straight onto the real name.
+                // A copy interrupted by a full disk or a killed process used to
+                // leave the truncated file in place under the name everything
+                // else looks for, so the engine would go on to load half a model
+                // and report a tensor missing rather than a disk that was full.
+                partial.outputStream().use { output ->
+                    assets.open(assetName).use { input ->
+                        input.copyTo(output, 1 shl 20)
+                    }
+                    output.fd.sync()
+                }
+                if (partial.length() > 1_000_000 && !partial.renameTo(target)) {
+                    modelProblem = "The model was copied but could not be moved into place."
+                    partial.delete()
+                    return null
+                }
+                partial.delete()
+                if (target.exists() && target.length() > 1_000_000) {
+                    modelProblem = null
+                    return target
+                }
+            } catch (e: Exception) {
+                partial.delete()
+                // Kept rather than swallowed, and a full disk gets the same
+                // numbers the preflight would have given. An asset stored
+                // compressed has no length to take before the copy, so this is
+                // the only place that failure can be caught, and "No space left
+                // on device" on its own sends people looking for a missing file.
+                modelProblem =
+                    if (e.message?.contains("space", ignoreCase = true) == true) {
+                        "There is not enough room to unpack the model. It needs " +
+                            "${megabytes(BUNDLED_MODEL_BYTES + MODEL_HEADROOM)} free and this " +
+                            "phone has ${megabytes(freeBytes())}. Free some space and try " +
+                            "again — the model unpacks once, not every launch. ($e)"
+                    } else {
+                        "The model could not be unpacked: $e"
+                    }
+                return null
             }
         }
         // Absent. Not an error: the app still works with an external server, it
         // just cannot start the bundled engine.
+        modelProblem = "This build does not contain a model."
         return null
     }
 
@@ -339,10 +489,13 @@ class MainActivity : FlutterActivity() {
         val binary = engineBinary()
             ?: return fail("The engine binary is missing or not executable.")
         val model = modelFile()
-            ?: return fail(
-                "The model could not be unpacked. Free space is likely the cause:\n" +
-                    File(filesDir, "models").absolutePath,
-            )
+        ?: return fail(
+            // The real reason, with the numbers, rather than a guess. This is
+            // what the app shows the user and the user copies into a bug report.
+            modelProblem
+                ?: "The model could not be unpacked into " +
+                    "${File(filesDir, "models").absolutePath}",
+        )
         if (engine?.isAlive == true) return true
         return try {
             log.delete()
@@ -368,6 +521,24 @@ class MainActivity : FlutterActivity() {
             // The extra threads do not help this CPU; they contend for the same
             // cores the model is already using.
             "--threads", "2",
+            // The single most important line in this file, and it was missing for
+            // weeks. Without an explicit context size the server allocates a KV
+            // cache for whatever context the model advertises, which for Bonsai is
+            // far larger than this phone has memory for. The kernel SIGKILLs the
+            // process partway through load, before llama.cpp can print a single
+            // word of error — so the log just stopped at "n_threads = 2" and the
+            // app could only say "would not start". Measured here: the same
+            // binary and model die silently at the default size, and load and
+            // answer with 2048.
+            //
+            // 2048 is comfortably more than the ~1200 characters of history the
+            // app sends, so nothing is truncated in normal use.
+            "--ctx-size", "2048",
+            // 256 rather than the default 2048. Prompt processing mmaps the
+            // batch, and on a phone a large batch is the difference between
+            // loading and being killed.
+            "--batch-size", "256",
+            "--parallel", "1",
             "--no-warmup")
             builder.redirectErrorStream(true)
             builder.redirectOutput(log)
