@@ -258,9 +258,18 @@ void main() {
     testWidgets('Show me dismisses the morning card and the work stays',
         (tester) async {
       // The button used to only close the card, so tapping "Show me" showed
-      // nothing at all. It now also travels the page to the queue.
-      await seedTask('Renew the domain', dueIn: 1);
+      // nothing at all. It now also travels the page to the queue. Enough work
+      // that the queue genuinely sits below the card, so there is somewhere to
+      // travel to.
+      for (var i = 0; i < 8; i++) {
+        await seedTask('Chore number $i', dueIn: i + 1);
+      }
       await mount(tester, const TodayScreen());
+
+      // Where the work sits before the tap: below the hero, the card and the
+      // summary, which is off the bottom of a test-sized screen.
+      final before = tester.getTopLeft(find.text('DO THIS NEXT')).dy;
+      expect(before, greaterThan(400));
 
       expect(find.text('Show me'), findsOneWidget);
       await tester.tap(find.text('Show me'));
@@ -268,7 +277,11 @@ void main() {
 
       expect(find.text('Show me'), findsNothing);
       expect(find.text('DO THIS NEXT'), findsOneWidget);
-      expect(find.text('Renew the domain'), findsOneWidget);
+      expect(find.text('Chore number 0'), findsOneWidget);
+      // "Show me" means the queue is now where the eye is, not just that the
+      // card went away: the section has travelled up to the top of the page.
+      final after = tester.getTopLeft(find.text('DO THIS NEXT')).dy;
+      expect(after, lessThan(120));
     });
 
     testWidgets('a chore with no client is on the morning too', (tester) async {
