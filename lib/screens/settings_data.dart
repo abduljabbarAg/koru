@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../backup.dart';
 import '../cloud_providers.dart';
+import '../file_save.dart';
 import '../secrets.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -89,9 +90,9 @@ class DataSettingsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: KoruSpace.lg),
             Text(
-              'A backup is a plain JSON file, readable in any text editor, handed '
-              'to Android\u2019s share sheet. Where it goes after that is your '
-              'choice: nothing is uploaded on your behalf.',
+              'A backup is a plain JSON file, readable in any text editor. '
+              'Save it to this phone\u2019s Downloads, or share it somewhere '
+              'else \u2014 either way nothing is uploaded on your behalf.',
               style: KoruType.bodySmall,
             ),
           ],
@@ -100,19 +101,72 @@ class DataSettingsScreen extends ConsumerWidget {
     );
   }
 
-  /// Writes a backup and hands it to the share sheet.
+  /// Writes a backup, then asks where it should go.
   ///
-  /// Sharing is what makes this useful rather than decorative. A file sitting in
-  /// private app storage is one uninstall away from gone, and the whole
-  /// promise of a local-only app is that this data matters.
+  /// Two destinations, because they answer different worries. Saving to the
+  /// phone is what somebody does before reinstalling; sharing is what they do
+  /// to get the file off the device entirely. Sharing was the only option
+  /// before, which meant the user's own phone was the one place a backup could
+  /// not go without another app in the middle.
   Future<void> _backup(BuildContext context, WidgetRef ref) async {
     try {
       final store = await ref.read(storeProvider.future);
       final dir = await getTemporaryDirectory();
       final file = await Backup.writeTo(store, dir);
       final path = file.path;
-      if (context.mounted) toast(context, 'Backup saved');
-      await Share.shareXFiles([XFile(path, mimeType: 'application/json')]);
+      final name = file.uri.pathSegments.last;
+      if (!context.mounted) return;
+
+      final choice = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  KoruSpace.card,
+                  0,
+                  KoruSpace.card,
+                  KoruSpace.sm,
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Your backup is ready',
+                    style: KoruType.rowTitle,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('Save to this phone'),
+                subtitle: const Text('Lands in Downloads, stays there'),
+                onTap: () => Navigator.pop(ctx, 'save'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.ios_share_outlined),
+                title: const Text('Share'),
+                subtitle: const Text('Email, drive, anywhere else'),
+                onTap: () => Navigator.pop(ctx, 'share'),
+              ),
+              const SizedBox(height: KoruSpace.sm),
+            ],
+          ),
+        ),
+      );
+
+      if (choice == 'save') {
+        final content = await file.readAsString();
+        final saved = await const FileSave().saveToDownloads(name, content);
+        if (!context.mounted) return;
+        toast(context, saved == null
+            ? 'Could not save the file'
+            : 'Saved to $saved');
+      } else if (choice == 'share') {
+        await Share.shareXFiles([XFile(path, mimeType: 'application/json')]);
+      }
     } catch (e) {
       if (context.mounted) toast(context, 'Could not back up: $e');
     }

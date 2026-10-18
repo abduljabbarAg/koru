@@ -164,7 +164,11 @@ void main() {
         ),
       );
       expect(prompt, isNot(contains('kami')));
-      expect(prompt, contains('Never guess a real name'));
+      // The records now carry real names, so the old "never guess a real name"
+      // line is gone; what replaces it is the rule that matters more — the
+      // model must admit a missing record rather than invent one.
+      expect(prompt, contains('all the facts you have'));
+      expect(prompt, contains('say it is not on file'));
     });
 
     test('the prompt does not change shape for a sensitive question', () {

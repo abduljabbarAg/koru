@@ -195,8 +195,7 @@ void main() {
   });
 
   group('the morning queue', () {
-    testWidgets('says what needs doing, for whom, by when, and how much',
-        (tester) async {
+    testWidgets('separates the work from the notices', (tester) async {
       final clientId = (await tester.runAsync(() => store.addClient(Client(
             name: 'Acme',
             status: 'delivered',
@@ -207,18 +206,53 @@ void main() {
       await seedTask('Send the revised quote', dueIn: 0, clientId: clientId);
       await mount(tester, const TodayScreen());
 
-      // Late money is the top of the morning, and it names its figure.
+      // Late money is top of the notices, and it names its figure.
       expect(find.text('Acme owes you'), findsOneWidget);
       expect(find.textContaining('2000 AED'), findsOneWidget);
       expect(find.textContaining('overdue by 4 days'), findsOneWidget);
 
-      // Then the work, with the client it is for on the row.
+      // The work is its own list, and the row does not carry the client: the
+      // client is who the work is for, not who is doing it.
       expect(find.text('Send the revised quote'), findsOneWidget);
-      expect(find.text('Acme  ·  Due today'), findsOneWidget);
+      expect(find.text('Due today'), findsOneWidget);
+      expect(find.text('Acme  ·  Due today'), findsNothing);
 
-      // And it reads as a queue rather than a report.
+      // Money sits under Notices rather than mixed into the work.
       expect(find.text('DO THIS NEXT'), findsOneWidget);
+      expect(find.text('NOTICES'), findsOneWidget);
       expect(find.text('Done for today'), findsNothing);
+    });
+
+    testWidgets('a morning of only notices says there is no work', (tester) async {
+      await tester.runAsync(() => store.addClient(Client(
+            name: 'Acme',
+            status: 'delivered',
+            amount: 2000,
+            due: inDays(-4),
+            created: '2026-01-01',
+          )));
+      await mount(tester, const TodayScreen());
+
+      // Not the all-clear: a late invoice is not a clear day.
+      expect(find.text('Done for today'), findsNothing);
+      expect(find.text('Nothing of your own waiting'), findsOneWidget);
+      expect(find.text('NOTICES'), findsOneWidget);
+    });
+
+    testWidgets('Show me dismisses the morning card and the work stays',
+        (tester) async {
+      // The button used to only close the card, so tapping "Show me" showed
+      // nothing at all. It now also travels the page to the queue.
+      await seedTask('Renew the domain', dueIn: 1);
+      await mount(tester, const TodayScreen());
+
+      expect(find.text('Show me'), findsOneWidget);
+      await tester.tap(find.text('Show me'));
+      await pump(tester, frames: 20);
+
+      expect(find.text('Show me'), findsNothing);
+      expect(find.text('DO THIS NEXT'), findsOneWidget);
+      expect(find.text('Renew the domain'), findsOneWidget);
     });
 
     testWidgets('a chore with no client is on the morning too', (tester) async {

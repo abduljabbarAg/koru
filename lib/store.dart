@@ -86,7 +86,107 @@ class ProfileStore {
       // which left ContextPacket.focus permanently empty.
       focus: m['help_focus'] ?? '',
       projects: await _packetProjects(),
+      records: await _packetRecords(m['currency'] ?? ''),
     );
+  }
+
+  /// The records a cloud model is given, in one line each.
+  ///
+  /// This exists because a model asked "what does Acme still owe" answered that
+  /// it could see no records — and it was right: the packet carried the shape of
+  /// the work and none of the work. What goes out now is the same list the
+  /// Today screen ranks: clients with their balance and date, what is open, and
+  /// what is late. Names included, because a question about a named client is
+  /// unanswerable without the name, and the privacy screen shows this block
+  /// word for word before it is ever sent.
+  ///
+  /// Capped, because every question would otherwise carry every record the user
+  /// has ever made. The most pressing ones travel; the rest are a count.
+  Future<List<String>> _packetRecords(String currencyCode) async {
+    final today = DateTime.now();
+    final out = <String>[];
+    final suffix = currencyCode.isEmpty ? '' : ' $currencyCode';
+    String money(double v) =>
+        v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+    final received = await receivedTotals();
+    final list = await clients();
+
+    // Outstanding first, biggest balance first: the sequence a person would
+    // recite if asked what is going on. Settled clients are one summary line
+    // rather than a wall of zeroes.
+    final owing = <Client>[];
+    var settled = 0;
+    for (final c in list) {
+      final balance = c.id == null ? 0.0 : c.balanceWith(received[c.id!] ?? 0);
+      if (balance > 0) {
+        owing.add(c);
+      } else {
+        settled++;
+      }
+    }
+    owing.sort((a, b) => (b.balanceWith(received[b.id!] ?? 0))
+        .compareTo(a.balanceWith(received[a.id!] ?? 0)));
+
+    for (final c in owing.take(8)) {
+      final balance = c.balanceWith(received[c.id!] ?? 0);
+      final days = c.daysUntilDue(today);
+      final when = switch (days) {
+        null => 'no due date',
+        0 => 'due today',
+        < 0 => '${-days} day${days == -1 ? '' : 's'} late',
+        _ => 'due in $days day${days == 1 ? '' : 's'}',
+      };
+      out.add('client ${c.name}: ${money(balance)}$suffix still owed '
+          'of ${money(c.amount ?? 0)}$suffix, $when');
+    }
+    if (owing.length > 8) {
+      out.add('and ${owing.length - 8} more client(s) owing money');
+    }
+    if (settled > 0) {
+      out.add('$settled client${settled == 1 ? '' : 's'} fully settled');
+    }
+
+    final open = await tasks(openOnly: true);
+    open.sort((a, b) {
+      final ad = a.parsedDue;
+      final bd = b.parsedDue;
+      if (ad == null && bd == null) return 0;
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      return ad.compareTo(bd);
+    });
+    for (final t in open.take(8)) {
+      final days = t.daysUntilDue(today);
+      final when = switch (days) {
+        null => '',
+        0 => ', due today',
+        < 0 => ', ${-days} day${days == -1 ? '' : 's'} late',
+        _ => ', due in $days day${days == 1 ? '' : 's'}',
+      };
+      out.add('open task: ${t.title}$when');
+    }
+    if (open.length > 8) {
+      out.add('and ${open.length - 8} more open task(s)');
+    }
+
+    final scheduled = await deadlines();
+    for (final d in scheduled.take(4)) {
+      out.add('deadline: ${d.title}, ${d.due}');
+    }
+
+    // The ledger, so "did Bilal pay" has an answer. Small on purpose: the five
+    // most recent payments, who and how much.
+    final ledger = await payments(limit: 5);
+    if (ledger.isNotEmpty) {
+      final names = {for (final c in list) if (c.id != null) c.id!: c.name};
+      for (final p in ledger) {
+        final who = names[p.clientId] ?? 'a client';
+        out.add('payment received: ${money(p.amount)}$suffix from $who '
+            'on ${p.date}');
+      }
+    }
+    return out;
   }
 
   /// Projects as the cloud sees them: what the work is, never who it is for.

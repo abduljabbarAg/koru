@@ -42,6 +42,15 @@ class AttentionBridge {
             '${i.title}|${i.detail}',
       ];
 
+  /// The detail lines the notification expands to: what the count is made of.
+  ///
+  /// Public the same way [urgentTitles] is, so the shape of the shade is
+  /// testable without a platform channel. Four, not twenty: a notification is
+  /// read at a glance, and the whole list lives one tap away in the app.
+  static List<String> detailLines(List<AttentionItem> items) => [
+        for (final i in items.take(4)) '${i.title}: ${i.detail}',
+      ];
+
   /// A fingerprint of what is urgent, so "nothing changed" can be detected.
   ///
   /// Ordering matters, so this is sorted: the same three overdue clients in a
@@ -239,6 +248,10 @@ class AttentionBridge {
         'link': link?.encode(),
         // What is urgent right now, and only that.
         'urgent': urgentTitles(items),
+        // The detail lines the ongoing notification expands to. Without these
+        // the shade only ever carried one summary line, which named a count
+        // without ever saying what was in it.
+        'lines': detailLines(items),
         // How the service should behave this time round.
         'changed': signature(items) != lastSignature,
         'signature': signature(items),

@@ -35,11 +35,51 @@ import 'today_rows.dart';
 /// Built on [workQueueProvider] so that the list here, the badge on the phone and
 /// the notification are reading the same records rather than three answers to
 /// the same question.
-class TodayScreen extends ConsumerWidget {
+class TodayScreen extends ConsumerStatefulWidget {
   const TodayScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TodayScreen> createState() => _TodayScreenState();
+}
+
+class _TodayScreenState extends ConsumerState<TodayScreen> {
+  /// The one scroll view's controller, kept here so the morning card's
+  /// "Show me" can bring the work section into view.
+  final _list = ScrollController();
+
+  /// Marks the work section, so "Show me" has somewhere exact to go.
+  final _workKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _list.dispose();
+    super.dispose();
+  }
+
+  /// What "Show me" on the morning card does: put the queue on screen.
+  ///
+  /// The button used to only dismiss the card, which read as the card being
+  /// the whole point — the quote was shown and nothing followed it. What the
+  /// person actually asked for by tapping was the work, so the page travels to
+  /// the queue once the card has collapsed.
+  Future<void> _revealWork() async {
+    // One beat, so the card has collapsed and the scroll extent is settled
+    // before ensureVisible measures the section.
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    final section = _workKey.currentContext;
+    // Mounted of the section itself, which is the context being handed over:
+    // the page can outlive the section on a rebuild, and scrolling to a
+    // context that is no longer in the tree throws.
+    if (section == null || !section.mounted) return;
+    await Scrollable.ensureVisible(
+      section,
+      duration: KoruMotion.settle,
+      curve: KoruMotion.easeOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final queue = ref.watch(workQueueProvider);
 
     return Scaffold(
@@ -57,20 +97,20 @@ class TodayScreen extends ConsumerWidget {
       backgroundColor: KoruColors.cream,
       body: KoruSettle(
         child: queue.when(
-          loading: () => _scroll(ref, const [
+          loading: () => _scroll(const [
             _HeroHeader(),
             _Waiting(),
           ]),
-          error: (e, _) => _scroll(ref, [
+          error: (e, _) => _scroll([
             const _HeroHeader(),
             _Broken(onRetry: () => ref.invalidate(workQueueProvider)),
           ]),
-          data: (items) => _scroll(ref, [
+          data: (items) => _scroll([
             const _HeroHeader(),
             // The once-a-day moment. Renders nothing until the store has
             // answered, nothing on a day it has already been dismissed, and
             // nothing ever again after the person taps it.
-            _MorningRitual(items: items),
+            _MorningRitual(items: items, onShowMe: _revealWork),
             _Summary(items: items),
             // One section, always. It used to appear only once the queue had
             // something in it, which left the emptiest day — a new install, a
@@ -79,7 +119,13 @@ class TodayScreen extends ConsumerWidget {
             // only existed if work already did. This is the app's front door,
             // so adding a task and seeing all of them are reachable from it
             // before anything else is.
+            //
+            // The section holds work and only work — tasks, deadlines, places
+            // to be. Money and quiet projects moved to Notices below, because a
+            // list where a late invoice and "call the accountant" sat in the
+            // same column asked the reader to work out which was theirs to do.
             KoruSection(
+              key: _workKey,
               label: 'Do this next',
               hint: items.isEmpty
                   ? null
@@ -109,45 +155,55 @@ class TodayScreen extends ConsumerWidget {
                 ],
               ),
               dividerIndent: KoruSize.badge + KoruSpace.md,
-              empty: const _AllClear(),
+              empty: items.isEmpty
+                  ? const _AllClear()
+                  : _NoTasks(onAdd: () => taskSheet(context, ref)),
               children: [
-                for (final item in items) _queueRow(context, ref, item),
+                for (final item in items)
+                  if (_isWork(item)) _queueRow(context, item),
               ],
             ),
+            if (items.any((i) => !_isWork(i)))
+              KoruSection(
+                label: 'Notices',
+                hint: 'Money and projects, watched for you. Nothing to tick '
+                    'off — they have their own pages.',
+                dividerIndent: KoruSize.badge + KoruSpace.md,
+                empty: const SizedBox.shrink(),
+                children: [
+                  for (final item in items)
+                    if (!_isWork(item)) _queueRow(context, item),
+                ],
+              ),
           ]),
         ),
       ),
     );
   }
 
+  /// Whether a queue item is the user's own work.
+  ///
+  /// Work is what somebody can pick up and do: a task, a deadline they agreed
+  /// to, a place to be. Money and projects are things to be aware of rather
+  /// than things to tick off, so they are notices.
+  static bool _isWork(WorkItem item) =>
+      item.kind == WorkKind.task ||
+      item.kind == WorkKind.deadline ||
+      item.kind == WorkKind.event;
+
   /// One row, with the three things that can happen to it: open it, tick it off,
   /// or nothing at all because there is nowhere to go yet.
-  Widget _queueRow(BuildContext context, WidgetRef ref, WorkItem item) {
-    final clientName = _clientName(ref, item.clientId);
+  Widget _queueRow(BuildContext context, WorkItem item) {
     final currency = ref.watch(currencyProvider).valueOrNull?.code ?? 'AED';
 
     return QueueRow(
       item: item,
-      clientName: clientName,
       currency: currency,
       onOpen: () => _open(context, ref, item),
       onDone: item.kind == WorkKind.task || item.kind == WorkKind.deadline
           ? () => _done(context, ref, item)
           : null,
     );
-  }
-
-  /// The client's name, from the list the screen has already loaded.
-  ///
-  /// Null rather than a lookup that could fail: a queue row about deleted work
-  /// still has to say what the work is.
-  String? _clientName(WidgetRef ref, int? clientId) {
-    if (clientId == null) return null;
-    final clients = ref.read(clientsProvider).valueOrNull ?? const <Client>[];
-    for (final c in clients) {
-      if (c.id == clientId) return c.name;
-    }
-    return null;
   }
 
   /// Takes the row to the thing it is about.
@@ -213,7 +269,7 @@ class TodayScreen extends ConsumerWidget {
   /// fits on the screen cannot otherwise be dragged far enough to reach the
   /// refresh — and an empty morning is exactly when a pull to check again is
   /// most likely.
-  Widget _scroll(WidgetRef ref, List<Widget> children) {
+  Widget _scroll(List<Widget> children) {
     return RefreshIndicator(
       onRefresh: () async {
         ref
@@ -224,6 +280,7 @@ class TodayScreen extends ConsumerWidget {
           ..invalidate(tasksProvider);
       },
       child: ListView(
+        controller: _list,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
           KoruSpace.gutter,
@@ -331,7 +388,13 @@ class _Summary extends ConsumerWidget {
               children: [
                 Text('STILL OWED', style: KoruType.label),
                 const SizedBox(height: KoruSpace.xsm),
-                Text('$symbol ${_plain(owed)}', style: KoruType.stat),
+                // The figure leads the card: bigger than the rest of the page
+                // and the one green on it, so the money on a screen full of
+                // work is legible at a glance rather than one line among many.
+                Text(
+                  '$symbol ${_plain(owed)}',
+                  style: KoruType.metric.copyWith(color: KoruColors.leaf),
+                ),
               ],
             ),
           ),
@@ -421,6 +484,35 @@ class _AllClearState extends ConsumerState<_AllClear> {
   }
 }
 
+/// The state between "all clear" and a full queue: nothing of the user's own
+/// to do, but the notices below still have something to say.
+///
+/// Distinct from [_AllClear] on purpose. A day with a late invoice on it is not
+/// a clear day, and the celebration card would have been congratulating
+/// somebody for work that only moved into another column.
+class _NoTasks extends StatelessWidget {
+  const _NoTasks({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return EmptyHint(
+      icon: Icons.task_alt_rounded,
+      tint: KoruColors.leaf,
+      tintBg: KoruColors.leafSoft,
+      title: 'Nothing of your own waiting',
+      body: 'Money and projects are further down, watched for you. Add a task '
+          'when you think of one.',
+      action: FilledButton.icon(
+        onPressed: onAdd,
+        icon: const Icon(Icons.add_rounded, size: KoruSize.iconSm),
+        label: const Text('Add a task'),
+      ),
+    );
+  }
+}
+
 /// The morning moment: one card, once a day, the first time Today is in view.
 ///
 /// The first thing anybody wants from this app in the morning is a quick read
@@ -436,9 +528,13 @@ class _AllClearState extends ConsumerState<_AllClear> {
 /// A store that cannot be read shows nothing at all: the quote is the one thing
 /// on this screen nobody needs twice.
 class _MorningRitual extends ConsumerStatefulWidget {
-  const _MorningRitual({required this.items});
+  const _MorningRitual({required this.items, this.onShowMe});
 
   final List<WorkItem> items;
+
+  /// Runs after the card dismisses itself. The screen uses it to bring the
+  /// work section into view, so "Show me" shows something.
+  final VoidCallback? onShowMe;
 
   @override
   ConsumerState<_MorningRitual> createState() => _MorningRitualState();
@@ -554,7 +650,10 @@ class _MorningRitualState extends ConsumerState<_MorningRitual> {
               Align(
                 alignment: Alignment.centerRight,
                 child: FilledButton(
-                  onPressed: _dismiss,
+                  onPressed: () {
+                    _dismiss();
+                    widget.onShowMe?.call();
+                  },
                   child: const Text('Show me'),
                 ),
               ),

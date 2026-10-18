@@ -45,10 +45,6 @@ class TasksScreen extends ConsumerWidget {
     final projects = projectsAsync.valueOrNull ?? const <Project>[];
     final today = DateTime.now();
 
-    // One pass over the clients so a row can name its client without a query per
-    // row. Tasks are the only list here long enough for that to matter.
-    final names = <int, String>{for (final c in clients) if (c.id != null) c.id!: c.name};
-
     return Scaffold(
       backgroundColor: KoruColors.cream,
       appBar: AppBar(
@@ -91,9 +87,8 @@ class TasksScreen extends ConsumerWidget {
                 what: 'load your tasks',
               )
             else ...[
-              _pending(
-                tasksAsync.valueOrNull, names, today, () => taskSheet(context, ref)),
-              _done(tasksAsync.valueOrNull, names, today),
+              _pending(tasksAsync.valueOrNull, today, () => taskSheet(context, ref)),
+              _done(tasksAsync.valueOrNull, today),
             ],
             KoruSection(
               label: 'Deadlines',
@@ -193,8 +188,7 @@ class TasksScreen extends ConsumerWidget {
   }
 
   /// What is outstanding, worst first.
-  Widget _pending(List<Task>? tasks, Map<int, String> names, DateTime today,
-      VoidCallback onAdd) {
+  Widget _pending(List<Task>? tasks, DateTime today, VoidCallback onAdd) {
     final waiting = tasks == null;
     final open = orderedTasks(
       tasks?.where((t) => !t.done).toList() ?? const <Task>[],
@@ -217,8 +211,7 @@ class TasksScreen extends ConsumerWidget {
               ),
             ),
       children: [
-        for (final t in open)
-          TaskRow(task: t, clientName: names[t.clientId], today: today),
+        for (final t in open) TaskRow(task: t, today: today),
       ],
     );
   }
@@ -230,7 +223,7 @@ class TasksScreen extends ConsumerWidget {
   /// mis-tapping was unrecoverable, and that a week of work left no trace at
   /// all — so there was no way to answer "what did I actually get done this
   /// week", which is the question a person opens this screen on a Friday for.
-  Widget _done(List<Task>? tasks, Map<int, String> names, DateTime today) {
+  Widget _done(List<Task>? tasks, DateTime today) {
     final waiting = tasks == null;
     final finished = <Task>[if (tasks != null) ...tasks.where((t) => t.done)];
     // Newest first, because the thing somebody wants to check is whether
@@ -243,8 +236,7 @@ class TasksScreen extends ConsumerWidget {
       dividerIndent: KoruSpace.row,
       empty: const SizedBox.shrink(),
       children: [
-        for (final t in finished)
-          TaskRow(task: t, clientName: names[t.clientId], today: today),
+        for (final t in finished) TaskRow(task: t, today: today),
       ],
     );
   }

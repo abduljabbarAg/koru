@@ -7,7 +7,6 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import androidx.core.app.NotificationCompat
 
 /**
  * The long-lived half of Koru's attention checking.
@@ -94,30 +93,11 @@ class AttentionWatcher : Service() {
     /**
      * Mirrors whatever Dart last published.
      *
-     * Reads the same shared preference AttentionBridge writes, so the two can
-     * never disagree about what Koru is saying: there is one copy of the truth
-     * rather than one per side.
+     * Built by the same [OngoingNotification] the bridge uses, reading the same
+     * shared preferences the bridge writes, so the two can never disagree about
+     * what Koru is saying: there is one copy of the truth and one definition of
+     * the notification. An earlier version drew its own version here, which had
+     * no tap target — so after a restart, tapping the notification did nothing.
      */
-    private fun buildNotification(): Notification {
-        val prefs = getSharedPreferences("koru_attention", MODE_PRIVATE)
-        val count = prefs.getInt("count", 0)
-        val headline = prefs.getString("headline", "") ?: ""
-        val top = prefs.getString("top", "") ?: ""
-
-        val body = when {
-            count == 0 -> "Nothing needs you right now."
-            top.isNotEmpty() -> top
-            else -> "$count thing${if (count == 1) "" else "s"} need you"
-        }
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_koru)
-            .setContentTitle(if (count > 0) "Koru: $headline" else "Koru")
-            .setContentText(body)
-            .setOngoing(true)
-            .setSilent(true)
-            .setShowWhen(false)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-    }
+    private fun buildNotification(): Notification = OngoingNotification.build(this)
 }

@@ -359,18 +359,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             children: [
               const KoruMascot(size: 148, semanticLabel: 'Koru, your helper'),
               const SizedBox(height: KoruSpace.xl),
+              // The name, the face, the bar and what the bar is doing. Nothing
+              // else: the tagline that used to sit here was a second sentence
+              // nobody reads twice, and a splash that lists unset permissions
+              // turns the first two seconds of the app into a list of problems.
               Text('Koru', style: KoruType.stat),
-              const SizedBox(height: KoruSpace.xsm),
-              Text(
-                'An assistant that knows your life',
-                style: KoruType.bodyCompactStrong,
-              ),
               const SizedBox(height: KoruSpace.xxl),
-              // Sweeps, because nothing here is a counted task any more and a
-              // bar pinned at zero for the length of the splash is a bar telling
-              // the reader the app is stuck. What it can report honestly is what
-              // Android still has not granted, which is the health line under it.
-              const _EngineLoadingBar(),
+              const _LoadingBar(),
             ],
           ),
         ),
@@ -379,20 +374,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 }
 
-/// The splash's loading bar, and what it knows.
+/// The splash's loading bar.
 ///
-/// Sweeps rather than counting, because there is no counted work left to report:
+/// Sweeps rather than counting, because there is no counted work to report:
 /// the store opening and the first frame are the only things it waits on, and a
-/// determinate bar over those is a bar inventing a number. What it does carry is
-/// the health check, which is real and actionable — each problem named
-/// separately, because each can be refused on its own and "something is not set
-/// up" gives the reader nothing to do.
-class _EngineLoadingBar extends ConsumerWidget {
-  const _EngineLoadingBar();
+/// determinate bar over those is a bar inventing a number. It used to also list
+/// what Android had not granted yet — notifications, battery, autostart — which
+/// greeted a brand-new user with a list of things that were wrong before they
+/// had seen a single screen of the app. Those live in Settings where somebody
+/// looks for them.
+class _LoadingBar extends StatelessWidget {
+  const _LoadingBar();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final health = ref.watch(healthProvider).valueOrNull;
+  Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -407,25 +402,6 @@ class _EngineLoadingBar extends ConsumerWidget {
         ),
         const SizedBox(height: KoruSpace.sml),
         Text('Getting things ready', style: KoruType.caption),
-        if (health != null && !health.complete) ...[
-          const SizedBox(height: KoruSpace.mdl),
-          ...health.problems.map(
-            (problem) => Padding(
-              padding: const EdgeInsets.only(bottom: KoruSpace.xs),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.info_outline_rounded,
-                      size: KoruSize.iconSm, color: KoruColors.gold),
-                  const SizedBox(width: KoruSpace.xsm),
-                  Flexible(
-                    child: Text(problem, style: KoruType.badge),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

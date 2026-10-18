@@ -370,6 +370,21 @@ void main() {
       final after = AttentionBridge.signature(const []);
       expect(before, isNot(after));
     });
+
+    test('the shade gets named details, not just a count', () {
+      // The notification used to say "3 things need you" and nothing else,
+      // which meant pulling the shade down to learn nothing new.
+      final lines = AttentionBridge.detailLines(
+        [money('Bilal'), due('Invoice'), stalled('My app')],
+      );
+      expect(lines, hasLength(3));
+      expect(lines.first, contains('Bilal'));
+    });
+
+    test('the detail list is capped at four', () {
+      final many = [for (var i = 0; i < 9; i++) due('Task $i')];
+      expect(AttentionBridge.detailLines(many), hasLength(4));
+    });
   });
 
   group('what the app has permission to do', () {

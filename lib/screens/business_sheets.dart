@@ -40,22 +40,19 @@ Future<void> editClientSheet(
   final deposit =
       TextEditingController(text: existing?.deposit?.toStringAsFixed(0) ?? '');
   var status = existing?.status ?? 'lead';
-  // Terms, not a due date. The date is worked out from these two, which is
-  // the whole point: typing "due in 14 days" by hand is a thing nobody does,
-  // and it is why nothing was ever overdue.
-  var invoicedOn = existing?.invoicedOn == null
-      ? DateTime.now()
-      : DateTime.tryParse(existing!.invoicedOn!) ?? DateTime.now();
-  int terms = existing?.termsDays ?? 14;
-  // Null means "work out the date for me". A date here overrides the terms,
-  // because an explicit date is the one thing the user is certain of.
-  DateTime? overrideDue = existing?.termsDays == null ? existing?.parsedDue : null;
+  // Two dates, each asked for in the words of the page it feeds: work goes to
+  // the Tasks page, money goes to the Money page. The form used to ask for
+  // invoiced-on plus net terms and work the payment date out, which was three
+  // questions for one date and no place to say when the job itself is due.
+  DateTime? paymentDue = existing?.parsedDue;
+  DateTime? workDue;
 
   final saved = await showKoruSheet<bool>(
     context,
     title: existing == null ? 'New client' : 'Edit client',
     subtitle: existing == null
-        ? 'Amounts are in ${currency.code}. This is what you invoiced them.'
+        ? 'Amounts are in ${currency.code}. The client lives on the Clients '
+            'page, the work in Tasks, the money in Money.'
         : 'Changes are kept on this device.',
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setSheetState) => Column(
@@ -81,7 +78,7 @@ Future<void> editClientSheet(
                   ),
                   DropdownButtonFormField<String>(
                     value: status,
-                    decoration: const InputDecoration(labelText: 'Status'),
+                    decoration: const InputDecoration(labelText: 'What this is'),
                     items: kClientStatuses
                         .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                         .toList(),
@@ -125,12 +122,65 @@ Future<void> editClientSheet(
             ],
           ),
           const SizedBox(height: KoruSpace.xl),
-          // The terms and the date are one subject, so they are one block rather
-          // than two fields a form-reader has to work out are related.
-          const SectionLabel('Payment terms', padding: EdgeInsets.zero),
-          const SizedBox(height: KoruSpace.xs),
           KoruFieldStack(
             children: [
+              // The work date, named after where it lands. Picking one writes
+              // a task called "Work for {name}", so a job agreed here shows up
+              // in the list the user actually works from instead of living
+              // only on the client row.
+              KoruDateButton(
+                label: 'Task due date',
+                icon: Icons.task_alt_rounded,
+                value: workDue == null ? 'no date' : readableDate(workDue!),
+                tone: workDue == null ? null : KoruColors.leaf,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
+                    lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                    initialDate: workDue ?? DateTime.now(),
+                    helpText: 'When does the work have to be done?',
+                  );
+                  if (picked != null) setSheetState(() => workDue = picked);
+                },
+              ),
+              if (workDue != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setSheetState(() => workDue = null),
+                    icon: const Icon(Icons.close_rounded, size: KoruSize.iconSm),
+                    label: const Text('No task date'),
+                  ),
+                ),
+              // The money date, named after the page that watches it. A plain
+              // date rather than terms and a computed figure: one question, one
+              // answer, and the answer is the date the rest of the app will use.
+              KoruDateButton(
+                label: 'Payment due date',
+                icon: Icons.receipt_long_outlined,
+                value: paymentDue == null ? 'no date' : readableDate(paymentDue!),
+                tone: paymentDue == null ? null : KoruColors.leaf,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
+                    lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                    initialDate: paymentDue ?? DateTime.now(),
+                    helpText: 'When does the payment have to arrive?',
+                  );
+                  if (picked != null) setSheetState(() => paymentDue = picked);
+                },
+              ),
+              if (paymentDue != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setSheetState(() => paymentDue = null),
+                    icon: const Icon(Icons.close_rounded, size: KoruSize.iconSm),
+                    label: const Text('No payment date'),
+                  ),
+                ),
               TextField(
                 controller: deposit,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -139,94 +189,6 @@ Future<void> editClientSheet(
                   suffixText: currency.symbol,
                   helperText: 'Only if they paid something up front.',
                 ),
-              ),
-              KoruDateButton(
-                label: 'Invoiced',
-                icon: Icons.receipt_long_outlined,
-                value: readableDate(invoicedOn),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: ctx,
-                    firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
-                    lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
-                    initialDate: invoicedOn,
-                    helpText: 'When did you invoice them?',
-                  );
-                  if (picked != null) setSheetState(() => invoicedOn = picked);
-                },
-              ),
-              Wrap(
-                spacing: KoruSpace.sm,
-                runSpacing: KoruSpace.sm,
-                children: [
-                  for (final option in const [
-                    (label: 'On completion', days: 0),
-                    (label: 'Net 7', days: 7),
-                    (label: 'Net 14', days: 14),
-                    (label: 'Net 30', days: 30),
-                  ])
-                    KoruSelectablePill(
-                      label: option.label,
-                      selected: overrideDue == null && terms == option.days,
-                      onTap: () => setSheetState(() {
-                        terms = option.days;
-                        overrideDue = null;
-                      }),
-                    ),
-                  KoruSelectablePill(
-                    label: 'Exact date',
-                    selected: overrideDue != null,
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: ctx,
-                        firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
-                        lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
-                        initialDate: overrideDue ?? DateTime.now().add(Duration(days: terms)),
-                      );
-                      if (picked != null) {
-                        setSheetState(() => overrideDue = picked);
-                      }
-                    },
-                  ),
-                ],
-              ),
-              // The date the rest of the app will use, shown rather than typed.
-              // A figure the app worked out and the user can see is a figure
-              // they can catch; a figure they had to type is one they will get
-              // wrong.
-              Builder(
-                builder: (_) {
-                  final computed = overrideDue ??
-                      DateTime(invoicedOn.year, invoicedOn.month, invoicedOn.day + terms);
-                  return KoruCard(
-                    padding: const EdgeInsets.all(KoruSpace.md),
-                    background: KoruColors.leafSoft,
-                    accent: KoruColors.leaf,
-                    elevated: false,
-                    child: Row(
-                      children: [
-                        KoruIconBadge(
-                          icon: Icons.event_available_rounded,
-                          color: KoruColors.leaf,
-                          background: KoruColors.surface,
-                          size: KoruSize.icon,
-                        ),
-                        const SizedBox(width: KoruSpace.sm),
-                        Expanded(
-                          child: Text(
-                            overrideDue == null
-                                ? 'Due ${readableDate(computed)} '
-                                    '(${terms == 0 ? 'on completion' : 'net $terms days'})'
-                                : 'Due ${readableDate(computed)}',
-                            style: KoruType.bodyCompactStrong.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
               ),
             ],
           ),
@@ -264,15 +226,17 @@ Future<void> editClientSheet(
       name: name.text.trim(),
       status: status,
       amount: agreed,
-      due: overrideDue == null ? null : isoDate(overrideDue!),
+      due: paymentDue == null ? null : isoDate(paymentDue!),
       leadSource: source.text.trim().isEmpty ? null : source.text.trim(),
       phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
       note: note.text.trim().isEmpty ? null : note.text.trim(),
       created: existing?.created ?? DateTime.now().toIso8601String(),
       monthly: double.tryParse(monthly.text.trim()),
       deposit: depositValue > 0 ? depositValue : null,
-      termsDays: overrideDue == null ? terms : null,
-      invoicedOn: isoDate(invoicedOn),
+      // No terms any more: the form asks for the date itself instead of
+      // working it out from a net-days pick, so only the override path exists.
+      termsDays: null,
+      invoicedOn: existing?.invoicedOn ?? isoDate(DateTime.now()),
     );
 
     int? clientId;
@@ -287,13 +251,45 @@ Future<void> editClientSheet(
     // amount. One place holds money: agreed minus received. A deposit held
     // only on the client row would be a second opinion, and the two would
     // disagree the first time somebody paid something else too.
-    if (depositValue > 0 && clientId != null) {
+    //
+    // A new client only. Re-recording the same deposit on every edit would
+    // count it again each time somebody fixed a typo in the name.
+    if (existing == null && depositValue > 0 && clientId != null) {
       await store.addPayment(Payment(
         clientId: clientId,
         amount: depositValue,
-        date: isoDate(invoicedOn),
+        date: isoDate(DateTime.now()),
         note: 'Deposit',
       ));
+    }
+
+    // The task date becomes a real task, not a second date on the client row.
+    // Work belongs in the list the user works from; the client page is the
+    // record of what was agreed with whom. One open task per client, titled
+    // after them, updated in place when the date moves.
+    if (workDue != null && clientId != null) {
+      final title = 'Work for ${record.name}';
+      final open = await store.tasks(clientId: clientId, openOnly: true);
+      Task? existingTask;
+      for (final t in open) {
+        if (t.clientId == clientId && t.title == title) {
+          existingTask = t;
+          break;
+        }
+      }
+      final work = Task(
+        id: existingTask?.id,
+        title: title,
+        clientId: clientId,
+        due: isoDate(workDue!),
+        created: existingTask?.created ?? DateTime.now().toIso8601String(),
+        note: existingTask?.note,
+      );
+      if (existingTask == null) {
+        await store.addTask(work);
+      } else {
+        await store.updateTask(work);
+      }
     }
 
     invalidateWorkData(ref);

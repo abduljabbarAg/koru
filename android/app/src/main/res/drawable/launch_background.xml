@@ -2,15 +2,12 @@
 <!--
   Shown by Android between tapping the icon and Flutter drawing its first frame.
 
-  It is a static crest of the Koru splash artwork on the brand background, so the
-  hand off from the system splash into the animated in-app splash reads as one
-  continuous moment rather than a white flash into a logo.
+  Deliberately a plain brand-coloured field and nothing else. It used to carry a
+  static crest of the splash artwork, which meant a new user saw two splashes in
+  a row: a still mascot on this background, then the animated one — the first
+  looked like a screen that had frozen. A blank field of the same colour hands
+  over to the animated splash with no second logo and no white flash.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/koru_cream" />
-    <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@drawable/koru_splash_crest" />
-    </item>
 </layer-list>

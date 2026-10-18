@@ -428,12 +428,6 @@ class Pose:
         pupil_dx=0.0,
         pupil_dy=0.0,
         mouth_smile=1.0,
-        # Resting arms hang down the sides of the body. The left angle is the
-        # mirror of the right, because angles are measured in screen space.
-        right_arm_angle=1.15,
-        right_arm_out=0.0,
-        left_arm_angle=1.99,
-        left_arm_out=0.0,
         squash=0.0,
         think_dots=0,
         leaf_glint=False,
@@ -445,81 +439,9 @@ class Pose:
         self.pupil_dx = pupil_dx
         self.pupil_dy = pupil_dy
         self.mouth_smile = mouth_smile
-        self.right_arm_angle = right_arm_angle
-        self.right_arm_out = right_arm_out
-        self.left_arm_angle = left_arm_angle
-        self.left_arm_out = left_arm_out
         self.squash = squash
         self.think_dots = think_dots
         self.leaf_glint = leaf_glint
-
-
-def draw_arm(r, pose, body_cx, body_cy, is_right):
-    """One arm, drawn as a rounded limb ending in a mitten shaped leaf.
-
-    The angle is measured from the shoulder in screen space, where positive y
-    points down. The left arm is given the mirrored angle so both hang down the
-    sides of the body at rest instead of one of them crossing in front of the
-    shell, which is what an earlier version did.
-    """
-    s = SS
-    angle = pose.right_arm_angle if is_right else pose.left_arm_angle
-    out = pose.right_arm_out if is_right else pose.left_arm_out
-    shoulder_x = body_cx + (1 if is_right else -1) * 33 * s
-    shoulder_y = body_cy + 5 * s
-    length = (17 + out) * s
-
-    dir_x, dir_y = math.cos(angle), math.sin(angle)
-    wrist_x = shoulder_x + dir_x * length
-    wrist_y = shoulder_y + dir_y * length
-
-    # Limb: a capsule, outlined then filled.
-    r.stroke([shoulder_x, shoulder_y, wrist_x, wrist_y], [9.6 * s, 8.0 * s], LEAF)
-    r.stroke([shoulder_x, shoulder_y, wrist_x, wrist_y], [6.2 * s, 4.8 * s], LEAF_LITE)
-
-    # Hand: a rounded leaf sitting past the wrist, its long axis along the arm,
-    # plus a soft point so it reads as a paw and not a ball.
-    hand_x = wrist_x + dir_x * 7 * s
-    hand_y = wrist_y + dir_y * 7 * s
-    perp = angle + math.pi / 2
-
-    r.ellipse(hand_x, hand_y, 11.5 * s, 8.4 * s, LEAF, rot=angle)
-    r.ellipse(hand_x, hand_y, 8.4 * s, 5.4 * s, LEAF_LITE, rot=angle)
-
-    tip_x = hand_x + dir_x * 9 * s
-    tip_y = hand_y + dir_y * 9 * s
-    blade = quad(
-        hand_x + math.cos(perp) * 5.5 * s,
-        hand_y + math.sin(perp) * 5.5 * s,
-        tip_x + math.cos(perp) * 4.0 * s,
-        tip_y + math.sin(perp) * 4.0 * s,
-        tip_x,
-        tip_y,
-    ) + quad(
-        tip_x,
-        tip_y,
-        tip_x - math.cos(perp) * 4.0 * s,
-        tip_y - math.sin(perp) * 4.0 * s,
-        hand_x - math.cos(perp) * 5.5 * s,
-        hand_y - math.sin(perp) * 5.5 * s,
-    )
-    r.polygon(blade, LEAF)
-    inner = quad(
-        hand_x + math.cos(perp) * 3.2 * s,
-        hand_y + math.sin(perp) * 3.2 * s,
-        tip_x + math.cos(perp) * 2.2 * s,
-        tip_y + math.sin(perp) * 2.2 * s,
-        tip_x - dir_x * 1.5 * s,
-        tip_y - dir_y * 1.5 * s,
-    ) + quad(
-        tip_x - dir_x * 1.5 * s,
-        tip_y - dir_y * 1.5 * s,
-        tip_x - math.cos(perp) * 2.2 * s,
-        tip_y - math.sin(perp) * 2.2 * s,
-        hand_x - math.cos(perp) * 3.2 * s,
-        hand_y - math.sin(perp) * 3.2 * s,
-    )
-    r.polygon(inner, LEAF_LITE)
 
 
 def draw_koru(r, pose, canvas=CELL, scale=CHAR_SCALE):
@@ -559,10 +481,10 @@ def draw_koru(r, pose, canvas=CELL, scale=CHAR_SCALE):
     )
     r.ellipse(body_cx - 13 * s, body_cy - 16 * s, 9 * s, 6 * s, (255, 255, 255), 0.75)
 
-    # Arms sit behind the shell so they tuck in at the shoulder.
-    draw_arm(r, pose, body_cx, body_cy, True)
-    draw_arm(r, pose, body_cx, body_cy, False)
-
+    # No arms. They hung down the shell's sides ending in leaf mittens, and at
+    # rest the two green teardrops under the eyes read as arrows pointing at
+    # nothing. The frond, the face and the sway carry every pose without them.
+    #
     # The koru frond: a coil that opens outward, tightest at the tip and widest
     # where it meets the stem.
     sway = pose.frond_sway
@@ -657,9 +579,7 @@ def pose_for(clip, frame, total):
         swing = math.sin(t * math.pi * 4)
         return Pose(
             bob=math.sin(t * two_pi) * 1.2,
-            right_arm_angle=-1.35 + swing * 0.42,
-            right_arm_out=6,
-            left_arm_angle=2.15,
+            frond_sway=swing * 0.6,
             mouth_smile=1.15,
             leaf_glint=frame % 2 == 0,
         )
@@ -668,9 +588,6 @@ def pose_for(clip, frame, total):
             eye_open=0.82,
             pupil_dx=2.6,
             pupil_dy=-3.2,
-            right_arm_angle=-2.05,
-            right_arm_out=9,
-            left_arm_angle=2.15,
             mouth_smile=0.35,
             think_dots=(frame % 4) + 1,
             bob=math.sin(t * two_pi) * 1.0,
@@ -679,10 +596,6 @@ def pose_for(clip, frame, total):
         rise = math.sin(t * math.pi)
         return Pose(
             bob=-rise * 6,
-            right_arm_angle=-1.95 + rise * 0.35,
-            right_arm_out=8 + rise * 6,
-            left_arm_angle=-1.35 - rise * 0.30,
-            left_arm_out=8 + rise * 6,
             mood=MOOD_HAPPY,
             eye_open=0.0,
             mouth_smile=1.3,
@@ -692,9 +605,7 @@ def pose_for(clip, frame, total):
         rise = math.sin(t * math.pi)
         return Pose(
             bob=-rise * 2.5,
-            right_arm_angle=-1.25 + rise * 0.5,
-            right_arm_out=5 + rise * 4,
-            left_arm_angle=2.15,
+            frond_sway=rise * 0.5,
             mouth_smile=1.1 + rise * 0.3,
         )
     raise KeyError(clip)
@@ -783,16 +694,6 @@ def render_icon_foreground(size):
     return big
 
 
-def render_crest(size):
-    """Just Koru on transparency, for the Android launch background.
-
-    The launch window cannot animate, so it gets the same character as a still,
-    on the same background colour the in-app splash uses. That is what makes the
-    handoff from the system splash into the animated one read as one moment.
-    """
-    return render_pose(Pose(frond_sway=0.35, leaf_glint=True), canvas=size)
-
-
 def render_splash(width):
     """Splash illustration: Koru standing on a leaf-soft hill.
 
@@ -877,12 +778,26 @@ def main():
     size = write(os.path.join(root, "assets/splash/koru_splash.png"), splash)
     print("splash  %dx%d  %.1f KB" % (splash.w, splash.h, size / 1024))
 
-    crest = render_crest(288)
-    size = write(
-        os.path.join(root, "android/app/src/main/res/drawable-nodpi/koru_splash_crest.png"),
-        crest,
-    )
-    print("crest   %dx%d  %.1f KB" % (crest.w, crest.h, size / 1024))
+    # The home screen widget's faces. Same renderer as the atlas, written as
+    # loose files because RemoteViews cannot slice an atlas. They used to be
+    # generated by hand and were missed when the arms came off the character;
+    # written from here so a redraw reaches the widget too.
+    for mood, (clip, frame) in (
+        ("idle", ("idle", 0)),
+        ("wave", ("wave", 3)),
+        ("think", ("think", 1)),
+        ("cheer", ("cheer", 2)),
+    ):
+        total = dict(CLIPS)[clip]
+        face = render_pose(pose_for(clip, frame, total))
+        write(
+            os.path.join(
+                root,
+                "android/app/src/main/res/drawable-nodpi/koru_%s.png" % mood,
+            ),
+            face,
+        )
+        print("widget  %-6s %dx%d" % (mood, face.w, face.h))
 
     densities = {
         "mipmap-mdpi": 48,

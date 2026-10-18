@@ -65,6 +65,48 @@ void main() {
       expect(packet.focus, 'business growth');
       expect(packet.renderForCloud(), contains('asking about: business growth'));
     });
+
+    test('the packet carries the records a question is about', () async {
+      // The bug this pins down: the prompt said "answer from the records
+      // below" and the packet held no records, so a model asked about the
+      // user's own work truthfully answered that it could see none.
+      final id = await store.addClient(const Client(
+        name: 'Acme',
+        status: 'active',
+        amount: 4500,
+        due: '2026-09-01',
+        created: '2026-08-01',
+      ));
+      await store.addPayment(Payment(
+        clientId: id,
+        amount: 2000,
+        date: '2026-08-20',
+      ));
+      await store.addTask(const Task(title: 'Send the revised quote'));
+
+      final packet = await store.packet();
+      final records = packet.records.join('\n');
+      expect(records, contains('Acme'));
+      expect(records, contains('2500'));
+      expect(records, contains('still owed'));
+      expect(records, contains('Send the revised quote'));
+      expect(records, contains('payment received'));
+      // And they travel: the cloud rendering is what the model actually gets.
+      expect(packet.renderForCloud(), contains('Acme'));
+    });
+
+    test('a long client list is capped with a count', () async {
+      for (var i = 0; i < 12; i++) {
+        await store.addClient(Client(
+          name: 'Client $i',
+          status: 'active',
+          amount: 1000,
+          created: '2026-08-01',
+        ));
+      }
+      final packet = await store.packet();
+      expect(packet.records.join('\n'), contains('and 4 more client(s) owing money'));
+    });
   });
 
   group('business', () {

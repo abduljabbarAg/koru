@@ -1,13 +1,19 @@
 package com.abduljabbar.koru
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -34,6 +40,7 @@ class MainActivity : FlutterActivity() {
 
     private val channelName = "koru/secure_key"
     private val attentionChannelName = "koru/attention"
+    private val filesChannelName = "koru/files"
 
     private val prefsName = "koru_secrets"
     private val keyAlias = "koru_cloud_key"
@@ -83,6 +90,20 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // Saving a file the user asked for. Separate channel from the keys
+        // because the two have nothing to do with each other: one stores
+        // secrets, the other saves a backup to Downloads.
+        MethodChannel(messenger, filesChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "saveToDownloads" -> {
+                    val name = call.argument<String>("name") ?: "koru-backup.json"
+                    val content = call.argument<String>("content") ?: ""
+                    result.success(saveToDownloads(name, content))
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     /**
@@ -125,6 +146,53 @@ class MainActivity : FlutterActivity() {
         val link = pendingLink ?: return null
         pendingLink = null
         return link
+    }
+
+    // ----------------------------------------------------------------- files
+
+    /**
+     * Writes the backup into the phone's Downloads folder.
+     *
+     * MediaStore on Android 10+, a plain file before that. Returns the
+     * location it landed in, or null on failure — a save that says it worked
+     * and did not is worse than one that admits it could not.
+     *
+     * Deliberately Downloads and not the app's private storage: a backup that
+     * lives in private storage is one uninstall away from gone, and the point
+     * of exporting it is that it outlives the app.
+     */
+    private fun saveToDownloads(name: String, content: String): String? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS,
+                    )
+                }
+                val uri = contentResolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    values,
+                ) ?: return null
+                contentResolver.openOutputStream(uri)?.use {
+                    it.write(content.toByteArray(Charsets.UTF_8))
+                } ?: return null
+                "Downloads/$name"
+            } else {
+                val dir = Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS,
+                )
+                if (!dir.exists()) dir.mkdirs()
+                val file = File(dir, name)
+                file.writeText(content, Charsets.UTF_8)
+                file.absolutePath
+            }
+        } catch (e: Exception) {
+            Log.w("KoruFiles", "could not save the backup", e)
+            null
+        }
     }
 
     // ----------------------------------------------------------------- keys

@@ -1,5 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Saving a backup into Downloads on Android 9 and older, where there is
+         no MediaStore route. From Android 10 the scoped store needs nothing. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
 
     <!-- Post notifications. Runtime-requested from Android 13, and without it
          every notification this app posts is silently dropped by the system

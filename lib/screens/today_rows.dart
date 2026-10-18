@@ -10,11 +10,14 @@ import '../work_queue.dart';
 /// Kept out of the screen because the screen is a page and this is one line of
 /// it, and because a row that has to be drawn twice is a row that ends up with
 /// two paddings.
+///
+/// The row does not name a client. Work is the user's own — the client is the
+/// one it is being done *for*, not the one doing it — and a name on every line
+/// read as an assignment, as if the job had been handed to somebody else.
 class QueueRow extends StatelessWidget {
   const QueueRow({
     super.key,
     required this.item,
-    required this.clientName,
     this.currency = 'AED',
     this.onOpen,
     this.onDone,
@@ -22,11 +25,6 @@ class QueueRow extends StatelessWidget {
   });
 
   final WorkItem item;
-
-  /// The client this row is for, when it is for one. Resolved by the screen,
-  /// which already has the list, so this never has to go and find a name from a
-  /// title.
-  final String? clientName;
 
   /// Shown beside the figure on a row that has money attached.
   final String currency;
@@ -49,7 +47,6 @@ class QueueRow extends StatelessWidget {
     final late = item.overdue;
     final tone = _toneFor(item);
     final parts = <String>[
-      if (clientName != null) clientName!,
       item.detail,
       if (item.money != null) '${money(item.money!)} $currency',
     ];

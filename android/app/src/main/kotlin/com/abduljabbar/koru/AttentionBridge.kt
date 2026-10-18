@@ -1,6 +1,5 @@
 package com.abduljabbar.koru
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -15,7 +14,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import java.io.File
 import org.json.JSONObject
 
 /**
@@ -97,6 +95,9 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
     private var count: Int = 0
     private var link: String? = null
 
+    /** The detail lines the ongoing notification expands to, newest state only. */
+    private var lines: List<String> = emptyList()
+
     /** Titles of whatever is genuinely urgent, used to decide whether to speak. */
     private var urgent: List<String> = emptyList()
 
@@ -148,6 +149,7 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
                 topLine = ""
                 count = 0
                 link = null
+                lines = emptyList()
                 urgent = emptyList()
                 changed = false
                 persist(ctx)
@@ -351,6 +353,9 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
             topLine = json.optString("top", "")
             count = json.optInt("count", 0)
             link = json.optString("link", "").ifEmpty { null }
+            lines = json.optJSONArray("lines")?.let { array ->
+                (0 until array.length()).mapNotNull { array.optString(it) }
+            } ?: emptyList()
             changed = json.optBoolean("changed", true)
             urgent = json.optJSONArray("urgent")?.let { array ->
                 (0 until array.length()).mapNotNull { array.optString(it) }
@@ -407,6 +412,12 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
                 .putString("headline", headline)
                 .putString("top", topLine)
                 .putInt("count", count)
+                // Written down because the watcher rebuilds the notification
+                // from these preferences after a restart, and a rebuild that
+                // lost the link would drop the tap target — the exact bug this
+                // field exists to close.
+                .putString("link", link ?: "")
+                .putString("lines", lines.joinToString("\n"))
                 .putString("urgent", urgent.joinToString("~"))
                 .apply()
         } catch (e: Exception) {
@@ -472,7 +483,7 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
      */
     private fun startForeground(ctx: Context): Boolean {
         ensureChannel(ctx)
-        val notification = buildOngoing(ctx)
+        val notification = OngoingNotification.build(ctx)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ctx.startForegroundService(Intent(ctx, AttentionWatcher::class.java))
@@ -539,25 +550,6 @@ class AttentionBridge : MethodChannel.MethodCallHandler {
             // allowed, and nothing here is worth crashing over.
             Log.w(TAG, "not allowed to post the urgent alert", e)
         }
-    }
-
-    private fun buildOngoing(ctx: Context): Notification {
-        val body = when {
-            count == 0 -> "Nothing needs you right now."
-            topLine.isNotEmpty() -> topLine
-            else -> "$count thing${if (count == 1) "" else "s"} need you"
-        }
-        return NotificationCompat.Builder(ctx, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_koru)
-            .setContentTitle(if (count > 0) "Koru: $headline" else "Koru")
-            .setContentText(body)
-            .setOngoing(true)
-            .setSilent(true)
-            .setShowWhen(false)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setContentIntent(openIntent(ctx))
-            .build()
     }
 
     /**

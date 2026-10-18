@@ -6,8 +6,16 @@ import 'dart:convert';
 ///
 ///  * [renderLocal] is what the user sees on their own screen. It may name them.
 ///  * [renderForCloud] is what goes upstream. It never carries the nickname,
-///    because onboarding promises the nickname never leaves the device, and an
-///    earlier version quietly put it in the system prompt.
+///    because onboarding promised the nickname was a local thing and an earlier
+///    version quietly put it in the system prompt.
+///
+/// The records — clients by name, what they owe, what is open — do go with the
+/// prompt, and are meant to. An earlier version sent the stage, the goals and
+/// the shape of the projects and nothing else, so a question about the user's
+/// actual work met a model that had never been told about it and answered, quite
+/// correctly, that it could see no records. The privacy screen prints this block
+/// in full and the policy says what is in it; what leaves is shown, never
+/// guessed at.
 ///
 /// [ProfileStore.packet] is the only constructor, so a new field cannot appear in
 /// a cloud prompt without someone noticing it here.
@@ -21,11 +29,20 @@ class ContextPacket {
   /// Projects, described without money and without a client's name.
   ///
   /// Sent to cloud deliberately, because a model that knows only who owes
-  /// money cannot answer "what am I working on" at all. Names of people are
-  /// kept out, since this leaves the phone, while the shape of the work goes
-  /// in: that is what makes a cloud answer about the user's actual projects
-  /// possible rather than generic.
+  /// money cannot answer "what am I working on" at all. Client projects are
+  /// named by their target rather than their owner: the owner is a person, and
+  /// what the model needs is the shape of the work, not who signed it.
   final List<String> projects;
+
+  /// The records themselves: clients, balances, open tasks and deadlines.
+  ///
+  /// Names are in here, unlike [projects], and that is a decision rather than
+  /// an oversight: "what does Acme still owe" is unanswerable without Acme.
+  /// The user asked for a model that can see their records; this is the
+  /// smallest version of that which still answers the question. Capped by the
+  /// store before it gets here, so a hundred clients do not ride out with
+  /// every single question.
+  final List<String> records;
 
   const ContextPacket({
     required this.nickname,
@@ -34,6 +51,7 @@ class ContextPacket {
     required this.goals,
     required this.focus,
     this.projects = const [],
+    this.records = const [],
   });
 
   /// A neutral stand-in for the user in anything that leaves the phone.
@@ -59,6 +77,7 @@ class ContextPacket {
       if (goals.isNotEmpty) 'goals: $goals',
       if (focus.isNotEmpty) 'asking about: $focus',
       for (final line in _projectLines) line,
+      for (final line in records) 'record: $line',
     ];
     return _sentence('About this user.', parts);
   }
@@ -84,6 +103,7 @@ class ContextPacket {
         'goals': goals,
         'focus': focus,
         'projects': projects,
+        'records': records,
       };
 
   factory ContextPacket.fromJson(Map<String, dynamic> j) => ContextPacket(
@@ -93,6 +113,7 @@ class ContextPacket {
         goals: j['goals'] as String? ?? '',
         focus: j['focus'] as String? ?? '',
         projects: (j['projects'] as List?)?.cast<String>() ?? const [],
+        records: (j['records'] as List?)?.cast<String>() ?? const [],
       );
 
   String encode() => jsonEncode(toJson());
@@ -100,9 +121,13 @@ class ContextPacket {
   /// Word count of the cloud rendering, used to keep the packet inside a budget.
   int get wordCount => renderForCloud().split(RegExp(r'\s+')).length;
 
-  /// Longest cloud rendering the packet is allowed to produce. Past this the
-  /// context is the conversation's problem, not the model's.
-  static const int maxCloudWords = 90;
+  /// Longest cloud rendering the packet is allowed to produce.
+  ///
+  /// The records raised this from ninety: a packet that says "Acme owes you
+  /// 4,500" is worth more words than one that says a client project is 60%
+  /// along. The store still caps how many records go in, so the ceiling is a
+  /// ceiling on grammar and not on the user's data.
+  static const int maxCloudWords = 320;
 }
 
 /// Turns a question into a routing decision, with no configuration surface
@@ -259,9 +284,11 @@ class PromptBuilder {
     final buf = StringBuffer()
       ..writeln('You are Koru, an assistant for a freelancer. Answer from the')
       ..writeln('records below. Be brief and concrete.')
-      // The packet below is already pseudonymised, so the model has no real name
-      // to leak and must not invent one.
-      ..writeln('The records use nicknames. Never guess a real name.')
+      // The records are the whole of what this side knows. Saying so is what
+      // stops a model filling a missing figure with a plausible one, which is
+      // worse than admitting the record is not there.
+      ..writeln('The records below are all the facts you have. If something is')
+      ..writeln('not in them, say it is not on file rather than guessing.')
       ..writeln()
       ..writeln(packet.renderForCloud())
       ..writeln()

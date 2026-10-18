@@ -263,5 +263,42 @@ void main() {
       final client = (await tester.runAsync(() => store.clients()))!.single;
       expect(client.monthly, isNull);
     });
+
+    testWidgets('the form asks what this is, and two dates', (tester) async {
+      await seed(tester, name: 'Acme', amount: 100, status: 'active');
+      await mount(tester, const ClientsScreen());
+
+      await tapVisible(tester, find.text('Edit'));
+      await pump(tester);
+
+      expect(find.text('What this is'), findsOneWidget);
+      expect(find.text('Task due date'), findsOneWidget);
+      expect(find.text('Payment due date'), findsOneWidget);
+      // The old terms picker is gone: it was three questions to work out one
+      // date, and a task date had nowhere to go at all.
+      expect(find.text('Payment terms'), findsNothing);
+      expect(find.text('Net 14'), findsNothing);
+    });
+
+    testWidgets('a task due date writes a task', (tester) async {
+      await seed(tester, name: 'Acme', amount: 100, status: 'active');
+      await mount(tester, const ClientsScreen());
+
+      await tapVisible(tester, find.text('Edit'));
+      await pump(tester);
+
+      await tapVisible(tester, find.text('Task due date'));
+      await pump(tester);
+      await tester.tap(find.text('OK'));
+      await pump(tester);
+
+      await tapVisible(tester, find.text('Save changes'));
+      await pump(tester, frames: 12);
+
+      final task = (await tester.runAsync(() => store.tasks()))!.single;
+      expect(task.title, 'Work for Acme');
+      expect(task.clientId, 1);
+      expect(task.due, isNotNull);
+    });
   });
 }

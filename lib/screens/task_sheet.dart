@@ -11,9 +11,13 @@ import '../widgets.dart';
 /// Everything on it is optional except the title. That is the whole point of the
 /// form: an earlier version of this app could only record work that belonged to
 /// a client, so a task like "renew the domain" or "call the accountant" had
-/// nowhere to go at all and simply did not get written down. So the client and
-/// the project are both offered, both skippable, and a task with a title and
-/// nothing else is a complete and useful record.
+/// nowhere to go at all and simply did not get written down. A task with a title
+/// and nothing else is a complete and useful record.
+///
+/// The form does not ask which client a task is for. The user is the one doing
+/// the work, so a picker that asked whose task it was read backwards — as if the
+/// client were meant to do it. Work started from inside a client's page still
+/// carries that client, but it is set by the caller, quietly.
 ///
 /// The date is a button plus a way to take it back off, rather than a field. A
 /// task with no date is a real state here and one the rest of the app handles,
@@ -26,21 +30,19 @@ Future<void> taskSheet(
   int? clientId,
   int? projectId,
 }) async {
-  final clients = ref.read(clientsProvider).valueOrNull ?? const <Client>[];
   final projects = ref.read(projectsProvider).valueOrNull ?? const <Project>[];
 
   final title = TextEditingController(text: existing?.title ?? '');
   final note = TextEditingController(text: existing?.note ?? '');
   var priority = existing?.priority ?? TaskPriority.normal;
   var due = existing?.parsedDue;
-  var client = existing?.clientId ?? clientId;
   var project = existing?.projectId ?? projectId;
 
   final outcome = await showKoruSheet<_Outcome>(
     context,
     title: existing == null ? 'New task' : 'Edit task',
     subtitle: existing == null
-        ? 'One thing to do. It does not need a client or a project.'
+        ? 'One thing to do. A title is the whole thing.'
         : 'Changes are kept on this device.',
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setSheetState) => Column(
@@ -108,35 +110,15 @@ Future<void> taskSheet(
             ],
           ),
           const SizedBox(height: KoruSpace.xl),
-          KoruChoiceGroup(
-            label: 'Who it is for',
-            caption: 'Optional. A chore belongs to you and does not need one.',
-            children: [
-              KoruSelectablePill(
-                label: 'Just me',
-                icon: Icons.person_outline,
-                selected: client == null && project == null,
-                onTap: () => setSheetState(() {
-                  client = null;
-                  project = null;
-                }),
-              ),
-              for (final c in clients)
-                KoruSelectablePill(
-                  label: c.name,
-                  icon: Icons.work_outline,
-                  selected: client == c.id && project == null,
-                  onTap: () => setSheetState(() {
-                    client = c.id;
-                    project = null;
-                  }),
-                ),
-            ],
-          ),
-          if (projects.isNotEmpty) ...[
-            const SizedBox(height: KoruSpace.lg),
+          // No "who is it for". A task is the user's own work — they are the
+          // one doing it — and asking which client it belongs to read as if the
+          // client were expected to do the job. Work created from inside a
+          // client's page still carries that client, silently, because there
+          // the context is already on screen.
+          if (projects.isNotEmpty)
             KoruChoiceGroup(
               label: 'Under which project',
+              caption: 'Optional.',
               children: [
                 for (final p in projects)
                   KoruSelectablePill(
@@ -149,8 +131,7 @@ Future<void> taskSheet(
                   ),
               ],
             ),
-          ],
-          const SizedBox(height: KoruSpace.xl),
+          if (projects.isNotEmpty) const SizedBox(height: KoruSpace.xl),
           TextField(
             controller: note,
             maxLines: 2,
@@ -205,7 +186,7 @@ Future<void> taskSheet(
   if (previous == null) {
     await store.addTask(Task(
       title: what,
-      clientId: client,
+      clientId: clientId,
       projectId: project,
       due: due == null ? null : isoDate(due!),
       priority: priority,
@@ -216,7 +197,7 @@ Future<void> taskSheet(
     await store.updateTask(Task(
       id: previous.id,
       title: what,
-      clientId: client,
+      clientId: previous.clientId,
       projectId: project,
       due: due == null ? null : isoDate(due!),
       priority: priority,

@@ -42,6 +42,10 @@
   true — "add client Bilal for 2000" is read on the phone, with no key at all.
   It now says what a model is actually for: questions. The word "Talk" left the
   copy as well; everywhere in the app now asks you to tell Koru.
+- **Koru has no arms.** The mascot's little arms never matched the body sitting
+  under them and read as scribbles at launcher size; the frond does the
+  gesturing now, and the small widget faces are drawn by the same generator
+  rather than being separate art that could drift.
 
 ### Removed
 
@@ -61,9 +65,63 @@
   migration and land in the honest not-connected state if no key is saved. With
   nothing connected, Koru says so and offers the tap that connects one — there
   is no fallback that answers from the records with no model behind it.
+- **The splash crest and its tagline.** The launch screen had a drawn crest
+  that appeared a beat after the system's own launch colour and just as the app
+  underneath was ready, which read as a flicker; the tagline was the first
+  sentence of an app that is better at explaining itself. The launch screen is
+  now the app's cream colour and the Flutter side waits with a bar and "Getting
+  things ready", so the phone goes from its own colour into the app without a
+  picture in between.
 
 ### Fixed
 
+- **Tapping the notification opens the app, and it says what it is about.**
+  There were two builders of the ongoing notification — one in the bridge that
+  pushes state while the app is up, which had the tap target, and one in the
+  watcher that re-posts after a restart, which did not — and the watcher's copy
+  is the one that survives a reboot, so the notification most people tapped did
+  nothing. One shared builder now draws it and persists the link, so the tap
+  target cannot be lost. The shade also carries up to four named lines ("Acme
+  owes you: …", "Send the revised quote: Due today") instead of one summary
+  sentence, via the expanded view.
+- **The model can see the records it is asked about.** "I see no records
+  attached to this chat." It was right: the prompt said "answer from the records
+  below" and the packet held the stage, the goals and the shapes of the
+  projects — no clients, no balances, no tasks — so every question about the
+  user's own work met a model that had never been told about it. The packet now
+  carries a capped summary of the records themselves — clients with their
+  balances and dates, open tasks, deadlines, the latest payments — and the
+  privacy screen prints it word for word before it is ever sent. The policy
+  pages were rewritten to say exactly what travels, because the old wording
+  promised client names and amounts never leave.
+- **Work and notices are separate lists.** A late invoice and "call the
+  accountant" sat in one column, and the reader had to work out which was theirs
+  to do. Today now shows work — tasks, deadlines, places to be — under "Do this
+  next", and money and quiet projects under "Notices", watched but not tickable
+  there. A morning of only notices says there is nothing of your own waiting
+  rather than showing the all-clear celebration.
+- **Tasks are the user's own again.** Every task row on the queue and in "All
+  work" carried a client name, and the task sheet asked "who is it for" — which
+  read backwards, as if the client were expected to do the job. Rows no longer
+  name a client, and the form no longer asks; work started from inside a
+  client's page still carries that client, quietly.
+- **"Show me" shows something.** The morning card's button only closed the card,
+  so the quote appeared and nothing followed it. The page now travels to the
+  work section as the card collapses.
+- **A backup can be saved to the phone.** It could only be shared, so the one
+  place a backup could not go without another app was the user's own Downloads.
+  Backing up now offers "Save to this phone" (written through the system's
+  Downloads, no storage permission needed on Android 10+) and "Share".
+- **Creating a client asks in the words of the pages it feeds.** The form had a
+  status dropdown, an invoiced date and a net-terms picker that computed a due
+  date nobody saw until it mattered. It now asks "What this is", "Task due date"
+  and "Payment due date": the task date writes a real task ("Work for …") into
+  the work list, the payment date is used as it stands, and the money belongs to
+  the Money page as before. Re-saving an edit no longer records the deposit a
+  second time.
+- **The money figures lead.** The owed and received tiles on Money and the
+  "Still owed" card on Today print the figure a step larger and in the colour of
+  what it means, so the money reads as money at a glance.
 - **A task can be created from the first screen.** "I can't create tasks." The
   "Do this next" section — the only door to adding a task and to the full "All
   work" list — rendered only once the queue already had something in it, so the

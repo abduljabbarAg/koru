@@ -56,8 +56,11 @@ class PrivacySettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: KoruSpace.md),
                   Text(
-                    'Pseudonymous, not anonymous. It carries general context and '
-                    'never your nickname, your name or your records.',
+                    'Pseudonymous, not anonymous. It carries general context, '
+                    'your client names with what they owe, and what is open, '
+                    'so the model can actually answer. It never carries your '
+                    'nickname, and nothing is sent at all until you connect a '
+                    'model you chose.',
                     style: KoruType.bodySmall,
                   ),
                 ],

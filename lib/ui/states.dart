@@ -45,10 +45,14 @@ class StatTile extends StatelessWidget {
         children: [
           KoruPill(label: label, color: tint, background: tintBg),
           const SizedBox(height: KoruSpace.sm),
+          // The figure is the reason the tile exists, so it leads: a step up
+          // from the row type around it and in the tile's own colour, which is
+          // how money reads as money at a glance rather than as one more number
+          // in one more card.
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(value, style: KoruType.stat),
+            child: Text(value, style: KoruType.metric.copyWith(color: tint)),
           ),
           if (sub != null) ...[
             const SizedBox(height: KoruSpace.xs),

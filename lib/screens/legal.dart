@@ -55,11 +55,11 @@ class AboutScreen extends StatelessWidget {
             'built around: your clients and your money are not training data for '
             'anyone else.',
             'Nothing goes onward unless you have connected a cloud provider '
-            'yourself, and only a pseudonymous summary of your context travels '
-            'with your questions: never your nickname, your name, your client '
-            'names or your amounts. Settings shows the exact text before '
-            'anything is sent, and with no provider connected nothing is sent at '
-            'all.',
+            'yourself, and only alongside your questions: a summary of your '
+            'records — who owes you what, what is open, what came in — so the '
+            'model can actually answer, with your nickname left out. Settings '
+            'shows the exact text before anything is sent, and with no provider '
+            'connected nothing is sent at all.',
           ],
         ),
         _DocSection(
@@ -131,13 +131,13 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ],
         ),
         _DocSection(
-          'What never leaves the phone',
+          'What stays on the phone, and what can travel',
           bullets: [
             'Your nickname, and any real name you give it. The cloud rendering of '
                 'your context deliberately leaves the name out.',
-            'Your client list, amounts, payments and deadlines. They are read on '
-            'the device. A client\'s name can only reach the cloud model if you type '
-            'it into a question yourself.',
+            'Everything except the packet printed in Settings > What leaves this '
+                'phone: your raw database, your calendar, your conversation, your '
+                'backups and your API keys do not travel with a question.',
             'Any telemetry of any kind. There is none to send.',
           ],
         ),
@@ -145,14 +145,16 @@ class PrivacyPolicyScreen extends StatelessWidget {
           'When the cloud model is switched on',
           paragraphs: [
             'The cloud model is off until you choose a provider, paste your '
-            'own key and test it in Settings > Cloud provider. Questions about faith, '
-            'health, medicine or law are then routed to it, everything else is answered '
-            'on the device, and anything that reads like a crisis, a diagnosis or a '
-            'court date is handed to a person instead of being answered by a model.',
-            'When a question is routed, your phone contacts that provider directly '
+            'own key and test it in Settings > Cloud provider. Anything you ask is '
+            'then answered by that model, except questions that read like a crisis, '
+            'a diagnosis or a court date — those are handed to a person instead of '
+            'being answered by a model.',
+            'When a question is sent, your phone contacts that provider directly '
             'and sends: the question exactly as you typed it; the context packet '
-            'shown in Settings > What leaves this phone (stage, work, goals, focus '
-            'and up to four project lines, with no nickname); up to about 1,200 '
+            'shown in Settings > What leaves this phone, which carries your stage, '
+            'work, goals and focus, up to four project lines, and a summary of your '
+            'records — client names, what they still owe, open tasks and recent '
+            'payments — with no nickname; up to about 1,200 '
             'characters of recent conversation, so a follow-up is not asked from '
             'nothing; and your API key as the authentication header.',
             'It goes to the provider you chose and to nobody else. That provider '
@@ -325,14 +327,18 @@ class DataPolicyScreen extends StatelessWidget {
           bullets: [
             'A question you ask Koru, whenever it needs an answer rather than a '
                 'record written. Only with the cloud model and a provider you '
-                'configured yourself, and only with the pseudonymous context '
-                'packet shown in Settings > What leaves this phone: no nickname, '
-                'no client names, no amounts.',
+                'configured yourself, and only with the packet shown in Settings > '
+                'What leaves this phone: your nickname is left out, but it does '
+                'carry a summary of your records — client names, balances, open '
+                'tasks, recent payments — because that is what makes an answer '
+                'about your own work possible. The exact text is printed there '
+                'before anything is sent.',
             'Your API key, to the provider it belongs to, as the header that '
             'authenticates the request. Nowhere else.',
             'An approved calendar entry, into your phone\'s own calendar, and only '
                 'if you switch the copy on.',
-            'A backup file, only when you tap Back up and choose where to share it.',
+            'A backup file, only when you tap Back up and choose to share it or '
+                'save it to this phone.',
             'A link you tap. A WhatsApp follow-up or a phone number opens that app '
                 'with the message typed out.',
           ],
@@ -341,8 +347,9 @@ class DataPolicyScreen extends StatelessWidget {
           'What never leaves',
           bullets: [
             'Your nickname, and any real name you give it.',
-            'Your clients, amounts, payments and deadlines, unless you type them '
-                'into a question yourself.',
+            'Everything not in that packet: your calendar, your conversation, your '
+                'backups and your API keys stay on the device unless a feature you '
+                'are using explicitly sends one.',
             'Analytics, advertising identifiers or crash reports. None of those '
                 'exist in this app, so none of them can leave.',
           ],

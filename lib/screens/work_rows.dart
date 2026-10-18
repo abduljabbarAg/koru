@@ -24,16 +24,11 @@ class TaskRow extends ConsumerWidget {
   const TaskRow({
     super.key,
     required this.task,
-    this.clientName,
     this.onTap,
     this.today,
   });
 
   final Task task;
-
-  /// Shown beside the date. Passed in rather than looked up so that a list does
-  /// not read the clients table once per row.
-  final String? clientName;
 
   /// Opens the thing, when there is one. Null on a list that is for acting on
   /// rather than editing.
@@ -47,7 +42,6 @@ class TaskRow extends ConsumerWidget {
     final now = today ?? DateTime.now();
     final late = task.isOverdueOn(now);
     final parts = <String>[
-      if (clientName != null) clientName!,
       if (task.due != null) formatDate(task.due, now),
     ];
     if (task.done) parts.add(_doneWhen(task, now));
