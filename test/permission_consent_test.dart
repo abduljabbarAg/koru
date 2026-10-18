@@ -487,7 +487,10 @@ void main() {
       await pumpSettings(tester);
 
       final row = find.text('Permissions');
-      await tester.ensureVisible(row);
+      // The index is longer than one screen now, and a ListView only builds
+      // what is near the viewport, so the row is scrolled to before it is
+      // touched — reading exactly like a row that was never added otherwise.
+      await tester.scrollUntilVisible(row, 200, maxScrolls: 30);
       await tester.pump(const Duration(milliseconds: 40));
       await tester.tap(row);
       for (var i = 0; i < 10; i++) {

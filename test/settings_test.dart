@@ -149,8 +149,22 @@ void main() {
         page: const LegalHubScreen(),
       );
 
-      // The four documents used to sit on the index as a group of their own;
-      // now they are one door deep, and each one still has to open.
+      // open() leaves you back on the page it came from, so the hub is entered
+      // a second time and left open: the four documents used to sit on the
+      // index as a group of their own, and each one now has to open one door
+      // deeper than it used to.
+      final hub = find.text('About & legal');
+      await reveal(tester, hub);
+      await tester.ensureVisible(hub);
+      await pump(tester, frames: 1);
+      await tester.tap(hub);
+      for (var i = 0;
+          i < 20 && find.byType(LegalHubScreen).evaluate().isEmpty;
+          i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+      expect(find.byType(LegalHubScreen), findsOneWidget);
+
       for (final (title, page) in <(String, Widget)>[
         ('About Koru', const AboutScreen()),
         ('Privacy Policy', const PrivacyPolicyScreen()),
