@@ -64,6 +64,13 @@
 
 ### Fixed
 
+- **A task can be created from the first screen.** "I can't create tasks." The
+  "Do this next" section — the only door to adding a task and to the full "All
+  work" list — rendered only once the queue already had something in it, so the
+  emptiest day (a new install, a cleared list) had no way at all to put work on
+  it. The section now always renders: "Add" opens the task sheet and "All work"
+  opens the list from any state, and the all-clear carries an "Add a task"
+  button so the empty state is a way out, not just an explanation.
 - **The permission explanation is reachable on a first run.** "I have to close
   the app and start again then i see the permission screen." The gate decided
   the question once, at launch, and answered "nothing to ask about" for anybody

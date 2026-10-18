@@ -263,6 +263,43 @@ void main() {
     testWidgets('an empty morning says what to do instead', (tester) async {
       await mount(tester, const TodayScreen());
       expect(find.text('Done for today'), findsOneWidget);
+      // Still a way out of the empty state, not just an explanation of it.
+      expect(find.text('All work'), findsOneWidget);
+    });
+
+    testWidgets('a task can be created from the morning, empty day and all',
+        (tester) async {
+      await mount(tester, const TodayScreen());
+
+      // The emptiest day there is still offers the way to put work on it.
+      expect(find.text('DO THIS NEXT'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Add a task'));
+      await pump(tester);
+      await tester.tap(find.text('Add a task'));
+      await pump(tester);
+      await tester.enterText(find.byType(TextField).first, 'Renew the domain');
+      await pump(tester);
+      await tester.ensureVisible(find.text('Add task'));
+      await pump(tester);
+      await tester.tap(find.text('Add task'));
+      await pump(tester, frames: 12);
+
+      expect(find.text('Renew the domain'), findsOneWidget);
+      expect(find.text('Done for today'), findsNothing);
+
+      final task = (await tester.runAsync(() => store.tasks()))!.single;
+      expect(task.title, 'Renew the domain');
+    });
+
+    testWidgets('All work opens the full list from an empty day',
+        (tester) async {
+      await mount(tester, const TodayScreen());
+
+      await tester.tap(find.text('All work'));
+      await pump(tester, frames: 12);
+
+      expect(find.byType(TasksScreen), findsOneWidget);
     });
   });
 }

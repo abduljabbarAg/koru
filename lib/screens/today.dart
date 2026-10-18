@@ -72,28 +72,48 @@ class TodayScreen extends ConsumerWidget {
             // nothing ever again after the person taps it.
             _MorningRitual(items: items),
             _Summary(items: items),
-            if (items.isEmpty)
-              const _AllClear()
-            else
-              KoruSection(
-                label: 'Do this next',
-                hint: 'Late first, then what you said matters, then the '
-                    'soonest date.',
-                // The browse view. Every task, deadline, place to be and
-                // project lives one tap behind the queue that ranks them.
-                action: TextButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const TasksScreen()),
-                  ),
-                  icon: const Icon(Icons.checklist_rounded,
-                      size: KoruSize.iconSm),
-                  label: const Text('All work'),
-                ),
-                dividerIndent: KoruSize.badge + KoruSpace.md,
+            // One section, always. It used to appear only once the queue had
+            // something in it, which left the emptiest day — a new install, a
+            // cleared list — with no way at all to put work on it: the add
+            // button and the browse view both lived inside the section that
+            // only existed if work already did. This is the app's front door,
+            // so adding a task and seeing all of them are reachable from it
+            // before anything else is.
+            KoruSection(
+              label: 'Do this next',
+              hint: items.isEmpty
+                  ? null
+                  : 'Late first, then what you said matters, then the '
+                      'soonest date.',
+              // Add is the everyday action; All work is the browse view. Every
+              // task, deadline, place to be and project lives one tap behind
+              // the queue that ranks them.
+              action: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final item in items) _queueRow(context, ref, item),
+                  TextButton.icon(
+                    onPressed: () => taskSheet(context, ref),
+                    icon: const Icon(Icons.add_rounded, size: KoruSize.iconSm),
+                    label: const Text('Add'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const TasksScreen(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.checklist_rounded,
+                        size: KoruSize.iconSm),
+                    label: const Text('All work'),
+                  ),
                 ],
               ),
+              dividerIndent: KoruSize.badge + KoruSpace.md,
+              empty: const _AllClear(),
+              children: [
+                for (final item in items) _queueRow(context, ref, item),
+              ],
+            ),
           ]),
         ),
       ),
@@ -335,16 +355,17 @@ class _Summary extends ConsumerWidget {
 ///
 /// The state people come back for, so it arrives like one: Koru cheers, the
 /// card grows in, and the phone gives one soft thump. The copy says what to do
-/// next — tell Koru when money lands — because an empty screen with nothing to
-/// do is a dead end.
-class _AllClear extends StatefulWidget {
+/// next — add a task, or tell Koru when money lands — because an empty screen
+/// with nothing to do is a dead end, and the button is the way out of it
+/// without hunting for one.
+class _AllClear extends ConsumerStatefulWidget {
   const _AllClear();
 
   @override
-  State<_AllClear> createState() => _AllClearState();
+  ConsumerState<_AllClear> createState() => _AllClearState();
 }
 
-class _AllClearState extends State<_AllClear> {
+class _AllClearState extends ConsumerState<_AllClear> {
   final _mascot = KoruMascotController();
 
   @override
@@ -385,8 +406,13 @@ class _AllClearState extends State<_AllClear> {
               tint: KoruColors.leaf,
               tintBg: KoruColors.leafSoft,
               title: 'Done for today',
-              body: 'Nothing late, nothing due, nowhere to be. When something '
-                  'lands, tell Koru — "Bilal paid 500".',
+              body: 'Nothing late, nothing due, nowhere to be. Add a task, or '
+                  'tell Koru — "remind me to send the quote tomorrow".',
+              action: FilledButton.icon(
+                onPressed: () => taskSheet(context, ref),
+                icon: const Icon(Icons.add_rounded, size: KoruSize.iconSm),
+                label: const Text('Add a task'),
+              ),
             ),
           ],
         ),

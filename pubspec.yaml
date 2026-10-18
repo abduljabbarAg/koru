@@ -7,7 +7,7 @@ publish_to: "none"
 # the next real release, so the code jumped past everything shipped so far.
 # 1.6.0 is the shell rewrite: three tabs, the morning ritual, onboarding that
 # ends with a client.
-version: 1.6.0+16
+version: 1.6.1+17
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
