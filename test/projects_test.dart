@@ -51,11 +51,12 @@ void main() {
     expect(text, isNot(contains('invoice')));
   });
 
-  test("a client project's owner is kept out of what leaves the phone",
-      () async {
-    // The client's name is a person, and this string goes upstream. What goes
-    // instead is what the work is, which is the whole point of carrying projects
-    // at all.
+  test("a client project's line is named by the work, not the owner", () async {
+    // The project text goes upstream described by what the work is — that is
+    // the whole point of carrying projects at all. The client's name does travel
+    // in the packet now, but on the client's own record line, where it is a
+    // fact about money rather than a label on somebody's project; the policy
+    // screens say so.
     final store = await openTestStore();
     final id = await store.addClient(
       const Client(name: 'Bilal', amount: 2000, status: 'delivered'),
@@ -71,7 +72,12 @@ void main() {
     final text = (await store.packet()).renderForCloud();
 
     expect(text, contains('the new site is live'));
-    expect(text, isNot(contains('Bilal')));
+    // Everything before the record lines is the profile and the projects; the
+    // name belongs only to the record line, where the balance is spoken about.
+    final projectPart = text.substring(0, text.indexOf('record:'));
+    expect(projectPart, isNot(contains('Bilal')),
+        reason: 'the project is named by its owner on a client project, and the '
+            'owner is a person, so the project line does not carry the name');
   });
 
   test('a client project with no target is still listed', () async {

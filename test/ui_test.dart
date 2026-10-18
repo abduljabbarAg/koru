@@ -272,8 +272,10 @@ void main() {
       await pump(tester);
 
       expect(find.text('What this is'), findsOneWidget);
-      expect(find.text('Task due date'), findsOneWidget);
-      expect(find.text('Payment due date'), findsOneWidget);
+      // The date buttons draw their label and value as one line ("Task due
+      // date no date"), so this matches inside that line.
+      expect(find.textContaining('Task due date'), findsOneWidget);
+      expect(find.textContaining('Payment due date'), findsOneWidget);
       // The old terms picker is gone: it was three questions to work out one
       // date, and a task date had nowhere to go at all.
       expect(find.text('Payment terms'), findsNothing);
@@ -287,7 +289,7 @@ void main() {
       await tapVisible(tester, find.text('Edit'));
       await pump(tester);
 
-      await tapVisible(tester, find.text('Task due date'));
+      await tapVisible(tester, find.textContaining('Task due date'));
       await pump(tester);
       await tester.tap(find.text('OK'));
       await pump(tester);

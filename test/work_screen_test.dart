@@ -194,6 +194,20 @@ void main() {
     });
   });
 
+  /// Drags the screen until a target exists in the tree.
+  ///
+  /// Today's sections are one long list, so the notices sit below the fold on a
+  /// test-sized screen and a lazy list never builds what it cannot show, which
+  /// reads exactly like the section not existing.
+  Future<void> reveal(WidgetTester tester, Finder finder) async {
+    final list = find.byType(Scrollable);
+    if (list.evaluate().isEmpty) return;
+    for (var i = 0; i < 15 && finder.evaluate().isEmpty; i++) {
+      await tester.drag(list.first, const Offset(0, -240));
+      await pump(tester, frames: 2);
+    }
+  }
+
   group('the morning queue', () {
     testWidgets('separates the work from the notices', (tester) async {
       final clientId = (await tester.runAsync(() => store.addClient(Client(
@@ -206,21 +220,20 @@ void main() {
       await seedTask('Send the revised quote', dueIn: 0, clientId: clientId);
       await mount(tester, const TodayScreen());
 
-      // Late money is top of the notices, and it names its figure.
-      expect(find.text('Acme owes you'), findsOneWidget);
-      expect(find.textContaining('2000 AED'), findsOneWidget);
-      expect(find.textContaining('overdue by 4 days'), findsOneWidget);
-
       // The work is its own list, and the row does not carry the client: the
       // client is who the work is for, not who is doing it.
+      expect(find.text('DO THIS NEXT'), findsOneWidget);
       expect(find.text('Send the revised quote'), findsOneWidget);
       expect(find.text('Due today'), findsOneWidget);
       expect(find.text('Acme  ·  Due today'), findsNothing);
+      expect(find.text('Done for today'), findsNothing);
 
       // Money sits under Notices rather than mixed into the work.
-      expect(find.text('DO THIS NEXT'), findsOneWidget);
+      await reveal(tester, find.text('Acme owes you'));
       expect(find.text('NOTICES'), findsOneWidget);
-      expect(find.text('Done for today'), findsNothing);
+      expect(find.text('Acme owes you'), findsOneWidget);
+      expect(find.textContaining('2000 AED'), findsOneWidget);
+      expect(find.textContaining('overdue by 4 days'), findsOneWidget);
     });
 
     testWidgets('a morning of only notices says there is no work', (tester) async {
@@ -236,7 +249,10 @@ void main() {
       // Not the all-clear: a late invoice is not a clear day.
       expect(find.text('Done for today'), findsNothing);
       expect(find.text('Nothing of your own waiting'), findsOneWidget);
+
+      await reveal(tester, find.text('NOTICES'));
       expect(find.text('NOTICES'), findsOneWidget);
+      expect(find.text('Acme owes you'), findsOneWidget);
     });
 
     testWidgets('Show me dismisses the morning card and the work stays',
@@ -273,6 +289,11 @@ void main() {
           ))))!;
       await mount(tester, const TodayScreen());
 
+      await reveal(tester, find.text('Acme owes you'));
+      // A lazy list builds a little past the fold, so finding the row is not
+      // the same as it being on screen; scroll it the rest of the way in.
+      await tester.ensureVisible(find.text('Acme owes you'));
+      await pump(tester);
       await tester.tap(find.text('Acme owes you'));
       await pump(tester);
 

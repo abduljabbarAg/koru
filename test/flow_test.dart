@@ -662,14 +662,15 @@ void main() {
 
       await say(tester, 'who owes me money?');
 
-      // What goes upstream is the pseudonymous packet and the question, never a
-      // client's name and never an amount. Asserted because that is the whole
-      // privacy claim, and it used to be checked on the prompt for a model that
-      // has since been removed.
+      // What goes upstream is the packet and the question: the packet carries
+      // the records themselves — the client, the balance, the payment — because
+      // a model asked "who owes me money?" cannot answer without them. This is
+      // what the privacy screens describe, so it is asserted here: names and
+      // amounts are exactly what leaves when a cloud model is connected.
       final prompt = model.prompts.single;
       expect(prompt, contains('who owes me money?'));
-      expect(prompt, isNot(contains('Bilal')));
-      expect(prompt, isNot(contains('1500')));
+      expect(prompt, contains('record: client Bilal: 1500 still owed of 2000'));
+      expect(prompt, contains('payment received: 500 from Bilal'));
     });
 
     testWidgets('an unreachable provider is reported in its own words',
