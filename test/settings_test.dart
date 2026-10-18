@@ -9,6 +9,7 @@ import 'package:koru/screens/settings_context.dart';
 import 'package:koru/screens/settings_data.dart';
 import 'package:koru/screens/settings_engine.dart';
 import 'package:koru/screens/settings_money.dart';
+import 'package:koru/screens/settings_permissions.dart';
 import 'package:koru/screens/settings_privacy.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
@@ -107,11 +108,9 @@ void main() {
       await mount(tester, const SettingsScreen());
 
       for (final group in [
-        'WHAT ANSWERS YOU',
-        'WHAT LEAVES THIS PHONE',
+        'THE MODEL',
+        'YOUR BUSINESS',
         'PHONE PERMISSIONS',
-        'MONEY',
-        'CALENDAR & CAPACITY',
         'DATA',
         'ABOUT & LEGAL',
       ]) {
@@ -126,14 +125,33 @@ void main() {
       await mount(tester, const SettingsScreen());
 
       for (final (title, page) in <(String, Widget)>[
-        ('Your context', const ContextSettingsScreen()),
         ('Who answers', const EngineSettingsScreen()),
-        ('What leaves this phone', const PrivacySettingsScreen()),
         ('Cloud provider', const CloudSettingsScreen()),
+        ('What leaves this phone', const PrivacySettingsScreen()),
+        ('Your context', const ContextSettingsScreen()),
         ('Currency', const CurrencySettingsScreen()),
-        ('Calendar', const CalendarSettingsScreen()),
         ('Capacity', const CapacitySettingsScreen()),
+        ('Calendar', const CalendarSettingsScreen()),
+        ('Permissions', const PermissionsSettingsScreen()),
         ('Data', const DataSettingsScreen()),
+        ('About & legal', const LegalHubScreen()),
+      ]) {
+        await open(tester, title: title, page: page);
+      }
+    });
+
+    testWidgets('the legal hub pushes each document and comes back',
+        (tester) async {
+      await mount(tester, const SettingsScreen());
+      await open(
+        tester,
+        title: 'About & legal',
+        page: const LegalHubScreen(),
+      );
+
+      // The four documents used to sit on the index as a group of their own;
+      // now they are one door deep, and each one still has to open.
+      for (final (title, page) in <(String, Widget)>[
         ('About Koru', const AboutScreen()),
         ('Privacy Policy', const PrivacyPolicyScreen()),
         ('Terms & Conditions', const TermsScreen()),

@@ -364,9 +364,9 @@ void main() {
           reason: 'a fresh install starts at onboarding, not at the app');
 
       // Walk onboarding the way a person does: straight through, answering
-      // nothing. Every field is optional and the last button is the one that
-      // commits.
-      for (var i = 0; i < 6; i++) {
+      // nothing. The nickname and the client are optional, and the last button
+      // on the third page is the one that commits.
+      for (var i = 0; i < 2; i++) {
         await tester.tap(find.text('Continue'));
         await pumpFrames(tester);
       }

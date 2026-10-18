@@ -16,15 +16,20 @@ import 'work_rows.dart';
 /// Everything that is work, in one list.
 ///
 /// One list split in two rather than four lists, because that is what somebody
-/// means when they open the app: what is outstanding, and what I already did.
-/// Everything else on this screen used to be a tab of its own — projects on one,
-/// calendar on another, deadlines inside a page called Business — and a week of
-/// work was spread across three of them with no way to see it whole.
+/// means when they open it: what is outstanding, and what I already did.
+/// Everything here used to be a tab bar of its own — tasks on one, projects on
+/// another, calendar on a third, deadlines inside a page called Business — and a
+/// week of work was spread across three of them with no way to see it whole.
+///
+/// It is the deepest page of the app now, one tap past the morning queue behind
+/// "All work", so the bar keeps three moving parts instead of five. The work
+/// somebody has to look at first is the queue on Today, which is drawn from
+/// these same rows; this page is for when they want the whole week at once.
 ///
 /// The sections under the two lists are the things that are dated or bigger than
 /// a task: deadlines somebody agreed to, places to be, and the projects the work
 /// belongs to. They are here rather than on their own tabs because they are all
-/// work in progress, and a tab bar of four has no room left for "the rest".
+/// work in progress, and a tab bar of three has no room left for "the rest".
 class TasksScreen extends ConsumerWidget {
   const TasksScreen({super.key});
 
@@ -47,22 +52,24 @@ class TasksScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: KoruColors.cream,
       appBar: AppBar(
-        title: const Text('Tasks'),
+        // Named for how the morning links to it. The old title, "Tasks", named
+        // a fifth of what the page holds and made the queue's own link —
+        // "All work" — open something with a different name.
+        title: const Text('All work'),
         backgroundColor: KoruColors.cream,
         surfaceTintColor: KoruColors.nothing,
-        actions: const [TalkButton(), SettingsButton()],
+        actions: const [SettingsButton()],
       ),
       floatingActionButton: FloatingActionButton.extended(
         // The one-off case. Work with no client and no project used to have
         // nowhere to go, and the floating button is where somebody looks when
         // they have just thought of something to do.
         //
-        // Tagged by name rather than left on the shared default. Every tab is
-        // kept alive behind the bar, so two of these buttons sit in one route
-        // subtree at once, and pushing anything — Talk, Settings, a client —
-        // makes Flutter collect the heroes in that subtree and throw on the
-        // duplicate. Two buttons in one route is exactly what an IndexedStack of
-        // tabs is, and it only shows up on the first push.
+        // Tagged by name rather than left on the shared default: the bar's own
+        // "Tell Koru" button keeps the default tag, and two floating buttons
+        // meet during the push transition — when Flutter collects the heroes in
+        // both routes at once and throws on the duplicate. It only shows up on
+        // the first push, which is why it needed naming rather than debugging.
         heroTag: 'tasks.add',
         onPressed: () => taskSheet(context, ref),
         icon: const Icon(Icons.add_rounded),
@@ -103,8 +110,8 @@ class TasksScreen extends ConsumerWidget {
                       icon: Icons.event_available_rounded,
                       title: 'Nothing scheduled',
                       body: 'A deadline is a thing somebody agreed to by a date. '
-                          'The Tasks tab is for what you decided to do; this is '
-                          'for what was promised.',
+                          'The task list above is for what you decided to do; '
+                          'this is for what was promised.',
                     ),
               children: [
                 for (final d in deadlines)
@@ -124,9 +131,9 @@ class TasksScreen extends ConsumerWidget {
                   : const EmptyHint(
                       icon: Icons.event_rounded,
                       title: 'Nothing on the calendar',
-                      body: 'Say "schedule a call with Bilal tomorrow at 3pm" in '
-                          'Talk and it lands here, with an option to mirror it to '
-                          'your phone calendar.',
+                      body: 'Say "schedule a call with Bilal tomorrow at 3pm" to '
+                          'Koru and it lands here, with an option to mirror it '
+                          'to your phone calendar.',
                     ),
               children: [
                 for (final e in events.take(6)) EventRow(event: e),

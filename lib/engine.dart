@@ -185,7 +185,8 @@ class EngineUnavailable {
   /// replaced.
   String get text => switch (recovery) {
         EngineRecovery.connectCloud =>
-          'I cannot answer that. Nothing is connected, so there is nothing to ask.',
+          'I cannot answer that. Nothing is connected — but your records work '
+              'without one.',
         EngineRecovery.addCloudKey =>
           'I cannot answer that. $detail, so there is nothing to ask.',
       };

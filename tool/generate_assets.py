@@ -712,8 +712,50 @@ def render_pose(pose, canvas=CELL):
 # --------------------------------------------------------------------------
 
 
+def draw_frond_mark(r, u):
+    """The mark itself: the fern frond, its stem, and the two leaves.
+
+    Shared by the legacy icon, which draws it on a filled tile, and the
+    adaptive foreground, which draws it alone on transparency. The two used to
+    be one function; keeping the drawing in one place is what keeps them from
+    drifting apart the first time one of them is nudged.
+    """
+    frond = spiral(128 * u, 96 * u, 4 * u, 9.5 * u, 0.0, 1.75 * math.pi, steps=110)
+    n = len(frond) // 2
+    widths = [3.0 * u + 16 * u * (1.0 - i / n) ** 0.85 for i in range(n)]
+    r.stroke(frond, [w + 7 * u for w in widths], INK, 0.16)
+    r.stroke(frond, widths, (255, 255, 255), 0.94)
+
+    r.stroke([128 * u, 196 * u, 128 * u, 112 * u], [16 * u, 14 * u], INK, 0.16)
+    r.stroke([128 * u, 196 * u, 128 * u, 112 * u], [11 * u, 9 * u], (255, 255, 255), 0.94)
+
+    for direction in (-1.0, 1.0):
+        bx = 128 * u + direction * 46 * u
+        by = 150 * u
+        r.polygon(
+            quad(128 * u, 178 * u, bx - direction * 34 * u, by - 40 * u,
+                 bx + direction * 26 * u, by - 4 * u)
+            + quad(bx + direction * 26 * u, by - 4 * u, bx - direction * 10 * u,
+                   by + 22 * u, 128 * u, 178 * u),
+            INK, 0.16,
+        )
+        r.polygon(
+            quad(128 * u, 176 * u, bx - direction * 26 * u, by - 34 * u,
+                 bx + direction * 20 * u, by - 6 * u)
+            + quad(bx + direction * 20 * u, by - 6 * u, bx - direction * 6 * u,
+                   by + 16 * u, 128 * u, 176 * u),
+            (255, 255, 255), 0.86,
+        )
+
+
 def render_icon(size):
-    """Flat launcher icon: solid leaf tile with the koru frond."""
+    """Legacy launcher icon: a solid leaf tile with the koru frond on it.
+
+    Still shipped, because adaptive icons only exist from API 26 and a phone
+    below that draws whatever PNG the manifest points at. Its own shadow of a
+    vignette — the sine band — keeps the tile from reading as one flat green
+    square on those launchers.
+    """
     big = Raster(size, size)
     u = size / 256.0
 
@@ -722,32 +764,22 @@ def render_icon(size):
         big.fill_rect(0, y, size, y + 1, (255, 255, 255),
                       0.10 * math.sin(y / size * math.pi))
 
-    frond = spiral(128 * u, 96 * u, 4 * u, 9.5 * u, 0.0, 1.75 * math.pi, steps=110)
-    n = len(frond) // 2
-    widths = [3.0 * u + 16 * u * (1.0 - i / n) ** 0.85 for i in range(n)]
-    big.stroke(frond, [w + 7 * u for w in widths], INK, 0.16)
-    big.stroke(frond, widths, (255, 255, 255), 0.94)
+    draw_frond_mark(big, u)
+    return big
 
-    big.stroke([128 * u, 196 * u, 128 * u, 112 * u], [16 * u, 14 * u], INK, 0.16)
-    big.stroke([128 * u, 196 * u, 128 * u, 112 * u], [11 * u, 9 * u], (255, 255, 255), 0.94)
 
-    for direction in (-1.0, 1.0):
-        bx = 128 * u + direction * 46 * u
-        by = 150 * u
-        big.polygon(
-            quad(128 * u, 178 * u, bx - direction * 34 * u, by - 40 * u,
-                 bx + direction * 26 * u, by - 4 * u)
-            + quad(bx + direction * 26 * u, by - 4 * u, bx - direction * 10 * u,
-                   by + 22 * u, 128 * u, 178 * u),
-            INK, 0.16,
-        )
-        big.polygon(
-            quad(128 * u, 176 * u, bx - direction * 26 * u, by - 34 * u,
-                 bx + direction * 20 * u, by - 6 * u)
-            + quad(bx + direction * 20 * u, by - 6 * u, bx - direction * 6 * u,
-                   by + 16 * u, 128 * u, 176 * u),
-            (255, 255, 255), 0.86,
-        )
+def render_icon_foreground(size):
+    """The mark alone, on transparency, for the adaptive icon.
+
+    A launcher crops an adaptive icon to whatever shape it uses — circle,
+    squircle, rounded square — and only guarantees the middle 66 of the
+    icon's 108 units. The mark's own box is about 61% of the canvas, so the
+    plain drawing already sits inside that safe zone; what it must not do is
+    bring the tile with it, or every shape a launcher picks ends up with four
+    leaf-green corners sticking out of it.
+    """
+    big = Raster(size, size)
+    draw_frond_mark(big, size / 256.0)
     return big
 
 
@@ -863,6 +895,38 @@ def main():
     for folder, px in densities.items():
         size = write(os.path.join(res, folder, "ic_launcher.png"), render_icon(px))
         print("icon    %-16s %dpx  %.1f KB" % (folder, px, size / 1024))
+
+    # Adaptive icon (API 26+): the mark on transparency over a flat leaf
+    # background, which the launcher masks into its own shape. The two XML
+    # files point at whichever density the device asked for, so the foreground
+    # is one PNG per density like the legacy icon.
+    adaptive = {
+        "mipmap-mdpi": 108,
+        "mipmap-hdpi": 162,
+        "mipmap-xhdpi": 216,
+        "mipmap-xxhdpi": 324,
+        "mipmap-xxxhdpi": 432,
+    }
+    for folder, px in adaptive.items():
+        size = write(
+            os.path.join(res, folder, "ic_launcher_foreground.png"),
+            render_icon_foreground(px),
+        )
+        print("fg      %-16s %dpx  %.1f KB" % (folder, px, size / 1024))
+
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<adaptive-icon "
+        'xmlns:android="http://schemas.android.com/apk/res/android">\n'
+        '    <background android:drawable="@color/koru_leaf" />\n'
+        '    <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
+        "</adaptive-icon>\n"
+    )
+    path = os.path.join(res, "mipmap-anydpi-v26/ic_launcher.xml")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as fh:
+        fh.write(xml)
+    print("icon    %-16s adaptive icon xml" % "anydpi-v26")
 
 
 if __name__ == "__main__":

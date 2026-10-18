@@ -270,25 +270,6 @@ class KoruMascotPainter extends CustomPainter {
     final bob = math.sin(t * math.pi * 2) * l(1.6);
     final centreY = l(96) + l(22) + bob;
 
-    // Coil.
-    final coil = Path();
-    coil.moveTo(l(96), centreY - l(35));
-    for (var i = 1; i <= 24; i++) {
-      final f = i / 24;
-      coil.lineTo(
-        l(96) + l(26) * math.sin(f * math.pi * 1.7) - l(26) * math.sin(math.pi * 1.7),
-        centreY - l(35) - l(12) * (1 - f),
-      );
-    }
-    canvas.drawPath(
-      coil,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = l(6)
-        ..color = KoruColors.leaf,
-    );
-
     // Shell.
     final body = Path()
       ..addOval(Rect.fromCenter(
@@ -305,33 +286,30 @@ class KoruMascotPainter extends CustomPainter {
     );
     canvas.drawPath(body, Paint()..color = KoruColors.cream);
 
-    // Arms, mirrored so both hang clear of the shell.
-    final rightAngle = _rightArmAngle(t);
-    for (final side in [1.0, -1.0]) {
-      final angle = side > 0 ? rightAngle : math.pi - rightAngle;
-      final shoulder = Offset(l(96) + side * l(33), centreY + l(5));
-      final wrist = shoulder + Offset(math.cos(angle) * l(24), math.sin(angle) * l(24));
-      canvas.drawLine(
-        shoulder,
-        wrist,
-        Paint()
-          ..strokeCap = StrokeCap.round
-          ..strokeWidth = l(7)
-          ..color = KoruColors.leaf,
-      );
-      canvas.drawOval(
-        Rect.fromCenter(center: wrist, width: l(13), height: l(10)),
-        Paint()..color = KoruColors.leaf,
-      );
-    }
-
     // Face.
+    //
+    // Two eyes, and they blink on their own clock. Earlier both closed at the
+    // same instant from the same frame, which read as a single flat bar across
+    // the face rather than as a face doing something.
+    //
+    // Each eye gets its own period, its own phase and its own duty cycle, all
+    // derived from a fixed seed so a given eye is consistently itself from run
+    // to run, and the two are never in step for long.
     final eyeY = centreY - l(7);
-    if (clip == KoruClip.blink && _blinkClosed(t)) {
-      for (final dx in [-17.0, 17.0]) {
+    for (final eye in _eyes) {
+      final dx = eye.dx;
+      // A blink is a quick squeeze, not a long closure. 0.11 of the cycle is
+      // roughly how long a real blink lasts against a ~4 s period.
+      final cycleT = (t / eye.period + eye.phase) % 1.0;
+      final closed = cycleT < eye.duty;
+
+      if (closed) {
+        // A downcurve lid rather than a straight line, so a blink keeps the
+        // expression alive instead of snapping to a bar.
         final curve = Path()
-          ..moveTo(l(96) + l(dx) - l(7), eyeY)
-          ..quadraticBezierTo(l(96) + l(dx), eyeY + l(6), l(96) + l(dx) + l(7), eyeY);
+          ..moveTo(l(96) + l(dx) - l(8), eyeY - l(1))
+          ..quadraticBezierTo(
+              l(96) + l(dx), eyeY + l(7), l(96) + l(dx) + l(8), eyeY - l(1));
         canvas.drawPath(
           curve,
           Paint()
@@ -340,50 +318,57 @@ class KoruMascotPainter extends CustomPainter {
             ..strokeWidth = l(2.9)
             ..color = KoruColors.ink,
         );
-      }
-    } else {
-      for (final dx in [-17.0, 17.0]) {
+      } else {
+        // Round, with a highlight, because a flat disc has nothing in it to
+        // catch the light and reads as a sticker.
+        final centre = Offset(l(96) + l(dx), eyeY);
+        canvas.drawOval(
+          Rect.fromCenter(center: centre, width: l(9), height: l(11)),
+          Paint()..color = KoruColors.ink,
+        );
         canvas.drawOval(
           Rect.fromCenter(
-            center: Offset(l(96) + l(dx), eyeY),
-            width: l(8),
-            height: l(10),
+            center: centre + Offset(l(2.2), l(-2.6)),
+            width: l(2.6),
+            height: l(2.6),
           ),
-          Paint()..color = KoruColors.ink,
+          Paint()..color = KoruColors.cream.withValues(alpha: 0.85),
         );
       }
     }
 
-    final smile = Path()
-      ..moveTo(l(86), centreY + l(13))
-      ..quadraticBezierTo(l(96), centreY + l(20), l(106), centreY + l(13));
-    canvas.drawPath(
-      smile,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = l(2.8)
-        ..color = KoruColors.ink,
-    );
-  }
+    // A mouth that is a smile, and that actually changes: it opens while the
+    // model is streaming an answer and flattens while it is thinking, so the
+    // face is doing the same job the status line is.
+    final speaking = clip == KoruClip.think || clip == KoruClip.cheer;
+    final mouthOpen = speaking
+        ? (0.5 + 0.5 * math.sin(t * math.pi * 6)) * 0.55
+        : 0.0;
 
-  double _rightArmAngle(double t) {
-    switch (clip) {
-      case KoruClip.wave:
-        return -1.35 + math.sin(t * math.pi * 4) * 0.42;
-      case KoruClip.cheer:
-        return -1.95;
-      case KoruClip.greet:
-        return -1.25 + math.sin(t * math.pi) * 0.5;
-      case KoruClip.think:
-        return -2.05;
-      case KoruClip.idle:
-      case KoruClip.blink:
-        return 1.15;
+    if (mouthOpen > 0.05) {
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(l(96), centreY + l(16)),
+          width: l(16),
+          height: l(4) + l(16) * mouthOpen,
+        ),
+        Paint()..color = KoruColors.ink,
+      );
+    } else {
+      final smile = Path()
+        ..moveTo(l(86), centreY + l(13))
+        ..quadraticBezierTo(l(96), centreY + l(21), l(106), centreY + l(13));
+      canvas.drawPath(
+        smile,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = l(2.8)
+          ..color = KoruColors.ink,
+      );
     }
   }
 
-  bool _blinkClosed(double t) => clip == KoruClip.blink && (t < 0.25 || (t > 0.5 && t < 0.75));
 
   @override
   bool shouldRepaint(KoruMascotPainter oldDelegate) =>
@@ -391,3 +376,32 @@ class KoruMascotPainter extends CustomPainter {
       oldDelegate.clip != clip ||
       oldDelegate.size != size;
 }
+
+/// One eye's blinking personality.
+///
+/// Fixed at construction rather than randomised per frame: an eye that changed
+/// its period every frame would strobe, and one that re-rolled on every rebuild
+/// would never be recognisable as the same eye twice.
+class _Eye {
+  const _Eye(this.dx, this.period, this.phase, this.duty);
+
+  /// Horizontal offset from the face centre.
+  final double dx;
+
+  /// Seconds between blinks.
+  final double period;
+
+  /// Where this eye sits in its own cycle, 0 to 1. Different per eye so the two
+  /// do not fall into lockstep.
+  final double phase;
+
+  /// Fraction of the period spent closed. Short, because a real blink is brief.
+  final double duty;
+}
+
+const _eyes = <_Eye>[
+  // Left: quicker and shallower than the right, and offset so the two are out
+  // of step for most of any given cycle.
+  _Eye(-17.0, 3.7, 0.0, 0.085),
+  _Eye(17.0, 5.1, 0.55, 0.12),
+];

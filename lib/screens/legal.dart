@@ -362,6 +362,80 @@ class DataPolicyScreen extends StatelessWidget {
 
 /// The frame every document here sits in: a lead sentence, then the sections as
 /// SectionLabel-over-Card, which is the shape Settings has used all along.
+/// The four documents, behind one row on the settings index.
+///
+/// They used to be four rows in a group of their own, which made the index read
+/// as half a legal appendix. Nobody opens Settings to read Terms; the person
+/// who does can find them one tap deeper, named together and in order.
+class LegalHubScreen extends StatelessWidget {
+  const LegalHubScreen({super.key});
+
+  static const _entries = <(IconData, String, String, Widget)>[
+    (
+      Icons.info_outline_rounded,
+      'About Koru',
+      'What this app is, and who it is for',
+      AboutScreen(),
+    ),
+    (
+      Icons.lock_outline_rounded,
+      'Privacy Policy',
+      'Where your data lives, and what never leaves',
+      PrivacyPolicyScreen(),
+    ),
+    (
+      Icons.gavel_rounded,
+      'Terms & Conditions',
+      'Plain English, including what this app is not',
+      TermsScreen(),
+    ),
+    (
+      Icons.policy_outlined,
+      'Data policy',
+      'What leaves this phone, in one page',
+      DataPolicyScreen(),
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('About & legal')),
+      body: KoruPagePadding(
+        bottom: KoruSpace.xxl,
+        child: ListView(
+          children: [
+            for (final (icon, title, subtitle, page) in _entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: KoruSpace.md),
+                child: KoruCard(
+                  padding: EdgeInsets.zero,
+                  child: KoruRow(
+                    leading: KoruIconBadge(
+                      icon: icon,
+                      color: KoruColors.leaf,
+                      background: KoruColors.leafSoft,
+                    ),
+                    title: title,
+                    subtitle: subtitle,
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      size: KoruSize.icon,
+                      color: KoruColors.inkFaint,
+                    ),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => page),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _DocScaffold extends StatelessWidget {
   const _DocScaffold({required this.title, required this.lead, required this.sections});
 

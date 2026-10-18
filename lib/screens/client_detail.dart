@@ -151,8 +151,8 @@ class ClientDetailScreen extends ConsumerWidget {
                       icon: Icons.payments_outlined,
                       title: 'Nothing recorded yet',
                       body: 'Money only lands here once it is recorded. Say '
-                          '"Bilal paid 500" in Talk, or use Record payment on '
-                          'the Revenue tab, and the balance follows.',
+                          '"Bilal paid 500" to Koru, or use Record payment on '
+                          'the Money tab, and the balance follows.',
                     ),
               children: [
                 for (final p in payments) _paymentRow(ref, p, currency),
@@ -168,7 +168,7 @@ class ClientDetailScreen extends ConsumerWidget {
                       icon: Icons.event_available_rounded,
                       title: 'Nothing scheduled',
                       body: 'Nothing open for this client. Say "add deadline" '
-                          'in Talk to put one on the list.',
+                          'to Koru to put one on the list.',
                     ),
               children: [
                 for (final d in deadlines) _deadlineRow(ref, d, today),

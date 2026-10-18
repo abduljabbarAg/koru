@@ -28,14 +28,33 @@ class SettingsScreen extends ConsumerWidget {
   /// Grouped the way somebody arrives here, and ordered so the question at the
   /// top is whether anything can answer at all.
   ///
-  /// "Cloud" used to head one card inside the engine page and another card on
-  /// this index, meaning the engine on one and the company on the other, with
-  /// nothing on screen to tell them apart. So the two are named apart —
-  /// [EngineSettingsScreen] is "who answers" and says whether anything is
-  /// connected, [CloudSettingsScreen] is "cloud provider" and is where a key is
-  /// entered.
+  /// Twelve rows used to sit in seven groups, with three of them ("who answers",
+  /// "cloud provider", "what leaves this phone") pulling on the same subject
+  /// from three directions, and four legal documents as a group of their own.
+  /// Now the same content reads in five groups: the model, the business, the
+  /// phone, the data, and everything else behind one door.
   static const _groups = <_Group>[
-    _Group('What answers you', [
+    _Group('The model', [
+      _Entry(
+        title: 'Who answers',
+        subtitle: 'Whether a model is connected, and which company answers',
+        icon: Icons.cloud_outlined,
+        page: EngineSettingsScreen(),
+      ),
+      _Entry(
+        title: 'Cloud provider',
+        subtitle: 'Which company answers online, its model, and the key',
+        icon: Icons.key_outlined,
+        page: CloudSettingsScreen(),
+      ),
+      _Entry(
+        title: 'What leaves this phone',
+        subtitle: 'The exact text the cloud model receives, and where questions go',
+        icon: Icons.visibility_outlined,
+        page: PrivacySettingsScreen(),
+      ),
+    ]),
+    _Group('Your business', [
       _Entry(
         title: 'Your context',
         subtitle: 'What Koru knows about you, and the form that changes it',
@@ -43,24 +62,22 @@ class SettingsScreen extends ConsumerWidget {
         page: ContextSettingsScreen(),
       ),
       _Entry(
-        title: 'Who answers',
-        subtitle: 'Whether a model is connected, and which company answers',
-        icon: Icons.cloud_outlined,
-        page: EngineSettingsScreen(),
-      ),
-    ]),
-    _Group('What leaves this phone', [
-      _Entry(
-        title: 'What leaves this phone',
-        subtitle: 'The exact text the cloud model receives, and where questions go',
-        icon: Icons.cloud_outlined,
-        page: PrivacySettingsScreen(),
+        title: 'Currency',
+        subtitle: 'How amounts are written, and what the model is told',
+        icon: Icons.payments_outlined,
+        page: CurrencySettingsScreen(),
       ),
       _Entry(
-        title: 'Cloud provider',
-        subtitle: 'Which company answers online, its model, and the key',
-        icon: Icons.key_outlined,
-        page: CloudSettingsScreen(),
+        title: 'Capacity',
+        subtitle: 'The most clients you want to carry at once',
+        icon: Icons.people_outline_rounded,
+        page: CapacitySettingsScreen(),
+      ),
+      _Entry(
+        title: 'Calendar',
+        subtitle: 'Copy approved entries to your phone calendar',
+        icon: Icons.calendar_month_outlined,
+        page: CalendarSettingsScreen(),
       ),
     ]),
     _Group('Phone permissions', [
@@ -71,28 +88,6 @@ class SettingsScreen extends ConsumerWidget {
         page: PermissionsSettingsScreen(),
       ),
     ]),
-    _Group('Money', [
-      _Entry(
-        title: 'Currency',
-        subtitle: 'How amounts are written, and what the model is told',
-        icon: Icons.payments_outlined,
-        page: CurrencySettingsScreen(),
-      ),
-    ]),
-    _Group('Calendar & Capacity', [
-      _Entry(
-        title: 'Calendar',
-        subtitle: 'Copy approved entries to your phone calendar',
-        icon: Icons.calendar_month_outlined,
-        page: CalendarSettingsScreen(),
-      ),
-      _Entry(
-        title: 'Capacity',
-        subtitle: 'The most clients you want to carry at once',
-        icon: Icons.people_outline_rounded,
-        page: CapacitySettingsScreen(),
-      ),
-    ]),
     _Group('Data', [
       _Entry(
         title: 'Data',
@@ -101,30 +96,12 @@ class SettingsScreen extends ConsumerWidget {
         page: DataSettingsScreen(),
       ),
     ]),
-    _Group('About & Legal', [
+    _Group('About & legal', [
       _Entry(
-        title: 'About Koru',
-        subtitle: 'What this app is, and who it is for',
-        icon: Icons.info_outline_rounded,
-        page: AboutScreen(),
-      ),
-      _Entry(
-        title: 'Privacy Policy',
-        subtitle: 'Where your data lives, and what never leaves',
-        icon: Icons.lock_outline_rounded,
-        page: PrivacyPolicyScreen(),
-      ),
-      _Entry(
-        title: 'Terms & Conditions',
-        subtitle: 'Plain English, including what this app is not',
-        icon: Icons.gavel_rounded,
-        page: TermsScreen(),
-      ),
-      _Entry(
-        title: 'Data policy',
-        subtitle: 'What leaves this phone, in one page',
-        icon: Icons.policy_outlined,
-        page: DataPolicyScreen(),
+        title: 'About & legal',
+        subtitle: 'About Koru, privacy, terms and the data policy',
+        icon: Icons.menu_book_outlined,
+        page: LegalHubScreen(),
       ),
     ]),
   ];

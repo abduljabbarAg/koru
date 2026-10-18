@@ -218,7 +218,7 @@ void main() {
 
       // And it reads as a queue rather than a report.
       expect(find.text('DO THIS NEXT'), findsOneWidget);
-      expect(find.text('Nothing needs you today'), findsNothing);
+      expect(find.text('Done for today'), findsNothing);
     });
 
     testWidgets('a chore with no client is on the morning too', (tester) async {
@@ -257,12 +257,12 @@ void main() {
       final after = (await tester.runAsync(() => store.tasks()))!.single;
       expect(after.done, isTrue);
       expect(find.text('Chase the deposit'), findsNothing);
-      expect(find.text('Nothing needs you today'), findsOneWidget);
+      expect(find.text('Done for today'), findsOneWidget);
     });
 
     testWidgets('an empty morning says what to do instead', (tester) async {
       await mount(tester, const TodayScreen());
-      expect(find.text('Nothing needs you today'), findsOneWidget);
+      expect(find.text('Done for today'), findsOneWidget);
     });
   });
 }

@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+### Changed
+
+- **The shell is three tabs.** Today, Clients, Money — the fifth tab is gone
+  rather than renamed. Tasks and Revenue were tabs showing records the queue and
+  the client list already showed, so Tasks became the browse view one tap behind
+  the morning queue ("All work") and Revenue became Money. "Tell Koru" floats in
+  the middle of the bar as the app's quick-add, because a person arriving for the
+  first time should meet their work before they meet configuration; Settings
+  stays in the header of every tab.
+- **The morning happens once a day.** Today opens with one card: Koru greets you
+  by name, the queue briefs in a sentence, and the quote of the day rides inside
+  the card instead of an extra line at the bottom of the screen. One tap
+  dismisses it for the day, and the flag is the date, so tomorrow is genuinely a
+  new morning. The all-clear gets a small celebration — Koru cheers, the card
+  scales in, the phone gives one soft thump.
+- **Recording a payment is celebrated.** The one unambiguously good news in this
+  app used to end in a grey snackbar sentence. The amount now rises into view in
+  the green that means received, Koru cheers behind it, and it is gone in a
+  second and a half — long enough to feel, short enough to never be in the way.
+  The toast underneath still carries the number that matters: what is left.
+- **Onboarding is three pages and ends with a real client.** It was seven
+  questions — stage, work situation, capacity, currency, goals, help focus and a
+  review — asked before the app had done anything for the person, and it ended on
+  an empty app. Now: meet Koru and a nickname, the one answer the rest of the app
+  cannot live without (the currency), and the first client, which is what makes
+  Today worth opening on day one. Capacity keeps its default and moves to
+  Settings; goals live in Your context.
+- **Settings groups twelve rows into five.** "Who answers", "Cloud provider" and
+  "What leaves this phone" pull on the same subject and now share one group
+  ("The model"); the four legal documents are one door deep ("About & legal")
+  instead of half the index.
+- **The launcher icon is adaptive.** API 26+ gets the frond mark on a leaf
+  background, which the launcher masks into its own shape, the way it masks every
+  other icon on the phone; older phones keep the legacy tile. The generator in
+  `tool/generate_assets.py` writes both from one drawing, so they cannot drift.
+- **The not-connected screen tells the truth about the app.** It used to say
+  Koru "cannot turn what you type into a record" without a model, which was never
+  true — "add client Bilal for 2000" is read on the phone, with no key at all.
+  It now says what a model is actually for: questions. The word "Talk" left the
+  copy as well; everywhere in the app now asks you to tell Koru.
+
 ### Removed
 
 - **The on-device model, and with it every second engine.** The bundled

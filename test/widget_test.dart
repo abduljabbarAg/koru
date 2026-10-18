@@ -120,9 +120,9 @@ void main() {
       expect(await store.writeKey('openai', 'sk-x'), isFalse);
     });
   });
-  /// Onboarding is a tall form, and the default 800x600 test surface puts the
-  /// help chips below the fold where they cannot be hit. This is roughly the
-  /// shape of the phone the app runs on.
+  /// Onboarding is a phone-shaped surface with a footer button; the default
+  /// 800x600 test surface puts the button and the currency pills in odd places.
+  /// This is roughly the shape of the phone the app runs on.
   void useTallSurface(WidgetTester tester) {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 3.0;
@@ -132,70 +132,133 @@ void main() {
     });
   }
 
-  /// Taps a chip, scrolling it into view first.
-  Future<void> tapChip(WidgetTester tester, String label) async {
-    final finder = find.text(label);
-    await tester.ensureVisible(finder);
-    await pumpFrames(tester);
-    await tester.tap(finder);
-    await pumpFrames(tester);
-  }
-
-  /// Walks the first five steps of onboarding and leaves the user on the goals
-  /// page, where the help chips are.
+  /// Walks the three pages the way a person does, answering whatever is given,
+  /// and leaves the flow on the Start button of the last page.
   ///
-  /// Start is not on this page any more: there is a review screen after it, so
-  /// what used to be the last step is now the second to last.
-  Future<void> advanceToGoals(WidgetTester tester) async {
-    for (var i = 0; i < 5; i++) {
-      await tester.tap(find.text('Continue'));
+  /// The flow used to be seven pages — stage, work situation, capacity,
+  /// currency, goals, help focus and a review — and this helper walked all of
+  /// them. Three of those questions now live in Settings and the review is gone
+  /// with them, because the app that asked the questions had already done
+  /// nothing for the person answering them.
+  Future<void> walkOnboarding(
+    WidgetTester tester, {
+    String? nickname,
+    String? currency,
+    String? clientName,
+    String? clientAmount,
+    bool pressStart = true,
+  }) async {
+    // Page one: the introduction and the nickname.
+    if (nickname != null) {
+      await tester.enterText(
+          find.widgetWithText(TextField, 'nickname'), nickname);
       await pumpFrames(tester);
     }
-    expect(find.text('How many clients can you serve well?').evaluate().isEmpty,
-        isTrue,
-        reason: 'should be on the goals page');
+    await tester.tap(find.text('Continue'));
+    await pumpFrames(tester);
+
+    // Page two: the currency.
+    if (currency != null) {
+      final pill = find.text(currency);
+      await tester.ensureVisible(pill);
+      await pumpFrames(tester);
+      await tester.tap(pill);
+      await pumpFrames(tester);
+    }
+    await tester.tap(find.text('Continue'));
+    await pumpFrames(tester);
+
+    // Page three: the first client. Found by hint and label rather than by
+    // position, because a PageView keeps the page it came from alive for a
+    // frame or two, and "the first TextField" is then a nickname field that
+    // has already scrolled off.
+    if (clientName != null) {
+      await tester.enterText(
+          find.widgetWithText(TextField, 'Bilal'), clientName);
+      await pumpFrames(tester);
+    }
+    if (clientAmount != null) {
+      await tester.enterText(
+          find.widgetWithText(TextField, 'What do they owe you?'),
+          clientAmount);
+      await pumpFrames(tester);
+    }
+    if (!pressStart) return;
+    await tester.tap(find.text('Start'));
+    await pumpFrames(tester, frames: 12);
   }
 
   group('Onboarding', () {
-    /// The review exists so a person can see what the assistant was told before
-    /// it starts answering from it. Skipping a question used to be invisible:
-    /// nothing was stored, and nothing said so either, which is the same silence
-    /// that made the client screen read zero.
-    testWidgets('the review names what was left unanswered', (tester) async {
+    /// The flow used to end on an empty app: seven answers were asked for
+    /// before the app had done anything for the person answering them. It now
+    /// ends with a real client in the database, which is what makes Today worth
+    /// opening on day one.
+    testWidgets('is three pages and ends with a real client', (tester) async {
       useTallSurface(tester);
       await pumpApp(tester, const OnboardingScreen());
 
-      // Straight through, answering nothing.
-      for (var i = 0; i < 5; i++) {
-        await tester.tap(find.text('Continue'));
-        await pumpFrames(tester);
-      }
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
+      expect(find.text('Meet Koru.'), findsOneWidget);
+      expect(find.text('1 of 3'), findsOneWidget);
 
-      expect(find.text('This is what Koru will know'), findsOneWidget);
-      // The nickname, the stage and the goals were all skipped.
-      expect(find.text('not set'), findsWidgets);
-      // And it says so rather than pretending to have everything.
-      expect(find.textContaining('are empty'), findsOneWidget);
+      await walkOnboarding(
+        tester,
+        nickname: 'kami',
+        currency: 'USD',
+        clientName: 'Bilal',
+        clientAmount: '2000',
+      );
+
+      final saved = (await tester.runAsync(() async => <String, String?>{
+            'onboarded': await store.get('onboarded'),
+            'nickname': await store.get('nickname'),
+            'currency': await store.get('currency'),
+          }))!;
+      expect(saved['onboarded'], '1');
+      expect(saved['nickname'], 'kami');
+      expect(saved['currency'], 'USD');
+
+      final clients = (await tester.runAsync(store.clients))!;
+      expect(clients, hasLength(1));
+      expect(clients.single.name, 'Bilal');
+      expect(clients.single.amount, 2000);
     });
 
-    testWidgets('an empty answer can be jumped back to', (tester) async {
+    testWidgets('a skipped nickname and a skipped client still finish setup',
+        (tester) async {
       useTallSurface(tester);
       await pumpApp(tester, const OnboardingScreen());
 
-      for (var i = 0; i < 6; i++) {
-        await tester.tap(find.text('Continue'));
-        await pumpFrames(tester);
-      }
-      expect(find.text('This is what Koru will know'), findsOneWidget);
+      // Straight through, answering nothing. Every page has to be safe to
+      // skip, because forcing an answer out of somebody who came to look is how
+      // an app gets closed before it gets used.
+      await walkOnboarding(tester);
 
-      // The pencil beside a missing answer takes you back to that question.
-      await tester.tap(find.byIcon(Icons.edit_outlined).first);
+      final saved = (await tester.runAsync(() async => <String, String?>{
+            'onboarded': await store.get('onboarded'),
+            'nickname': await store.get('nickname'),
+            'currency': await store.get('currency'),
+          }))!;
+      expect(saved['onboarded'], '1');
+      // The greeting needs a name, and 'friend' is the one the app can use
+      // without asking twice.
+      expect(saved['nickname'], 'friend');
+      // The currency step defaults rather than blocking, so a person who does
+      // not care still gets an app that counts.
+      expect(saved['currency'], 'AED');
+      expect((await tester.runAsync(store.clients))!, isEmpty);
+    });
+
+    testWidgets('Back returns to the question it came from', (tester) async {
+      useTallSurface(tester);
+      await pumpApp(tester, const OnboardingScreen());
+
+      await tester.tap(find.text('Continue'));
       await pumpFrames(tester);
+      expect(find.text('What do you get paid in?'), findsOneWidget);
 
-      expect(find.text('This is what Koru will know'), findsNothing,
-          reason: 'should have gone back to the question it came from');
+      await tester.tap(find.text('Back'));
+      await pumpFrames(tester);
+      expect(find.text('Meet Koru.'), findsOneWidget);
     });
 
     /// Walks the whole flow the way a person does. The regression this covers is
@@ -228,13 +291,11 @@ void main() {
       expect(find.byType(OnboardingScreen), findsOneWidget);
     });
 
-    testWidgets('Start on the last step lands you in the app', (tester) async {
+    testWidgets('Start on the last page lands you in the app', (tester) async {
       useTallSurface(tester);
       // No seeding needed. The permission explanation is only offered to somebody
       // who has finished onboarding, and this starts them before onboarding, so
-      // it cannot be in the way. It used to seed asked_permissions='1' here to
-      // keep the screen out of the way, which is the flag whose meaning this
-      // change removed.
+      // it cannot be in the way.
       await pumpApp(tester, const RootGate());
 
       // Splash first: it holds for a minimum time, and it only starts once the
@@ -244,44 +305,12 @@ void main() {
       await pumpFrames(tester, frames: 12);
       expect(find.byType(OnboardingScreen), findsOneWidget);
 
-      // intro
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-
-      // nickname
-      await tester.enterText(find.byType(TextField), 'kami');
-      await pumpFrames(tester);
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-
-      // stage
-      await tester.tap(find.text('A few years in'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-
-      // work
-      await tester.tap(find.text('Employee'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-
-      // measurements
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-
-      // goals and help
-      await tester.enterText(find.byType(TextField), 'ship two more clients');
-      await pumpFrames(tester);
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-
-      // review, before anything is committed
-      expect(find.text('Start'), findsOneWidget);
-      // Everything was answered on the way through, so nothing is flagged.
-      expect(find.text('not set'), findsNothing);
-      await tester.tap(find.text('Start'));
-      await pumpFrames(tester, frames: 12);
+      await walkOnboarding(
+        tester,
+        nickname: 'kami',
+        clientName: 'Bilal',
+        clientAmount: '2000',
+      );
 
       // The permission explanation is owed the moment onboarding finishes, on the
       // first run and without a restart. It used not to be: the gate decided the
@@ -299,162 +328,14 @@ void main() {
       final saved = (await tester.runAsync(() async => <String, String?>{
             'onboarded': await store.get('onboarded'),
             'nickname': await store.get('nickname'),
-            'stage': await store.get('stage'),
-            'business': await store.get('business'),
-            'goals': await store.get('goals'),
           }))!;
       expect(saved['onboarded'], '1');
       expect(saved['nickname'], 'kami');
-      expect(saved['stage'], 'A few years in');
-      expect(saved['business'], 'Employee');
-      expect(saved['goals'], 'ship two more clients');
+      // The point of the last page: the app is not empty when it opens.
+      final clients = (await tester.runAsync(store.clients))!;
+      expect(clients.single.name, 'Bilal');
     });
 
-    testWidgets('capacity defaults to five and can be changed', (tester) async {
-      useTallSurface(tester);
-      await pumpApp(tester, const OnboardingScreen());
-
-      // Advance to the capacity step, which is the one before goals.
-      for (var i = 0; i < 4; i++) {
-        await tester.tap(find.text('Continue'));
-        await pumpFrames(tester);
-      }
-      expect(find.text('How many clients can you serve well?'), findsOneWidget);
-
-      await tester.tap(find.text('8'));
-      await pumpFrames(tester);
-
-      // Capacity, then goals, then the review screen where Start now lives.
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-      expect(find.text('This is what Koru will know'), findsOneWidget);
-      await tester.tap(find.text('Start'));
-      await pumpFrames(tester, frames: 12);
-
-      final capacity = await tester.runAsync(() => store.number('capacity'));
-      expect(capacity, 8);
-    });
-
-    testWidgets('an untouched capacity is still written as the default',
-        (tester) async {
-      useTallSurface(tester);
-      await pumpApp(tester, const OnboardingScreen());
-      await advanceToGoals(tester);
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Start'));
-      await pumpFrames(tester, frames: 12);
-
-      // A fresh install that skipped the choice still has something to measure
-      // against, otherwise the meter silently does nothing.
-      final capacity = await tester.runAsync(() => store.number('capacity'));
-      expect(capacity, 5);
-    });
-
-    testWidgets('help topics are multi-select and all of them persist',
-        (tester) async {
-      useTallSurface(tester);
-      await pumpApp(tester, const OnboardingScreen());
-      await advanceToGoals(tester);
-
-      await tapChip(tester, 'Finding clients');
-      await tapChip(tester, 'Getting paid');
-      await tapChip(tester, 'Pricing');
-
-      // All three stay selected at once.
-      expect(find.byType(KoruSelectablePill), findsNWidgets(5));
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Finding clients')).selected,
-        isTrue,
-      );
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Getting paid')).selected,
-        isTrue,
-      );
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
-        isTrue,
-      );
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Staying organised')).selected,
-        isFalse,
-      );
-
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Start'));
-      await pumpFrames(tester, frames: 12);
-
-      final focus = await tester.runAsync(() => store.get('help_focus'));
-      expect(focus, 'Finding clients, Getting paid, Pricing');
-    });
-
-    testWidgets('tapping a help topic again deselects it', (tester) async {
-      useTallSurface(tester);
-      await pumpApp(tester, const OnboardingScreen());
-      await advanceToGoals(tester);
-
-      await tapChip(tester, 'Pricing');
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
-        isTrue,
-      );
-
-      await tapChip(tester, 'Pricing');
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
-        isFalse,
-      );
-    });
-
-    testWidgets('All of it is a shortcut and clears the other picks',
-        (tester) async {
-      useTallSurface(tester);
-      await pumpApp(tester, const OnboardingScreen());
-      await advanceToGoals(tester);
-
-      await tapChip(tester, 'Pricing');
-      await tapChip(tester, 'All of it');
-
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'All of it')).selected,
-        isTrue,
-      );
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Pricing')).selected,
-        isFalse,
-      );
-
-      // Picking something specific drops the shortcut.
-      await tapChip(tester, 'Getting paid');
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'All of it')).selected,
-        isFalse,
-      );
-      expect(
-        tester.widget<KoruSelectablePill>(
-                find.widgetWithText(KoruSelectablePill, 'Getting paid')).selected,
-        isTrue,
-      );
-
-      await tester.tap(find.text('Continue'));
-      await pumpFrames(tester);
-      await tester.tap(find.text('Start'));
-      await pumpFrames(tester, frames: 12);
-      final focus = await tester.runAsync(() => store.get('help_focus'));
-      expect(focus, 'Getting paid');
-    });
   });
 
   group('HandoffCard', () {

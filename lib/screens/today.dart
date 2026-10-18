@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../currency.dart';
@@ -14,6 +15,7 @@ import 'business_rows.dart' show openClient;
 import 'project_detail.dart';
 import 'shell_actions.dart';
 import 'task_sheet.dart';
+import 'tasks.dart';
 import 'today_rows.dart';
 
 /// What needs doing today.
@@ -45,12 +47,12 @@ class TodayScreen extends ConsumerWidget {
         title: const Text('Today'),
         backgroundColor: KoruColors.cream,
         surfaceTintColor: KoruColors.nothing,
-        // The app's chrome rather than this screen's. Talk and Settings used to
-        // be the middle and last tabs, and both of them are things a person
-        // reaches for without thinking about where they are, so they live in the
-        // header of the screen they will always be able to get back to. A new
-        // user gets to their first answer without ever opening Settings.
-        actions: const [TalkButton(), SettingsButton()],
+        // The app's chrome rather than this screen's. Settings used to be the
+        // last tab and Talk the middle one; Talk is the floating action and
+        // Settings lives here, because both are things a person reaches for
+        // without thinking about where they are. A new user gets to their first
+        // answer without ever opening Settings.
+        actions: const [SettingsButton()],
       ),
       backgroundColor: KoruColors.cream,
       body: KoruSettle(
@@ -64,21 +66,34 @@ class TodayScreen extends ConsumerWidget {
             _Broken(onRetry: () => ref.invalidate(workQueueProvider)),
           ]),
           data: (items) => _scroll(ref, [
-            _HeroHeader(brief: WorkQueue.brief(items)),
+            const _HeroHeader(),
+            // The once-a-day moment. Renders nothing until the store has
+            // answered, nothing on a day it has already been dismissed, and
+            // nothing ever again after the person taps it.
+            _MorningRitual(items: items),
             _Summary(items: items),
             if (items.isEmpty)
               const _AllClear()
             else
               KoruSection(
                 label: 'Do this next',
-                hint: 'Late first, then by how pressing it is, then by when '
-                    'it is due. Tap a row to open it.',
+                hint: 'Late first, then what you said matters, then the '
+                    'soonest date.',
+                // The browse view. Every task, deadline, place to be and
+                // project lives one tap behind the queue that ranks them.
+                action: TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const TasksScreen()),
+                  ),
+                  icon: const Icon(Icons.checklist_rounded,
+                      size: KoruSize.iconSm),
+                  label: const Text('All work'),
+                ),
                 dividerIndent: KoruSize.badge + KoruSpace.md,
                 children: [
                   for (final item in items) _queueRow(context, ref, item),
                 ],
               ),
-            const _MorningLine(),
           ]),
         ),
       ),
@@ -202,19 +217,15 @@ class TodayScreen extends ConsumerWidget {
   }
 }
 
-/// The greeting, the date, and where the day stands.
+/// The greeting, the date, and the face that says this is your app.
 ///
 /// The header is the one part of the screen that does not change between
 /// states, which is the point: the date is known while the queue is still being
 /// worked out, so the screen arrives whole and the data catches up underneath
-/// it. The brief under the greeting counts rather than lists, because a greeting
-/// that names five things is a list the reader has to read twice.
+/// it. The brief lives in the morning card instead of here, so that it is said
+/// once — loudly, on arrival — rather than repeated all day in three-point type.
 class _HeroHeader extends StatelessWidget {
-  const _HeroHeader({this.brief = ''});
-
-  /// Empty while the queue is still loading, which leaves the line out rather
-  /// than reserving space for a sentence that does not exist yet.
-  final String brief;
+  const _HeroHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -222,7 +233,6 @@ class _HeroHeader extends StatelessWidget {
     return KoruScreenHeader(
       eyebrow: formatDay(now, now, style: DateStyle.short),
       title: _greetingFor(now),
-      subtitle: brief.isEmpty ? null : brief,
       trailing: const KoruMascot(size: 54),
     );
   }
@@ -321,61 +331,210 @@ class _Summary extends ConsumerWidget {
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 }
 
-/// The all-clear, on the same surface the rest of the app uses for an empty
-/// state, and in the green that means settled rather than the grey that means
-/// nothing was ever here.
-class _AllClear extends StatelessWidget {
+/// The all-clear, with a small celebration attached.
+///
+/// The state people come back for, so it arrives like one: Koru cheers, the
+/// card grows in, and the phone gives one soft thump. The copy says what to do
+/// next — tell Koru when money lands — because an empty screen with nothing to
+/// do is a dead end.
+class _AllClear extends StatefulWidget {
   const _AllClear();
 
   @override
+  State<_AllClear> createState() => _AllClearState();
+}
+
+class _AllClearState extends State<_AllClear> {
+  final _mascot = KoruMascotController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Asked for before the first frame so the clip is queued the moment the
+    // sprite mounts, rather than one frame late.
+    _mascot.cheer();
+    // A celebration you can feel. It fires once, when the state appears, and
+    // never on a rebuild.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      HapticFeedback.mediumImpact();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: KoruSpace.xs),
-      child: EmptyHint(
-        icon: Icons.check_circle_outline,
-        tint: KoruColors.leaf,
-        tintBg: KoruColors.leafSoft,
-        title: 'Nothing needs you today',
-        body: 'Nothing late, nothing due, no calls. Say "add client Bilal '
-            'for 2000" in Talk, or add a task for work that is only yours.',
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: KoruMotion.settle,
+      curve: KoruMotion.easeOut,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.scale(scale: 0.94 + 0.06 * t, child: child),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(top: KoruSpace.sm),
+        child: Column(
+          children: [
+            KoruMascot(
+              size: 92,
+              controller: _mascot,
+              semanticLabel: 'Koru, happy the day is clear',
+            ),
+            const SizedBox(height: KoruSpace.md),
+            EmptyHint(
+              icon: Icons.check_circle_outline,
+              tint: KoruColors.leaf,
+              tintBg: KoruColors.leafSoft,
+              title: 'Done for today',
+              body: 'Nothing late, nothing due, nowhere to be. When something '
+                  'lands, tell Koru — "Bilal paid 500".',
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// The one quiet line at the foot of the morning.
+/// The morning moment: one card, once a day, the first time Today is in view.
 ///
-/// Last rather than first, on purpose. The reason to open this app is what is
-/// overdue, and a quote in the opening position pushes that down the screen;
-/// down here it reads as a closing thought, seen once the work has been. Italic
-/// and low-contrast so it reads as an aside rather than another task, and it
-/// carries no interaction because there is nothing to do with it.
-class _MorningLine extends StatelessWidget {
-  const _MorningLine();
+/// The first thing anybody wants from this app in the morning is a quick read
+/// of the day and a nudge that it is being watched. So the mascot says good
+/// morning by name, the line counts rather than lists, and the quote-of-the-day
+/// rides inside the same card — one artefact, read in five seconds, dismissed
+/// with one tap. Nothing here is a modal: a card in the page can be scrolled
+/// past, and a dialog that appears before the person has read anything is the
+/// most-hated screen in any app.
+///
+/// Once per day, remembered on the phone. The flag is a date, not a boolean,
+/// so tomorrow it is genuinely a new morning rather than a session artefact.
+/// A store that cannot be read shows nothing at all: the quote is the one thing
+/// on this screen nobody needs twice.
+class _MorningRitual extends ConsumerStatefulWidget {
+  const _MorningRitual({required this.items});
+
+  final List<WorkItem> items;
+
+  @override
+  ConsumerState<_MorningRitual> createState() => _MorningRitualState();
+}
+
+class _MorningRitualState extends ConsumerState<_MorningRitual> {
+  /// Null until the store has answered, so the card cannot flash on a day it
+  /// has already been dismissed.
+  bool? _show;
+  String _nickname = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// Today as a date string. Local, not UTC, because the morning happens where
+  /// the person is standing.
+  static String _todayKey(DateTime now) =>
+      '${now.year.toString().padLeft(4, '0')}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+
+  Future<void> _load() async {
+    try {
+      final store = await ref.read(storeProvider.future);
+      final seen = await store.get('morning_seen');
+      final nick = await store.get('nickname');
+      if (!mounted) return;
+      setState(() {
+        _show = seen != _todayKey(DateTime.now());
+        _nickname = (nick ?? '').trim();
+      });
+    } catch (_) {
+      // A store that cannot be read is not a reason to greet somebody twice.
+      if (mounted) setState(() => _show = false);
+    }
+  }
+
+  Future<void> _dismiss() async {
+    HapticFeedback.selectionClick();
+    setState(() => _show = false);
+    try {
+      final store = await ref.read(storeProvider.future);
+      await store.put('morning_seen', _todayKey(DateTime.now()));
+    } catch (_) {
+      // Nothing to recover: worst case the card says good morning again.
+    }
+  }
+
+  /// The opening line, by name when there is one and quietly when there is not.
+  String get _greeting {
+    final name = _nickname;
+    if (name.isEmpty || name == 'friend') return 'Good morning';
+    return 'Good morning, $name';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final q = quoteFor(DateTime.now());
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: KoruSpace.xxs),
-      padding: const EdgeInsets.only(top: KoruSpace.xl),
-      decoration: BoxDecoration(
-        border: Border(top: KoruBorders.hairline()),
+    if (_show != true) return const SizedBox.shrink();
+
+    final quote = quoteFor(DateTime.now());
+    final line = widget.items.isEmpty
+        ? 'Nothing is waiting on you today.'
+        : WorkQueue.brief(widget.items);
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: KoruMotion.settle,
+      curve: KoruMotion.easeOut,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child:
+            Transform.translate(offset: Offset(0, (1 - t) * 14), child: child),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            q.text,
-            style: KoruType.bodyCompact.copyWith(
-              fontStyle: FontStyle.italic,
-              height: 1.55,
-            ),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: KoruSpace.md),
+        child: KoruCard(
+          accent: KoruColors.leaf,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const KoruMascot(size: 48, semanticLabel: 'Koru'),
+                  const SizedBox(width: KoruSpace.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_greeting, style: KoruType.rowTitle),
+                        const SizedBox(height: KoruSpace.xxs),
+                        Text(line, style: KoruType.bodySmall),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: KoruSpace.md),
+              // The quote is part of the moment, not a second moment. One
+              // card, one read, one tap to move on.
+              Text(
+                '“${quote.text}”',
+                style: KoruType.bodyCompact.copyWith(
+                  fontStyle: FontStyle.italic,
+                  height: 1.55,
+                ),
+              ),
+              const SizedBox(height: KoruSpace.xs),
+              Text('— ${quote.by}', style: KoruType.micro),
+              const SizedBox(height: KoruSpace.md),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: _dismiss,
+                  child: const Text('Show me'),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: KoruSpace.xsm),
-          Text(q.by, style: KoruType.micro),
-        ],
+        ),
       ),
     );
   }

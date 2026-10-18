@@ -5,6 +5,7 @@ import '../currency.dart';
 import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
+import '../ui/celebration.dart';
 import '../widgets.dart';
 
 /// The three sheets the Clients and Revenue tabs open, and the writes behind
@@ -406,6 +407,14 @@ Future<void> recordPaymentSheet(
 
   invalidateWorkData(ref);
   if (!context.mounted) return;
+  // The one action in this app that is unambiguously good news, so it lands
+  // like news: Koru cheers, the amount rises, the phone thumps. The toast
+  // underneath still carries the number that matters — what is left.
+  celebrateMoneyIn(
+    context,
+    amount: '+ ${money(amount)} ${currency.code}',
+    caption: settled ? '${c.name} settled' : c.name,
+  );
   final left = c.balanceWith(alreadyReceived + amount);
   toast(
     context,

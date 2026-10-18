@@ -42,20 +42,11 @@ class ClientsScreen extends ConsumerWidget {
       backgroundColor: KoruColors.cream,
       appBar: AppBar(
         title: const Text('Clients'),
-        // The same two controls on every tab. They used to be two of the five
-        // tabs, which meant being one tap from them cost a place on the bar that
-        // was not for doing anything; in the header they are one tap away from
-        // wherever the person already is.
-        actions: const [TalkButton(), SettingsButton()],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        // Named for the same reason the one on the Tasks tab is: every tab is
-        // alive at once, two buttons in one route subtree collide on the first
-        // push, and a duplicate hero tag is an exception rather than a shrug.
-        heroTag: 'clients.add',
-        onPressed: () => editClientSheet(context, ref),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Client'),
+        // Settings only. Talk moved to the bar's floating action — "Tell
+        // Koru" — so the header keeps one small grey control instead of two
+        // that look the same. Adding a client kept its own button on the
+        // section header, where the list it adds to is.
+        actions: const [SettingsButton()],
       ),
       body: clientsAsync.when(
         loading: () => const KoruLoading(label: 'Loading your clients'),
@@ -126,15 +117,17 @@ class ClientsScreen extends ConsumerWidget {
                   ),
                 KoruSection(
                   label: 'Clients',
-                  hint: list.isEmpty
-                      ? null
-                      : 'What they owe, and the three things you can do about it.',
                   dividerIndent: KoruSpace.row,
+                  action: TextButton.icon(
+                    onPressed: () => editClientSheet(context, ref),
+                    icon: const Icon(Icons.add_rounded, size: KoruSize.icon),
+                    label: const Text('Add'),
+                  ),
                   empty: EmptyHint(
                     icon: Icons.folder_open_rounded,
                     title: 'No clients yet',
                     body: 'Add your first client to start tracking who owes you '
-                        'what. Koru can add one for you from Talk.',
+                        'what — or just tell Koru.',
                     action: FilledButton(
                       onPressed: () => editClientSheet(context, ref),
                       child: const Text('Add a client'),

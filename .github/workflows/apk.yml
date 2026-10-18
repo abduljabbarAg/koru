@@ -122,8 +122,11 @@ jobs:
           body: |
             ## Koru ${{ github.ref_name }}
 
-            One model, over the internet. Koru needs a key for it, and you paste
-            that key in Settings; nothing is bundled in the APK.
+            Three tabs — Today, Clients, Money — and a "Tell Koru" button in the
+            middle of the bar. Adding clients, recording payments and the
+            morning queue all work on the phone; questions go to one cloud
+            model, and you paste its key in Settings. Nothing is bundled in the
+            APK.
 
             Install the arm64 APK. The debug signing key is still in use, so an
             upgrade over an earlier build of Koru will not work until a release

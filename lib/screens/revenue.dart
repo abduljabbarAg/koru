@@ -38,12 +38,10 @@ class RevenueScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: KoruColors.cream,
       appBar: AppBar(
-        title: const Text('Revenue'),
-        // The same two controls on every tab. They used to be two of the five
-        // tabs, which meant being one tap from them cost a place on the bar that
-        // was not for doing anything; in the header they are one tap away from
-        // wherever the person already is.
-        actions: const [TalkButton(), SettingsButton()],
+        title: const Text('Money'),
+        // Settings only; "Tell Koru" floats on the bar, and recording a
+        // payment keeps its own button on the row it belongs to.
+        actions: const [SettingsButton()],
       ),
       body: clientsAsync.when(
         loading: () => const KoruLoading(label: 'Loading what is owed'),
@@ -130,8 +128,7 @@ class RevenueScreen extends ConsumerWidget {
                   ),
                 KoruSection(
                   label: 'Who owes you',
-                  hint: 'Biggest first. A chase that names the figure is one '
-                      'somebody sends.',
+                  hint: 'Biggest first.',
                   dividerIndent: KoruSpace.row,
                   empty: EmptyHint(
                     icon: Icons.payments_outlined,

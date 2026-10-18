@@ -70,13 +70,12 @@ void main() {
   }
 
   group('the tab bar', () {
-    testWidgets('is Today, Tasks, Clients, Revenue, in that order',
-        (tester) async {
+    testWidgets('is Today, Clients, Money, in that order', (tester) async {
       await boot(tester);
 
       expect(
         KoruAppTabs.values.map((t) => t.label),
-        ['Today', 'Tasks', 'Clients', 'Revenue'],
+        ['Today', 'Clients', 'Money'],
       );
       final bar = find.byType(KoruTabBar);
       for (final tab in KoruAppTabs.values) {
@@ -110,11 +109,25 @@ void main() {
       expect(find.byType(SettingsScreen), findsOneWidget);
     });
 
-    testWidgets('Talk is reachable without being a fifth tab', (tester) async {
+    testWidgets('Talk is the floating action, not a tab', (tester) async {
       await boot(tester);
 
       expect(find.byType(ChatScreen), findsNothing);
-      await tester.tap(find.byTooltip('Talk to Koru').first);
+      // On the bar, but floating over it: the one verb that is always one tap
+      // away from anywhere in the app.
+      expect(
+        find.widgetWithText(FloatingActionButton, 'Tell Koru'),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(KoruTabBar),
+          matching: find.text('Tell Koru'),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.widgetWithText(FloatingActionButton, 'Tell Koru'));
       await pump(tester);
 
       expect(find.byType(ChatScreen), findsOneWidget);
@@ -129,13 +142,6 @@ void main() {
 
       await tester.tap(find.descendant(
           of: find.byType(KoruTabBar),
-          matching: find.text('Tasks'),
-        ));
-      await pump(tester);
-      expect(find.byType(TasksScreen), findsOneWidget);
-
-      await tester.tap(find.descendant(
-          of: find.byType(KoruTabBar),
           matching: find.text('Clients'),
         ));
       await pump(tester);
@@ -143,7 +149,7 @@ void main() {
 
       await tester.tap(find.descendant(
           of: find.byType(KoruTabBar),
-          matching: find.text('Revenue'),
+          matching: find.text('Money'),
         ));
       await pump(tester);
       expect(find.byType(RevenueScreen), findsOneWidget);
@@ -187,19 +193,6 @@ void main() {
       );
       expect(find.byType(TodayScreen), findsOneWidget);
 
-      await tester.tap(find.descendant(
-          of: find.byType(KoruTabBar),
-          matching: find.text('Tasks'),
-        ));
-      await pump(tester);
-      await tester.tap(find.descendant(
-          of: find.byType(KoruTabBar),
-          matching: find.text('Today'),
-        ));
-      await pump(tester);
-
-      await store.addDeadline(
-          const Deadline(title: 'Send invoice', due: '2026-10-20'));
       await boot(
         tester,
         link: const KoruDeepLink(
@@ -210,7 +203,8 @@ void main() {
       expect(find.byType(TodayScreen), findsOneWidget);
     });
 
-    testWidgets('a task lands on the task list', (tester) async {
+    testWidgets('a task lands on the morning queue, which shapes the day',
+        (tester) async {
       await boot(
         tester,
         link: const KoruDeepLink(
@@ -219,11 +213,13 @@ void main() {
         ),
       );
 
-      expect(find.byType(TasksScreen), findsOneWidget);
-      expect(find.text('What needs doing'), findsOneWidget);
+      // The queue is the top of Today; the full list is one tap deeper behind
+      // "All work", so a notification about one thing does not open five.
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(find.byType(TasksScreen), findsNothing);
     });
 
-    testWidgets('a project lands on the work tab', (tester) async {
+    testWidgets('a project lands on the morning queue too', (tester) async {
       await boot(
         tester,
         link: const KoruDeepLink(
@@ -232,27 +228,28 @@ void main() {
         ),
       );
 
-      expect(find.byType(TasksScreen), findsOneWidget);
+      expect(find.byType(TodayScreen), findsOneWidget);
     });
 
-    test('every link target maps to a real tab, and the chat is still one of them',
-        () {
+    test('every link target maps to a real tab', () {
       for (final target in AttentionTarget.values) {
         expect(KoruAppTabs.tabFor(target), isA<KoruAppTabs>(),
             reason: '$target has somewhere to land');
       }
       // Spot-checked rather than left to the loop above, because the loop cannot
-      // say whether the answer is the right one.
+      // say whether the answer is the right one. Everything that is not a
+      // client now lands on the morning, because the morning is where the
+      // queue, the deadlines, the entries and the conversation all are.
       expect(KoruAppTabs.tabFor(AttentionTarget.client), KoruAppTabs.clients);
-      expect(KoruAppTabs.tabFor(AttentionTarget.task), KoruAppTabs.tasks);
+      expect(KoruAppTabs.tabFor(AttentionTarget.task), KoruAppTabs.today);
       expect(KoruAppTabs.tabFor(AttentionTarget.deadline), KoruAppTabs.today);
       expect(KoruAppTabs.tabFor(AttentionTarget.event), KoruAppTabs.today);
-      expect(KoruAppTabs.tabFor(AttentionTarget.project), KoruAppTabs.tasks);
+      expect(KoruAppTabs.tabFor(AttentionTarget.project), KoruAppTabs.today);
       expect(KoruAppTabs.tabFor(AttentionTarget.chat), KoruAppTabs.today);
       // And the slots are the ones the bar actually draws.
       expect(
         [for (final t in KoruAppTabs.values) t.slot],
-        [0, 1, 2, 3],
+        [0, 1, 2],
       );
     });
   });

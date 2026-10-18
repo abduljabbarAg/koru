@@ -18,7 +18,6 @@ import 'screens/permissions_intro.dart';
 import 'screens/project_detail.dart';
 import 'screens/revenue.dart';
 import 'screens/shell_actions.dart';
-import 'screens/tasks.dart';
 import 'screens/today.dart';
 import 'state.dart';
 import 'theme.dart';
@@ -432,20 +431,28 @@ class _EngineLoadingBar extends ConsumerWidget {
   }
 }
 
-/// The four tabs, in the order they are worth having.
+/// The three tabs, in the order they are worth having.
 ///
 /// Named rather than a bare list of numbers because the numbers are the one thing
 /// in this file that has no meaning of its own: the deep links and the taps in
 /// [_HomeShellState] all address a screen by index, and a screen that moved
 /// silently turns every one of those into a link that lands somewhere else.
-/// Four, not five. Talk and Settings are in the header of the two screens
-/// somebody opens to get something done — a person arriving for the first time
-/// should meet their work before they meet configuration.
+///
+/// Three, not four. Tasks and Revenue were tabs; both were the same records the
+/// queue and the client list already showed, so Tasks became the browse view
+/// behind the queue and Revenue became [KoruAppTabs.money]. Talk is the action
+/// button in the middle of the bar — one tap from anywhere — because a person
+/// arriving for the first time should meet their work before they meet
+/// configuration, and because "tell Koru" is a verb, not a destination.
 enum KoruAppTabs {
   today(0, Icons.today_outlined, Icons.today_rounded, 'Today'),
-  tasks(1, Icons.checklist_rounded, Icons.checklist_rtl_rounded, 'Tasks'),
-  clients(2, Icons.people_outline_rounded, Icons.people_rounded, 'Clients'),
-  revenue(3, Icons.payments_outlined, Icons.payments_rounded, 'Revenue');
+  clients(1, Icons.people_outline_rounded, Icons.people_rounded, 'Clients'),
+  money(
+    2,
+    Icons.account_balance_wallet_outlined,
+    Icons.account_balance_wallet_rounded,
+    'Money',
+  );
 
   const KoruAppTabs(this.slot, this.iconOff, this.iconOn, this.label);
 
@@ -470,17 +477,16 @@ enum KoruAppTabs {
   /// that had ever been posted into a link that opened something else — which is
   /// invisible until somebody taps one and cannot work out why they are looking
   /// at a balance sheet instead of at their work.
+  ///
+  /// Everything about work lands on Today now: the queue carries late money,
+  /// deadlines, tasks and places to be in one list, so a task link and a
+  /// deadline link are the same destination.
   static KoruAppTabs tabFor(AttentionTarget target) => switch (target) {
         AttentionTarget.client => KoruAppTabs.clients,
-        // A deadline and an entry are both about today, and the queue is where
-        // they are read now. Before this they landed on the page of balances,
-        // which has never been where a deadline was.
         AttentionTarget.deadline => KoruAppTabs.today,
         AttentionTarget.event => KoruAppTabs.today,
-        AttentionTarget.task => KoruAppTabs.tasks,
-        // Projects are listed on the work tab, and the tap pushes the project
-        // itself, which has a screen of its own now.
-        AttentionTarget.project => KoruAppTabs.tasks,
+        AttentionTarget.task => KoruAppTabs.today,
+        AttentionTarget.project => KoruAppTabs.today,
         AttentionTarget.chat => KoruAppTabs.today,
       };
 }
@@ -493,13 +499,12 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
-  /// Which of the four screens is showing.
+  /// Which of the three screens is showing.
   ///
   /// Indexed rather than named because the whole point of the order is what
-  /// comes first: Today, the Tasks, the Clients, the Money. Every deep link in
-  /// the app resolves through [KoruAppTabs] so that a notification written
-  /// against the old five-tab order cannot land on whatever happens to sit at
-  /// that number now.
+  /// comes first: Today, the Clients, the Money. Every deep link in the app
+  /// resolves through [KoruAppTabs] so that a notification written against an
+  /// older layout cannot land on whatever happens to sit at that number now.
   int _tab = 0;
 
   /// Opens whatever a notification tap asked for.
@@ -548,7 +553,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   // Not const: the screens read the palette, which is resolved per brightness.
   static final _pages = [
     const TodayScreen(),
-    const TasksScreen(),
     const ClientsScreen(),
     const RevenueScreen(),
   ];
@@ -572,6 +576,25 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     return Scaffold(
       body: IndexedStack(index: _tab, children: _pages),
+      // The one action that is always one tap away.
+      //
+      // Talk used to be a tab and then a header icon; both spent a surface on a
+      // place rather than a verb. "Tell Koru" is the app's quick-add: type a
+      // sentence — "add client Bilal for 2000", "Bilal paid 500", a pasted list
+      // — and it comes back as a card to approve, whether or not a model is
+      // connected. Floating over the middle of the bar is where a thumb already
+      // is when the thought arrives.
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'talk.action',
+        backgroundColor: KoruColors.leaf,
+        foregroundColor: KoruColors.onAccent,
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const ChatScreen()),
+        ),
+        icon: const Icon(Icons.forum_rounded, size: KoruSize.icon),
+        label: const Text('Tell Koru'),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       bottomNavigationBar: KoruTabBar(
         selected: _tab,
         onSelected: (slot) {

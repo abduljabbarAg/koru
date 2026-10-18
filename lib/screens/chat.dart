@@ -392,8 +392,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // medicine and law somewhere else; there is one model now, and it is
         // online.
         Text(
-          'Answers come from the cloud model you connect in Settings. Faith, '
-          'health, medicine and law go to a person instead.',
+          'Questions go to the cloud model you connect in Settings. Adding '
+          'clients, recording payments and the daily queue all work without '
+          'it. Faith, health, medicine and law go to a person instead.',
           textAlign: TextAlign.center,
           style: KoruType.bodySmall,
         ),

@@ -111,7 +111,7 @@ class _CalendarSyncCardState extends ConsumerState<_CalendarSyncCard> {
           style: KoruType.rowTitle,
         ),
         subtitle: Text(
-          'When you approve a calendar entry in Talk, Koru also writes it to '
+          'When you approve a calendar entry with Koru, it is also written to '
           'the calendar your phone already uses. The copy is one way: deleting '
           'it in your phone calendar does not touch Koru\u2019s.',
           style: KoruType.caption,

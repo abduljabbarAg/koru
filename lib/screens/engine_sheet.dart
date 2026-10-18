@@ -20,8 +20,8 @@ Future<void> showEngineSwitcher(BuildContext context) {
   return showKoruSheet<void>(
     context,
     title: 'Who answers',
-    subtitle: 'One model, over the internet. Koru needs a key for it, and the '
-        'key stays on this phone.',
+    subtitle: 'One model, over the internet, for questions. Everything you '
+        'record stays here, and the key stays on this phone.',
     builder: (_) => const _CloudSwitcher(),
   );
 }
@@ -94,10 +94,10 @@ class _ConnectionCard extends ConsumerWidget {
       children: [
         KoruNotice(
           title: 'Nothing is connected',
-          message: 'Koru can keep your clients, your money and your calendar '
-              'without any of this — but it cannot turn what you type into a '
-              'record until a model is connected. Pick a company below and add '
-              'its key.',
+          message: 'Everything else works without one. Clients, payments, '
+              'tasks and the daily queue are kept on this phone, and telling '
+              'Koru to add something is done here on the device. Only '
+              'questions go to a model. Pick a company below to add its key.',
           icon: Icons.cloud_off_rounded,
           tone: KoruTones.gold,
         ),
