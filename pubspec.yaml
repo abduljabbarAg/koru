@@ -39,6 +39,3 @@ flutter:
   assets:
     - assets/mascot/
     - assets/splash/
-    # The bundled model. CI writes this file before building, so a fresh
-    # checkout does not carry 491 MB in git.
-    - assets/models/

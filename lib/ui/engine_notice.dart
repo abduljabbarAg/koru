@@ -4,13 +4,13 @@ import '../engine.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-/// The card under a reply when no engine could answer, and the one tap that
-/// fixes it.
+/// The card under a reply when nothing could answer, and the one tap that fixes
+/// it.
 ///
 /// It is a card rather than a sentence in the bubble because the sentence is not
-/// enough on its own. "The local model is not running" leaves somebody
-/// reading it wondering whether to close the app, wait, or press something, and
-/// the previous behaviour — answering from the app's own rules instead — is what
+/// enough on its own. "No model is connected" leaves somebody reading it
+/// wondering whether to close the app, wait, or press something, and the
+/// previous behaviour — answering from the app's own rules instead — is what
 /// happens when an app says something true and then leaves the person to act on
 /// it alone.
 ///
@@ -46,7 +46,7 @@ class KoruEngineDownCard extends StatelessWidget {
               Row(
                 children: [
                   KoruIconBadge(
-                    icon: Icons.power_settings_new_rounded,
+                    icon: Icons.cloud_off_rounded,
                     color: KoruTones.clay.ink,
                     background: KoruColors.surface,
                   ),

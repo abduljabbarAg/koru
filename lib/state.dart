@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,15 +9,11 @@ import 'attention_bridge.dart';
 import 'calendar_bridge.dart';
 import 'cloud.dart';
 import 'cloud_providers.dart';
-import 'currency.dart';
 import 'deep_link.dart';
 import 'engine.dart';
 import 'guide.dart';
 import 'handoff.dart';
 import 'local/bulk_import.dart';
-import 'local/bundled_engine.dart';
-import 'local/engine_warm.dart';
-import 'local/local_model_client.dart';
 import 'local/write_intent.dart';
 import 'models.dart';
 import 'packet.dart';
@@ -45,10 +40,6 @@ final packetProvider = FutureProvider<ContextPacket>((ref) async {
   return store.packet();
 });
 
-/// Where a reply came from. The chat screen shows this so the user can always
-/// tell a local answer from a cloud one.
-enum AnswerSource { local, cloud, human }
-
 final cloudKeyProvider = FutureProvider.family<String, String>((ref, providerId) async {
   final secrets = ref.watch(secretsProvider);
   return secrets.readKey(providerId);
@@ -61,26 +52,23 @@ class Msg {
   final String text;
   final String? why;
   final bool pending;
-  final bool local;
 
   /// When this message was written, for the timestamp under the bubble. Null
   /// on the opening greeting, which has no moment.
   final DateTime? time;
 
-  /// Which engine produced this message. Null on the opening greeting and on
-  /// anything the user typed.
+  /// Which engine produced this message. Null on the opening greeting, on
+  /// anything the user typed, and on anything the app itself said — a card it
+  /// built, a write it confirmed. A badge naming an engine under a sentence no
+  /// model wrote is the lie this whole path exists to stop telling.
   final KoruEngine? engine;
   final HandoffPlan? handoff;
-
-  /// Measured generation speed, when the engine reported it. Shown so a slow
-  /// answer is explained rather than looking broken.
-  final double? tokensPerSecond;
 
   /// A write waiting for the user to approve it. Set instead of an answer when
   /// the message was understood as an instruction to record something.
   final ProposedWrite? proposed;
 
-  /// Set instead of an answer when the chosen engine could not answer at all.
+  /// Set instead of an answer when nothing could answer at all.
   ///
   /// Carries the one tap that fixes it. The alternative used to be a substitute
   /// answer from the app's own rules, which is worse than silence: it put a
@@ -92,11 +80,9 @@ class Msg {
     this.text, {
     this.why,
     this.pending = false,
-    this.local = false,
     this.time,
     this.engine,
     this.handoff,
-    this.tokensPerSecond,
     this.proposed,
     this.unavailable,
   });
@@ -106,11 +92,9 @@ class Msg {
         text ?? this.text,
         why: why,
         pending: pending ?? this.pending,
-        local: local,
         time: time,
         engine: engine,
         handoff: handoff,
-        tokensPerSecond: tokensPerSecond,
         proposed: proposed ?? this.proposed,
         unavailable: unavailable,
       );
@@ -121,29 +105,19 @@ class Msg {
         text,
         why: why,
         pending: pending,
-        local: local,
         time: t,
         engine: engine,
         handoff: handoff,
-        tokensPerSecond: tokensPerSecond,
         proposed: proposed,
         unavailable: unavailable,
       );
-
-  AnswerSource get source {
-    if (handoff != null) return AnswerSource.human;
-    return local ? AnswerSource.local : AnswerSource.cloud;
-  }
 }
 
 /// Tells [ChatState.copyWith] to leave a field alone.
 ///
-/// The engine fields have to be settable *back* to null — a start finished, a
-/// failure was dealt with, nothing is happening right now — and `?? this.x`
-/// cannot express that. It silently kept the last progress value after a
-/// successful start, so the banner above the composer went on saying the model
-/// was waking up long after it was answering, and the engine badge would have
-/// claimed the same thing on every reply.
+/// The activity field has to be settable *back* to null — a turn finished, a
+/// new one has not started — and `?? this.x` cannot express that, so a stale
+/// label otherwise stays on the composer for the rest of the session.
 const _keep = Object();
 
 /// What the chat is showing right now.
@@ -152,33 +126,17 @@ class ChatState {
   final bool busy;
   final bool loaded;
 
-  /// Progress of the local model warming up, 0 to 100, while null when it is not
-  /// happening. Shown on the splash and the chat rather than hidden in
-  /// Settings, because this is something the app does on its own.
-  ///
-  /// [EngineProgress.unpacking] is the one value that is not a percentage: the
-  /// first-run copy out of the APK reports nothing, and every surface that
-  /// draws this one has to switch on it rather than print it.
-  final int? engineProgress;
-
-  /// Set when the engine could not be brought up, so the failure is visible
-  /// where the question will be asked rather than only in Settings.
-  final String? engineProblem;
-
   /// What the model is doing right now, so the waiting indicator can say so.
   ///
-  /// A prefill on this phone takes seconds and a decode is four tokens a second.
-  /// Those feel identical as three bouncing dots and completely different once
-  /// named, which is the difference between "it is working" and "it is working on
-  /// the right thing".
+  /// Names the job rather than how the bytes are moving. A model reading the
+  /// caller's records and a model writing an answer feel identical as three
+  /// bouncing dots and completely different once named.
   final String? activity;
 
   const ChatState({
     required this.messages,
     required this.busy,
     this.loaded = false,
-    this.engineProgress,
-    this.engineProblem,
     this.activity,
   });
 
@@ -186,27 +144,19 @@ class ChatState {
     List<Msg>? messages,
     bool? busy,
     bool? loaded,
-    Object? engineProgress = _keep,
-    Object? engineProblem = _keep,
     Object? activity = _keep,
   }) =>
       ChatState(
         messages: messages ?? this.messages,
         busy: busy ?? this.busy,
         loaded: loaded ?? this.loaded,
-        engineProgress: identical(engineProgress, _keep)
-            ? this.engineProgress
-            : engineProgress as int?,
-        engineProblem: identical(engineProblem, _keep)
-            ? this.engineProblem
-            : engineProblem as String?,
         activity:
             identical(activity, _keep) ? this.activity : activity as String?,
       );
 }
 
-const _greeting = 'I am here, and I answer with the local model. Ask about '
-    'your work, your money and your deadlines. I will tell you when a person '
+const _greeting = 'I am here. Tell me what you need recorded, or ask me about '
+    'your work, your money and what is due. I will tell you when a person '
     'should answer instead of me.';
 
 class ChatNotifier extends Notifier<ChatState> {
@@ -216,7 +166,7 @@ class ChatNotifier extends Notifier<ChatState> {
     // liveness flag is armed from here instead.
     ref.onDispose(() => _gone = true);
     return const ChatState(
-      messages: [Msg(MsgRole.koru, _greeting, local: true)],
+      messages: [Msg(MsgRole.koru, _greeting)],
       busy: false,
     );
   }
@@ -226,23 +176,18 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> load() async {
     if (state.loaded) return;
     final store = await ref.read(storeProvider.future);
-    // The engine is not warmed here. Launch owns that — `engineWarmUpProvider`
-    // — because a chat screen cannot mount before the gate has, so by the time
-    // this runs the warm-up is already under way and a second request from here
-    // would only queue a second start behind it.
     final records = await store.chat();
     if (records.isEmpty) {
       state = state.copyWith(loaded: true);
       return;
     }
     final messages = <Msg>[
-      const Msg(MsgRole.koru, _greeting, local: true),
+      const Msg(MsgRole.koru, _greeting),
       ...records.map((r) {
         final at = DateTime.tryParse(r.created);
         return r.role == 'user'
             ? Msg(MsgRole.user, r.text, time: at)
-            : Msg(MsgRole.koru, r.text, why: r.why, local: !r.needsHuman,
-                time: at);
+            : Msg(MsgRole.koru, r.text, why: r.why, time: at);
       }),
     ];
     state = state.copyWith(messages: messages, loaded: true);
@@ -255,7 +200,7 @@ class ChatNotifier extends Notifier<ChatState> {
     // that no longer exists.
     _queued.clear();
     state = const ChatState(
-      messages: [Msg(MsgRole.koru, _greeting, local: true)],
+      messages: [Msg(MsgRole.koru, _greeting)],
       busy: false,
       loaded: true,
     );
@@ -294,9 +239,11 @@ class ChatNotifier extends Notifier<ChatState> {
 
   /// Sends whatever was asked while a turn was running, one at a time.
   ///
-  /// One at a time on purpose: the engine serves a single slot, and two requests
-  /// in flight at once is the only way tokens from one turn could ever be
-  /// attached to another.
+  /// One at a time, so two turns can never interleave their tokens into one
+  /// bubble. There is no engine queue any more to serialise against — the local
+  /// one served a single slot — but the screen still only has one pending
+  /// bubble, and two answers writing into it would be the same bug with a
+  /// different cause.
   Future<void> _drainQueued() async {
     if (_draining) return;
     _draining = true;
@@ -309,28 +256,12 @@ class ChatNotifier extends Notifier<ChatState> {
     }
   }
 
-  /// The turn in flight, if there is one.
-  ///
-  /// The engine is served from a single slot, so the launch warm-up waits for
-  /// this rather than being sent beside it. Two requests on one slot is the only
-  /// way tokens from one turn could ever be attached to another, and there is
-  /// nothing to be gained from the overlap: the warm-up asks for one token.
-  Future<void>? _inFlight;
-
   /// One question, start to finish: the turn itself.
   ///
-  /// Wrapped rather than written inline so that the whole turn — including the
-  /// store writes at both ends — is one thing other work can wait behind.
-  Future<void> _turn(String q) async {
-    final running = Completer<void>();
-    _inFlight = running.future;
-    try {
-      await _answer(q);
-    } finally {
-      running.complete();
-      if (identical(_inFlight, running.future)) _inFlight = null;
-    }
-  }
+  /// Wrapped rather than written inline so that a turn — including the store
+  /// writes at both ends — is one named thing rather than three calls spread
+  /// across the notifier.
+  Future<void> _turn(String q) => _answer(q);
 
   Future<void> _answer(String q) async {
     // A request is stale once a newer one starts or this one is stopped.
@@ -344,13 +275,9 @@ class ChatNotifier extends Notifier<ChatState> {
     final mine = ++_generation;
     bool stale() => mine != _generation;
 
-    // Names what is being attempted rather than how the bytes are moving.
-    //
-    // It used to open with "Waking up" on every request and only move on when
-    // the engine reported a token or a prefill tick, so anything that did not go
-    // through the local model sat on "Waking up" for the whole answer. A
-    // question the app can answer without the model, and a list being read into
-    // a plan, are different jobs and should not claim the same one.
+    // Names the job rather than how the bytes are moving. A question the app
+    // can resolve against its own records, and a pasted list being read into a
+    // plan, are different things and should not claim the same one.
     state = state.copyWith(activity: _activityFor(q));
     // Captured before the new turn is added, so the model sees the conversation
     // that happened before this question and not the question twice.
@@ -392,169 +319,14 @@ class ChatNotifier extends Notifier<ChatState> {
     ));
   }
 
-  /// The start that is already under way, so two callers cannot launch two
-  /// servers onto one port.
-  Future<bool>? _starting;
-
-  /// Whether this session has watched the local model come up and answer.
-  ///
-  /// Set when a start succeeds and cleared when one fails, which is exactly the
-  /// pair of moments the engine's own state can move. Never probed for: a probe
-  /// is a round trip on the loopback port, and doing one per question to learn
-  /// something that cannot have changed is how a chat gets slower the longer it
-  /// runs.
-  bool _engineUp = false;
-
-  /// Whether the local model is up, as this session has seen it.
-  ///
-  /// Read by the resume hook, which asks for a start again only when the answer
-  /// might have changed while the app was away.
-  bool get engineUp => _engineUp;
-
-  /// Brings the local model up, and says how it is getting on.
-  ///
-  /// Public because choosing "Local model" from the chat has to start it there
-  /// and then. The complaint behind this was having to pick the engine, walk to
-  /// Settings, press start there and walk back, with nothing on the way saying
-  /// which of those steps had already happened. The same method serves that and
-  /// the launch warm-up, so the two can never start the engine differently.
-  ///
-  /// Returns whether something is answering when it finishes. Progress and any
-  /// reason for a failure land in the chat state, which is what the banner, the
-  /// badge and the switcher all read: one source, so none of them can claim a
-  /// model is running while it is not.
-  ///
-  /// A second call while one is under way queues behind it rather than running
-  /// beside it. Two engines on one port is not a thing, and the second would be
-  /// answered by the first anyway — so a person who picks their own model
-  /// halfway through a cold start gets a real restart on that model instead.
-  Future<bool> ensureEngineRunning({String? modelPath}) {
-    final inFlight = _starting;
-    final next = inFlight == null
-        ? _startEngine(modelPath: modelPath)
-        : inFlight.then((_) => _startEngine(modelPath: modelPath));
-    _starting = next;
-    return next.whenComplete(() => _starting = null);
-  }
-
-  Future<bool> _startEngine({String? modelPath}) async {
-    final store = await ref.read(storeProvider.future);
-    final client = ref.read(localModelClientProvider);
-    // The launch warm-up runs this without awaiting it, so anything thrown here
-    // would become an error with nobody watching. Turned into a failure the
-    // banner, the badge and the switcher can all show instead.
-    late final LocalEngineOutcome outcome;
-    try {
-      outcome = await LocalEngineRunner(
-        engine: ref.read(bundledEngineProvider),
-        client: client,
-        store: store,
-      ).start(
-        modelPath: modelPath,
-        onProgress: (percent) {
-          if (_gone) return;
-          state = state.copyWith(engineProgress: percent, engineProblem: null);
-        },
-      );
-    } catch (e) {
-      outcome = LocalEngineOutcome(
-        running: false,
-        problem: 'The local model did not start: $e',
-      );
-    }
-    if (_gone) return outcome.running;
-    _engineUp = outcome.running;
-
-    if (!outcome.running) {
-      state = state.copyWith(
-        engineProgress: null,
-        engineProblem: outcome.problem,
-      );
-      return false;
-    }
-
-    ref.invalidate(localModelProvider);
-    if (outcome.started && outcome.endpoint != null) {
-      // Warm the real prompt, once, in the background.
-      //
-      // glen's own warm() encodes the word "warm" into a scratch cache it then
-      // throws away, so it shares no prefix with an actual question and helps
-      // nothing. The engine reuses the longest common token prefix between
-      // turns, which means one throwaway request carrying the real system
-      // prompt fills that cache, and the user's first question then starts
-      // from a prefix hit instead of prefilling it cold.
-      //
-      // Measured on this phone: a 222 token prompt cold is about 14.5 seconds,
-      // and the same prompt warm is 1.2. That gap is the whole cold start.
-      unawaited(_warmPrefix(ref, client, outcome.endpoint!, store));
-    }
-    state = state.copyWith(engineProgress: null, engineProblem: null);
-    return true;
-  }
-
-  /// Brings the local model up without being asked.
-  ///
-  /// Choosing the local model means wanting it, so the app starts it rather than
-  /// making that a second job for the person: the model is inside the APK, and
-  /// there is nothing about starting it that is their decision.
-  ///
-  /// Public because the launch warm-up in `main.dart` asks for it before anything
-  /// else can be awaited. Measured on the target phone: about 3 seconds from
-  /// process spawn to listening, and — once, on the very first run — a 248 MB
-  /// unpack on top of that. Both are worth spending while the user is reading
-  /// onboarding rather than while they are waiting for an answer.
-  ///
-  /// Not awaited by its callers either. The chat must be readable while this is
-  /// under way; that is the whole difference between a warm model and a fast app.
-  Future<void> warmUpEngine() async {
-    final store = await ref.read(storeProvider.future);
-    if (KoruEngine.parse(await store.get('engine')) != KoruEngine.onDevice) return;
-    await ensureEngineRunning();
-  }
-
-  /// Prefills the real system prompt so the first question is not a cold start.
-  ///
-  /// Fire and forget. It costs one forward pass of the prompt, which is the same
-  /// work the first question would have done anyway, and it happens while the
-  /// user is still reading the chat rather than after they have typed.
-  Future<void> _warmPrefix(
-    Ref ref,
-    LocalModelClient client,
-    String endpoint,
-    ProfileStore store,
-  ) async {
-    try {
-      // Behind any turn, never inside it. One slot, one request.
-      final running = _inFlight;
-      if (running != null) await running;
-      final currency = (await ref.read(currencyProvider.future)).code;
-      final system = LocalModelPrompt.build(
-        packet: await store.packet(),
-        facts: await _modelFacts(store),
-        currency: currency,
-      );
-      await client.chatStream(
-        endpoint: endpoint,
-        model: BundledEngine.bundledModelId,
-        system: system,
-        // Any question at all. Only the system prompt is what has to match.
-        question: 'ready?',
-        maxTokens: 1,
-        onToken: (_) {},
-      );
-    } catch (_) {
-      // Nothing here is worth surfacing. If the warm-up fails the first question
-      // simply pays the cold cost it was always going to pay.
-    }
-  }
-
   /// Characters of earlier conversation allowed into one prompt.
   ///
-  /// The bundled engine runs with a 1024 token KV cache and the system prompt
-  /// plus the caller's records already use a few hundred of it, so roughly 1200
-  /// characters of history leaves genuine headroom for the answer itself. This
-  /// has to stay comfortably under the window, not at it: the window also has to
-  /// hold the reply, and an overrun takes the engine down with it.
+  /// Roughly 1200 characters is about 300 tokens, which is inside every window
+  /// worth worrying about: the provider that served the local model ran a 1024
+  /// token KV cache, and history that overran it took the engine down with it.
+  /// A frontier model has room, but the cap is still worth keeping because it is
+  /// what makes a follow-up's cost predictable, and a conversation that grows
+  /// without bound gets slow rather than wrong.
   static const _historyBudgetChars = 1200;
 
   /// Reads a pasted list, or null when the message is not one.
@@ -590,7 +362,6 @@ class ChatNotifier extends Notifier<ChatState> {
         'You have already added these. I did not add them again, in case that '
         'was not what you meant.',
         why: 'This exact list was imported before.',
-        local: true,
       );
     }
 
@@ -609,7 +380,6 @@ class ChatNotifier extends Notifier<ChatState> {
       'I read $count $clients out of that$tail. '
           'Nothing is saved until you say so.',
       why: 'Read as a list, not a sentence.',
-      local: true,
       proposed: plan,
     );
   }
@@ -630,11 +400,10 @@ class ChatNotifier extends Notifier<ChatState> {
 
   /// What the app is about to do about [q], in the user's terms.
   ///
-  /// Names the job rather than how the bytes are moving. It used to open on
-  /// "Waking up" for every request and only move on when the engine reported a
-  /// token or a prefill tick, so anything that did not go through the local model
-  /// sat on "Waking up" for the whole answer, which is both wrong and the reason
-  /// the indicator seemed stuck.
+  /// Names the job rather than how the bytes are moving. It used to sit on
+  /// whatever the engine last reported — "Waking up" until a token or a prefill
+  /// tick arrived — so anything resolved without the model appeared stuck for
+  /// the whole answer.
   String _activityFor(String q) {
     // A write is decided by the parser rather than the model, so claiming the
     // model was working on it was never true. Each kind gets its own name,
@@ -682,7 +451,6 @@ class ChatNotifier extends Notifier<ChatState> {
         MsgRole.koru,
         'Stopped.',
         why: 'You stopped this one.',
-        local: true,
       );
     }
     state = state.copyWith(busy: false, messages: messages);
@@ -719,7 +487,6 @@ class ChatNotifier extends Notifier<ChatState> {
           'That one is mine, so you cannot edit it. Long press anything you '
           'sent to change a question.',
           why: 'Only your own messages can be edited.',
-          local: true,
         ),
       ]);
       return;
@@ -732,7 +499,6 @@ class ChatNotifier extends Notifier<ChatState> {
           'I am still answering that one. Stop it first if you want to change '
           'the question.',
           why: 'Editing while an answer is running.',
-          local: true,
         ),
       ]);
       return;
@@ -828,7 +594,6 @@ class ChatNotifier extends Notifier<ChatState> {
           MsgRole.koru,
           'Here is what I understood. Nothing is saved until you say so.',
           why: 'Read as an instruction, not a question.',
-          local: true,
           proposed: resolution.write,
         );
       }
@@ -836,20 +601,51 @@ class ChatNotifier extends Notifier<ChatState> {
         MsgRole.koru,
         resolution.problem!,
         why: 'Could not turn that into something to save.',
-        local: true,
       );
     }
 
-    // Two engines, and both of them are models. There is no third path that
-    // answers out of the records instead, because that is the thing this app used
-    // to do whenever a model was not available and it is what made a broken
-    // engine look like a fast one.
-    switch (KoruEngine.parse(await store.get('engine'))) {
-      case KoruEngine.onDevice:
-        return _askOnDevice(q, routing, store, history, isStale);
-      case KoruEngine.cloud:
-        return _askCloud(q, routing, store, history, isStale);
+    // One engine, and it is a model. There is no other path that answers out of
+    // the records instead, because that is the thing this app used to do whenever
+    // a model was not available and it is what made a broken engine look like a
+    // fast one.
+    //
+    // Whether anything is connected is checked before the question is asked of
+    // anybody, so "no key" is reported in a second rather than after a round
+    // trip to a provider that is going to refuse it.
+    //
+    // A read that throws is treated as nothing connected rather than allowed to
+    // escape: the keystore is the one dependency here that can be gone (reinstall,
+    // a locked screen, a vendor keystore that refuses), and a turn that throws
+    // leaves the composer on a pending bubble forever. Not connected is the
+    // honest reading of "the app cannot tell", and it has a button on it.
+    final EngineLink link;
+    try {
+      link = await ref.read(engineLinkProvider.future);
+    } catch (_) {
+      return _notConnected(EngineLink.unreadable);
     }
+    if (!link.isConnected) return _notConnected(link);
+    return _askCloud(q, routing, store, history, isStale);
+  }
+
+  /// What to say when nothing can answer, and the one tap that changes it.
+  ///
+  /// The whole of the reply. It used to reach for a rules-based assistant that
+  /// answered out of the user's own records, which produced a sentence in
+  /// milliseconds and read exactly like a fast model — the reason a phone with
+  /// no model running looked better than one with a frontier model on it.
+  ///
+  /// No engine badge goes on this message, deliberately. A label naming a model
+  /// under a sentence no model wrote is the one lie this path exists to stop
+  /// telling, and the bar above already says plainly that nothing is connected.
+  Msg _notConnected(EngineLink link) {
+    final down = EngineUnavailable(detail: link.missing, recovery: link.recovery);
+    return Msg(
+      MsgRole.koru,
+      down.text,
+      why: 'No model is connected.',
+      unavailable: down,
+    );
   }
 
   /// Carries out an approved write and replaces the card with the outcome.
@@ -903,7 +699,6 @@ class ChatNotifier extends Notifier<ChatState> {
       // bug report and a user who thinks their records are fine.
       why: problem == null ? 'You approved this, and I checked it saved.'
           : 'You approved this, and I checked. It did not save as described.',
-      local: true,
     );
     state = state.copyWith(messages: messages);
   }
@@ -952,162 +747,8 @@ class ChatNotifier extends Notifier<ChatState> {
       MsgRole.koru,
       'Noted, and not saved.',
       why: 'You discarded this.',
-      local: true,
     );
     state = state.copyWith(messages: messages);
-  }
-
-  /// Waits for a local-model start that is already under way, and says so.
-  ///
-  /// Called at the top of every on-device turn, and the reason the answer to a
-  /// question typed straight after opening the app is a model answer rather than
-  /// a failure card. It used to ask a port that had nothing on it yet and report
-  /// "I cannot answer that" — one second before the model would have answered.
-  /// Nothing was wrong with the engine; it had not finished starting.
-  ///
-  /// Only a start already in flight is waited on: the launch warm-up, a start
-  /// from the switcher, or one from Settings. Anything not in flight is left
-  /// alone, on purpose. No probe, because the one thing this must not add to a
-  /// working chat is a round trip on the loopback port per question. And no new
-  /// start, because a turn that started its own engine would do so on *every*
-  /// question after any failure, turning one broken start into a channel of them.
-  /// With nothing to wait for, the turn streams and reports what came back: a
-  /// real answer, or the honest card with the engine's own words and the one tap
-  /// that starts it.
-  ///
-  /// Bounded by the engine's own start timeout rather than by anything here, so
-  /// a start that never finishes cannot leave the composer stuck on a spinner
-  /// with nothing to press.
-  Future<void> _awaitLocalModel() async {
-    final starting = _starting;
-    if (starting == null) return;
-    if (state.activity != 'Starting the local model') {
-      state = state.copyWith(activity: 'Starting the local model');
-    }
-    await starting;
-  }
-
-  /// Real generation from the model served on this device over loopback.
-  ///
-  /// Streams, because a median of about fifteen seconds of silence reads as a
-  /// crash. Measured on the target phone: 2.57 tok/s decode with prefill
-  /// dominating, so tokens are shown as they arrive.
-  ///
-  /// Does not fall back to anything. It used to fall back to the deleted
-  /// built-in assistant, which answered from the records in milliseconds and was
-  /// therefore the reason a phone with no model running looked faster than a
-  /// frontier model. Now an unreachable engine is reported, with the tap that
-  /// starts it sitting under the answer.
-  Future<Msg> _askOnDevice(
-    String q,
-    RoutingDecision routing,
-    ProfileStore store,
-    List<ChatTurn> history,
-    bool Function() isStale,
-  ) async {
-    final client = ref.read(localModelClientProvider);
-    final routing2 = routing;
-
-    // Before anything else, because the engine being up is the one precondition
-    // for everything that follows, including the endpoint this asks at.
-    //
-    // It used to be assumed. A question sent while the launch warm-up was still
-    // going therefore asked a port with nothing on it and came back "I cannot
-    // answer that" — one second before the model would have answered. That is
-    // the worst possible moment to report an engine as down, and it is exactly
-    // what somebody who opened the app and typed straight away was shown.
-    await _awaitLocalModel();
-
-    final config = await ref.read(localModelProvider.future);
-
-    final system = LocalModelPrompt.build(
-      packet: await store.packet(),
-      facts: await _modelFacts(store),
-      currency: (await ref.read(currencyProvider.future)).code,
-    );
-
-    final buffer = StringBuffer();
-    Object? failure;
-    Object? unavailable;
-
-    try {
-      final result = await client.chatStream(
-        endpoint: config.endpoint,
-        model: config.modelId,
-        system: system,
-        question: q,
-        history: [
-          for (final t in history)
-            (
-              role: t.role == ChatRole.user ? 'user' : 'assistant',
-              content: t.text,
-            ),
-        ],
-        onToken: (delta) {
-          // Checked per token, not per reply: a cancelled request that keeps
-          // writing into the buffer would repaint the bubble the stop button
-          // just replaced.
-          if (isStale()) return;
-          buffer.write(delta);
-          _updatePending(buffer.toString());
-        },
-        onProgress: (done, total) {
-          if (isStale()) return;
-          if (state.activity != 'Reading your records') {
-            state = state.copyWith(activity: 'Reading your records');
-          }
-          _updatePendingProgress(done, total);
-        },
-      );
-      switch (result) {
-        case LocalReply(:final tokensPerSecond):
-          final text = buffer.toString().trim();
-          if (text.isEmpty) {
-            failure = 'The local model returned nothing.';
-            break;
-          }
-          // Defence in depth. The gate already stopped the question reaching
-          // here, but a model this size will still drift into dosing or legal
-          // advice on innocuous phrasing, and that answer does not get shown.
-          if (ModelOutputGuard.needsHuman(text)) {
-            return Msg(
-              MsgRole.koru,
-              'I am stepping aside on this one. Here is who to talk to.',
-              why: 'The local model drifted into an area that needs a person.',
-              handoff: handoffPlanFor(routing2, q),
-            );
-          }
-          return Msg(
-            MsgRole.koru,
-            text,
-            why: 'Answered by the local model.',
-            local: true,
-            engine: KoruEngine.onDevice,
-            tokensPerSecond: tokensPerSecond,
-          );
-        case LocalUnavailable(:final detail):
-          unavailable = detail;
-        case LocalFailed(:final reason):
-          failure = reason;
-      }
-    } catch (e) {
-      failure = '$e';
-    }
-
-    final down = EngineUnavailable(
-      detail: (unavailable ?? failure)?.toString().trim() ?? '',
-      recovery: EngineRecovery.startLocalModel,
-    );
-    // No engine ran, so no engine is stamped on the reply. A badge reading
-    // "LOCAL MODEL" under a sentence no model wrote is the lie this
-    // whole path exists to stop telling.
-    return Msg(
-      MsgRole.koru,
-      down.text,
-      why: 'The local model could not answer.',
-      local: true,
-      unavailable: down,
-    );
   }
 
   /// Replaces the text of the bubble currently being written.
@@ -1119,8 +760,9 @@ class ChatNotifier extends Notifier<ChatState> {
   ///
   /// Symptom, for anyone reading this later: one letter appears instantly and
   /// the rest of the reply lands in a single jump several seconds later. The
-  /// engine was streaming the whole time. glen sends each token as its own
-  /// flushed chunk, 300ms apart, and that was measured on the device.
+  /// model was streaming the whole time — it sends each token as its own flushed
+  /// chunk, which is why this has to be driven from the token callback and not
+  /// from the finished result.
   void _updatePending(String text) {
     if (text.isEmpty) return;
     final messages = [...state.messages];
@@ -1128,24 +770,6 @@ class ChatNotifier extends Notifier<ChatState> {
     if (at < 0) return;
     // Still pending: the answer is not finished, so the typing indicator stays.
     messages[at] = messages[at].copyWith(text: text);
-    state = state.copyWith(messages: messages);
-  }
-
-  /// Shows how far the model has got reading the prompt.
-  ///
-  /// Prefill is the longest silent stretch in the whole exchange: the prompt
-  /// carries the caller's records, so the model spends seconds working through
-  /// them before a single word comes out. A bare ellipsis through that window
-  /// is indistinguishable from a crash, so the bubble names what is happening.
-  /// Stops at the first token, when there is real text to show instead.
-  void _updatePendingProgress(int done, int total) {
-    final messages = [...state.messages];
-    if (messages.isEmpty) return;
-    final last = messages.last;
-    if (!last.pending || last.text.isNotEmpty) return;
-    final pct = total <= 0 ? 0 : (done * 100 / total).round().clamp(0, 100);
-    messages[messages.length - 1] =
-        last.copyWith(text: 'Reading your records, $pct%', pending: true);
     state = state.copyWith(messages: messages);
   }
 
@@ -1158,11 +782,10 @@ class ChatNotifier extends Notifier<ChatState> {
   ) async {
     final selection = await ref.read(cloudSelectionProvider.future);
     final key = await ref.read(cloudKeyProvider(selection.provider.id).future);
-    // Streams into the pending bubble, exactly as the local engine does.
-    //
-    // Cloud used to be one request with no tokens until the whole reply had
-    // arrived, which made a frontier model look slower than the small one on
-    // this phone. It was never slower; the wait was just invisible.
+    // Streams into the pending bubble, so a frontier model never sits silent for
+    // the length of an answer. It used to be one request with no tokens until
+    // the whole reply had arrived, which made the wait invisible and the model
+    // look slow rather than busy.
     final buffer = StringBuffer();
     final result = await ref.read(cloudModelProvider).ask(
           packet: await store.packet(),
@@ -1180,6 +803,12 @@ class ChatNotifier extends Notifier<ChatState> {
           ],
           onToken: (delta) {
             if (isStale()) return;
+            // The first token is the moment the job changes from "working out
+            // what you meant" to "writing an answer", and the dots say which.
+            // One write, not one per token.
+            if (state.activity != 'Writing an answer') {
+              state = state.copyWith(activity: 'Writing an answer');
+            }
             buffer.write(delta);
             _updatePending(buffer.toString());
           },
@@ -1189,20 +818,32 @@ class ChatNotifier extends Notifier<ChatState> {
       case CloudReply(:final text):
         // Anything already streamed is what the bubble is showing, so the
         // finished message must be that same text rather than a second copy.
+        final answer =
+            _honestAboutWrites(buffer.isNotEmpty ? buffer.toString().trim() : text);
+        // Defence in depth. The routing gate already stopped the question
+        // reaching a model at all, but a guard on the output is the property
+        // that matters: whatever the gate misses, an answer that gives dose or
+        // case-law advice is not shown under a Koru badge.
+        if (ModelOutputGuard.needsHuman(answer)) {
+          return Msg(
+            MsgRole.koru,
+            'I am stepping aside on this one. Here is who to talk to.',
+            why: 'The model drifted into an area that needs a person.',
+            handoff: handoffPlanFor(routing, q),
+          );
+        }
         return Msg(
           MsgRole.koru,
-          _honestAboutWrites(
-              buffer.isNotEmpty ? buffer.toString().trim() : text),
+          answer,
           why: routing.reason,
-          local: false,
           engine: KoruEngine.cloud,
         );
       case CloudUnavailable():
-        // No key, so nothing was asked of anybody. The old reply answered from
-        // the user's records and put "I answered that from your own records" in
-        // brackets underneath, which is an answer to a question about faith or
-        // law written by phrase matching. Now it says the key is missing and
-        // offers the screen that takes one.
+        // The key was gone by the time the request was made. Reached rarely —
+        // the link is checked before the question is asked of anybody — but it
+        // is a real possibility on a key cleared from Settings while a turn was
+        // in flight, and it has to land in the same honest place as any other
+        // missing key rather than in an empty bubble.
         final down = EngineUnavailable(
           detail: 'No ${selection.provider.label} key is set',
           recovery: EngineRecovery.addCloudKey,
@@ -1211,7 +852,6 @@ class ChatNotifier extends Notifier<ChatState> {
           MsgRole.koru,
           down.text,
           why: 'No cloud key is set for ${selection.provider.label}.',
-          local: false,
           unavailable: down,
         );
       case CloudFailure(:final reason):
@@ -1219,41 +859,11 @@ class ChatNotifier extends Notifier<ChatState> {
           MsgRole.koru,
           reason,
           why: routing.reason,
-          local: false,
           engine: KoruEngine.cloud,
         );
     }
   }
 
-  /// Facts for the local model, in the shape its prompt wants.
-  Future<LocalEngineFacts> _modelFacts(ProfileStore store) async => LocalEngineFacts(
-        nickname: (await store.get('nickname')) ?? '',
-        goals: (await store.get('goals')) ?? '',
-        focus: (await store.get('help_focus')) ?? '',
-        clients: await store.clients(),
-        received: await store.receivedTotals(),
-        deadlines: await store.deadlines(),
-        projects: await store.projects(),
-        projectNotes: await _latestNotePerProject(store),
-        events: await store.events(),
-      );
-}
-
-/// The most recent note per project, keyed by project id.
-///
-/// N+1 by nature: the notes table is per project and there is no single query
-/// that answers "latest for each". Projects are few and this runs once per
-/// reply, so the round trips are cheaper than keeping a denormalised copy in
-/// sync with every note write.
-Future<Map<int, String>> _latestNotePerProject(ProfileStore store) async {
-  final out = <int, String>{};
-  for (final p in await store.projects()) {
-    final id = p.id;
-    if (id == null) continue;
-    final notes = await store.projectNotes(id, limit: 1);
-    if (notes.isNotEmpty) out[id] = notes.first.body;
-  }
-  return out;
 }
 
 /// The link a notification tap asked us to open.
@@ -1459,36 +1069,6 @@ final healthProvider = FutureProvider<KoruHealth>((ref) async {
 
 final healthBridgeProvider = Provider<HealthBridge>((ref) => const HealthBridge());
 
-/// Models the bundled engine could be pointed at, bundled one first.
-final availableModelsProvider = FutureProvider<List<LocalModelFile>>((ref) async {
-  return ref.watch(bundledEngineProvider).models();
-});
-
-/// Whether the local model could actually run.
-///
-/// Since 1.0.0 the binary and the model are out of the APK, so this is normally
-/// true and the question is only asked to keep a build without them honest. It
-/// used to matter more than that: a build that had no engine to start fell back
-/// to the built-in assistant, which answers in milliseconds, which is exactly
-/// why "the local model is so much faster than cloud" looked true — no model was
-/// running. Now the app refuses to answer at all in that case, and says so.
-final localEnginePresentProvider = FutureProvider<bool>((ref) async {
-  if (!await ref.watch(bundledEngineProvider).available) return false;
-  final models = await ref.watch(availableModelsProvider.future);
-  return models.isNotEmpty;
-});
-
-/// The path of the model the user picked, or null for the bundled default.
-///
-/// Empty means the same as absent. Writing an empty string rather than deleting
-/// the key keeps the store's write path uniform, and treating the two the same
-/// here means a half finished switch cannot leave the engine pointed at nothing.
-final chosenModelProvider = FutureProvider<String?>((ref) async {
-  final store = await ref.watch(storeProvider.future);
-  final path = await store.get('model_path');
-  return (path == null || path.isEmpty) ? null : path;
-});
-
 /// The reason Koru wants these three, in one place, said once.
 ///
 /// Android shows a permission dialog with no explanation attached: "Allow Koru to
@@ -1623,7 +1203,12 @@ final capacityProvider = FutureProvider<int>((ref) async {
 /// disagree about what a fresh install looks like.
 const int defaultCapacity = 5;
 
-/// Which engine answers. Persisted so the choice survives a restart.
+/// The engine, as stored.
+///
+/// One value, and nothing writes it any more except the migration that healed
+/// whatever an older install had. It is still read rather than assumed, so the
+/// string sitting in somebody's profile table is the thing the app answers with
+/// — see [KoruEngine.parse] for why it has to be a total function.
 final engineProvider = FutureProvider<KoruEngine>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return KoruEngine.parse(await store.get('engine'));
@@ -1636,7 +1221,7 @@ final cloudSelectionProvider = FutureProvider<({CloudProvider provider, String m
     final provider = providerById(await store.get('cloud_provider') ?? 'openrouter');
     final stored = await store.get('cloud_model');
     final model = (stored == null || stored.isEmpty)
-        ? (provider.models.isNotEmpty ? provider.models.first : 'local')
+        ? (provider.models.isNotEmpty ? provider.models.first : '')
         : stored;
     return (provider: provider, model: model);
   },
@@ -1655,40 +1240,6 @@ final guideFactsProvider = FutureProvider<ScreenFacts>((ref) async {
   );
 });
 
-/// Config for the local model, if one has been set up.
-final localModelProvider = FutureProvider<LocalModelConfig>((ref) async {
-  final store = await ref.watch(storeProvider.future);
-  return localModelConfigFrom(await store.get('local_model'));
-});
-
-/// Parses stored JSON defensively. A corrupt value falls back to the default
-/// rather than taking Settings down with it.
-LocalModelConfig localModelConfigFrom(String? raw) {
-  if (raw == null || raw.isEmpty) return const LocalModelConfig();
-  try {
-    final decoded = jsonDecode(raw);
-    if (decoded is! Map) return const LocalModelConfig();
-    return LocalModelConfig.fromMap(decoded.cast<String, Object?>());
-  } catch (_) {
-    return const LocalModelConfig();
-  }
-}
-
-final localModelClientProvider =
-    Provider<LocalModelClient>((ref) => const LocalModelClient());
-
-final bundledEngineProvider = Provider<BundledEngine>((ref) => const BundledEngine());
-
-/// Whether this APK actually contains an engine and a model, and why not if it
-/// does not.
-final bundledEngineStatusProvider = FutureProvider<BundledEngineStatus>((ref) async {
-  return ref.read(bundledEngineProvider).status();
-});
-
-final bundledEngineAvailableProvider = FutureProvider<bool>((ref) async {
-  return (await ref.watch(bundledEngineStatusProvider.future)).available;
-});
-
 /// Saves a cloud key and invalidates everything that depends on it.
 ///
 /// Returns whether it actually worked. The old version swallowed the result and
@@ -1697,5 +1248,32 @@ final bundledEngineAvailableProvider = FutureProvider<bool>((ref) async {
 Future<bool> saveCloudKey(WidgetRef ref, String providerId, String value) async {
   final ok = await ref.read(secretsProvider).writeKey(providerId, value.trim());
   ref.invalidate(cloudKeyProvider(providerId));
+  // The link is what every surface reads to decide whether a model is
+  // connected, so a key that has just landed — or just been cleared — has to
+  // reach it or the app bar goes on saying "nothing connected" with a key saved.
+  ref.invalidate(engineLinkProvider);
   return ok;
 }
+
+/// Whether a model can answer, and which one.
+///
+/// The single answer to the only question left about engines, and the reason
+/// five surfaces do not each work it out: the store for the provider, the store
+/// for the model, and the keystore for the key. Read from [cloudSelectionProvider]
+/// rather than repeating those three reads, so the bar, the switcher, Settings
+/// and the chat cannot disagree.
+final engineLinkProvider = FutureProvider<EngineLink>((ref) async {
+  final selection = await ref.watch(cloudSelectionProvider.future);
+  final store = await ref.watch(storeProvider.future);
+  // Read live rather than watching [cloudKeyProvider]: the key is stored per
+  // provider, so the provider can change without the family key changing, and
+  // watching the family would keep the last company's key.
+  final key = await ref.watch(secretsProvider).readKey(selection.provider.id);
+  return EngineLink(
+    engine: await ref.watch(engineProvider.future),
+    provider: selection.provider,
+    model: selection.model,
+    hasKey: key.trim().isNotEmpty,
+    providerChosen: (await store.get('cloud_provider'))?.isNotEmpty ?? false,
+  );
+});

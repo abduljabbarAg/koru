@@ -25,15 +25,15 @@ import 'settings_privacy.dart';
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
-  /// Grouped the way somebody arrives here, and ordered so the two questions the
-  /// old index kept colliding are now the first two headings: what answers me,
-  /// and who I send things to.
+  /// Grouped the way somebody arrives here, and ordered so the question at the
+  /// top is whether anything can answer at all.
   ///
   /// "Cloud" used to head one card inside the engine page and another card on
   /// this index, meaning the engine on one and the company on the other, with
   /// nothing on screen to tell them apart. So the two are named apart —
-  /// [EngineSettingsScreen] is "who answers", [CloudSettingsScreen] is "cloud
-  /// provider" — and "cloud" is only ever the company.
+  /// [EngineSettingsScreen] is "who answers" and says whether anything is
+  /// connected, [CloudSettingsScreen] is "cloud provider" and is where a key is
+  /// entered.
   static const _groups = <_Group>[
     _Group('What answers you', [
       _Entry(
@@ -44,8 +44,8 @@ class SettingsScreen extends ConsumerWidget {
       ),
       _Entry(
         title: 'Who answers',
-        subtitle: 'Which model answers, and which one it runs on',
-        icon: Icons.memory_rounded,
+        subtitle: 'Whether a model is connected, and which company answers',
+        icon: Icons.cloud_outlined,
         page: EngineSettingsScreen(),
       ),
     ]),

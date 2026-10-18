@@ -39,11 +39,12 @@ class AboutScreen extends StatelessWidget {
             'Somebody carrying a handful of clients who wants one place that knows '
             'the whole picture, without signing up for a CRM, creating an account '
             'or taking out a subscription.',
-            'It keeps working with no internet connection. The local model '
-            'reads your own records and answers from them, and the calendar, '
-            'the capacity meter, projects and backups all run here too. If that '
-            'model is not running, Koru says so rather than answering from its '
-            'own rules.',
+            'Everything it keeps — clients, money owed, deadlines, the '
+            'calendar, projects, tasks and backups — lives on the phone and works '
+            'with no internet connection at all. The one thing that needs the '
+            'network is Koru\'s own answers: they come from the cloud model you '
+            'connect yourself, and with none connected Koru says so rather than '
+            'answering from your records with no model behind it.',
           ],
         ),
         _DocSection(
@@ -53,11 +54,12 @@ class AboutScreen extends StatelessWidget {
             'Koru server, no account system and no analytics. The rule the app is '
             'built around: your clients and your money are not training data for '
             'anyone else.',
-            'Only questions that genuinely need a frontier model can go onward, only '
-            'if you have set up a cloud provider yourself, and only a pseudonymous '
-            'summary of your context travels with them: never your nickname, your '
-            'name, your client names or your amounts. Settings shows the exact text '
-            'before anything is sent.',
+            'Nothing goes onward unless you have connected a cloud provider '
+            'yourself, and only a pseudonymous summary of your context travels '
+            'with your questions: never your nickname, your name, your client '
+            'names or your amounts. Settings shows the exact text before '
+            'anything is sent, and with no provider connected nothing is sent at '
+            'all.',
           ],
         ),
         _DocSection(
@@ -162,20 +164,10 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ],
         ),
         _DocSection(
-          'The local model',
-          paragraphs: [
-            'Requests for the local model go to the server address in Settings '
-            '> Who answers, which is 127.0.0.1 unless you change it. That is '
-            'traffic inside your phone, to a process the app itself started. If '
-            'you point it at another machine, that machine receives the same '
-            'prompt the cloud model would.',
-          ],
-        ),
-        _DocSection(
           'Permissions',
           bullets: [
-            'Internet, only for the cloud model and the provider you configured, '
-                'and for the local model address you set.',
+            'Internet, only to the cloud provider you configured, and only when '
+                'you ask Koru something it needs a model for.',
             'Notifications, so what is due can remind you.',
             'Calendar, only if you switch on copying entries to your phone\'s own '
                 'calendar. Refused, the in-app calendar still works exactly as it '
@@ -322,22 +314,22 @@ class DataPolicyScreen extends StatelessWidget {
         _DocSection(
           'Nothing leaves until you ask for it',
           paragraphs: [
-            'Koru works offline. Your clients, your money, your calendar and your '
-            'conversation sit on this device, and no part of the app sends them '
-            'anywhere on its own.',
+            'Your clients, your money, your calendar and your conversation sit '
+            'on this device, and no part of the app sends them anywhere on its '
+            'own. Koru\'s records and reminders work with the network off; only '
+            'Koru\'s own answers need it.',
           ],
         ),
         _DocSection(
           'What can leave',
           bullets: [
-            'A routed question. Only one about faith, health, medicine or law, only '
-                'with the cloud model and a provider you configured yourself, and '
-                'only with the pseudonymous context packet shown in Settings > What '
-                'leaves this phone: no nickname, no client names, no amounts.',
+            'A question you ask Koru, whenever it needs an answer rather than a '
+                'record written. Only with the cloud model and a provider you '
+                'configured yourself, and only with the pseudonymous context '
+                'packet shown in Settings > What leaves this phone: no nickname, '
+                'no client names, no amounts.',
             'Your API key, to the provider it belongs to, as the header that '
             'authenticates the request. Nowhere else.',
-            'A local model request, to the address you set in Settings > Who '
-                'answers. That is 127.0.0.1 unless you change it.',
             'An approved calendar entry, into your phone\'s own calendar, and only '
                 'if you switch the copy on.',
             'A backup file, only when you tap Back up and choose where to share it.',

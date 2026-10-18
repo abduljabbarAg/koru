@@ -50,10 +50,9 @@ class PermissionsSettingsScreen extends ConsumerWidget {
               },
             ),
           ],
-          // About permissions on this device. Deliberately not the engine's
-          // name: these are Android grants, and "Local model" above a list of
-          // notification toggles would read as a claim about which model is
-          // running.
+          // About permissions on this device. Deliberately not "Who answers":
+          // these are Android grants, and the model's name above a list of
+          // notification toggles would read as a claim about something else.
           const SectionLabel('On this device'),
           KoruCard(
             padding: const EdgeInsets.symmetric(vertical: KoruSpace.xsm),

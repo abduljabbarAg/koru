@@ -4,9 +4,11 @@ A local-first business buddy for freelancers, on Android. It knows your clients,
 what they owe you and what is due, and it runs on your phone.
 
 Koru is built around one rule: **your clients and your money are not training
-data for anyone else.** Questions about your work are answered on the device.
-Only questions that genuinely need a frontier model are sent upstream, and even
-then a pseudonymous summary goes with them, never your name.
+data for anyone else.** Everything it keeps — clients, money owed, deadlines,
+the calendar, projects, tasks, backups — is in a private database on the phone
+and works with the network off. The one thing that needs the network is Koru's
+own answers, and those go to the cloud model you connect yourself with a
+pseudonymous summary attached, never your name.
 
 The loop it exists for is: **clients, what is owed, what is due, and money
 received.** It started as a general life companion with fitness and learning
@@ -24,7 +26,7 @@ chat bar who blinks, thinks and waves when you tap him.
 | Talk | Ask questions, and say things like "add client Bilal for 2000". |
 | Business | Clients, balances, deadlines, the calendar, the pipeline, and a capacity meter. |
 | Projects | Client and personal work, each with a target, progress and a running note. |
-| Settings | Currency, client capacity, the cloud key, the engine and model, backup and deletion. |
+| Settings | Currency, client capacity, the cloud key, backup and deletion. |
 
 Fitness, learning and drafts were removed. Each existed with zero writers, so
 the drafts screen showed nothing forever. The tables survive for older installs
@@ -35,16 +37,18 @@ and are still cleared by "delete everything"; the features are gone.
 There is no user-facing routing configuration. The rule is fixed in
 `lib/packet.dart` and shown in Settings so you can see what it does:
 
-- **Faith, mental health, medical, legal** goes to a frontier model (OpenRouter).
-- **Everything else** is answered on the device by `lib/local/local_assistant.dart`.
+- **Everything else** is asked of the cloud model you connected.
 - **Crisis, diagnosis, legal ruling** stops the model entirely and shows a card
   with named services and emergency numbers.
 
-The on-device assistant is a deterministic responder, not a language model, and
-the UI says so. It answers from your own records: your weight and its trend, your
-client pipeline and what is unpaid, your goals. That is the class of question a
-memory-based companion should be good at, and answering it locally is what makes
-the privacy claim true rather than aspirational.
+There is one model and it is online. The bundled 1.7B model that used to ship in
+the APK is gone: it took the package from 16 MB to 258 MB, and every complaint
+reported about the assistant — talking about a client instead of answering,
+inventing exchange rates, repeating itself, thirteen seconds for forty tokens —
+was that model. A rules-based responder stood in for it when it was not running,
+and that was worse: it answered in milliseconds and read exactly like a fast
+model. So there is no fallback any more. With nothing connected, Koru says so and
+offers the tap that connects one.
 
 ## Privacy
 
@@ -101,14 +105,15 @@ lib/
   main.dart              app shell, animated splash, tab navigation
   packet.dart            context packet, routing rules, prompt building
   handoff.dart           human escalation: what "step aside" actually means
-  cloud.dart             frontier model call, typed results
-  local/local_assistant.dart   the on-device responder
-  store.dart             SQLite schema and every query
+  cloud.dart             the model call, typed results
+  engine.dart            the one engine, whether it is connected, the output guards
+  store.dart             SQLite access; schema.dart is the migration history
+  schema.dart            every migration, in order
   models.dart            domain types
   secrets.dart           keystore-backed key storage
   state.dart             Riverpod providers
   mascot/                sprite engine, animation state machine, vector fallback
-  screens/               chat, business, fitness, knowledge, drafts, settings
+  screens/               chat, work, clients, revenue, settings
 tool/
   generate_assets.py     draws every shipped PNG
   preview_frames.py      labelled contact sheet for reviewing frames

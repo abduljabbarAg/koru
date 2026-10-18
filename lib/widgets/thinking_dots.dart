@@ -8,29 +8,13 @@ import '../theme.dart';
 /// What the model is doing, said out loud next to the animation.
 ///
 /// Added because an animation on its own answers "is it working" but not "is it
-/// doing the right thing". A prefill on this phone takes seconds, and during
-/// those seconds the only honest thing to show is which of the two slow things is
-/// happening: the model is *reading the records*, or it is *writing the answer*.
-/// Those feel identical as three bouncing dots and completely different once
-/// named.
+/// doing the right thing". A model reading the records before it answers takes
+/// real time, and during that the only honest thing to show is which of the two
+/// slow things is happening: it is *reading the records*, or it is *writing the
+/// answer*. Those feel identical as three bouncing dots and completely different
+/// once named.
 enum KoruActivity {
-  /// Waiting on the store or the router. Should be momentary.
-  waking('Waking up'),
-
-  /// The engine is still coming up and the question is waiting for it.
-  ///
-  /// Its own line, because this is the one wait a person could mistake for a
-  /// hang: the question went in, nothing has come out, and the only difference
-  /// between "it is broken" and "the model has not finished starting" is
-  /// whether the app says which one it is. Named before the question is sent,
-  /// the moment the turn notices the engine is down.
-  startingLocalModel('Starting the local model'),
-
-  /// Reading the prompt. This is the long silent part, and the part that used to
-  /// look like a hang.
-  reading('Reading your records'),
-
-  /// Producing tokens.
+  /// A model has been asked and tokens have started arriving.
   writing('Writing an answer'),
 
   /// Working out what was asked, in a plan or a write.

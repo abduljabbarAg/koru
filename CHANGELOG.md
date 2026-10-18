@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Removed
+
+- **The on-device model, and with it every second engine.** The bundled
+  llama.cpp binary and the Bonsai-1.7B-Q1_0 weights are gone from the app, the
+  Dart client that spoke to them, the model picker, "bring your own model", the
+  engine log screen and the launch warm-up that started a server before the
+  splash had finished. The APK goes from 258 MB to roughly 10.
+
+  This is not only about size. Every complaint reported about the assistant was
+  that model: asked a question, it talked about a client instead of answering,
+  invented exchange rates, repeated itself, and took about thirteen seconds for
+  forty tokens. Cloud models are far better at the one job this app needs from
+  AI, which is turning what somebody types into a record they then confirm.
+
+  Installs that were on `onDevice` are moved to the cloud engine by a v12
+  migration and land in the honest not-connected state if no key is saved. With
+  nothing connected, Koru says so and offers the tap that connects one — there
+  is no fallback that answers from the records with no model behind it.
+
 ### Fixed
 
 - **The permission explanation is reachable on a first run.** "I have to close

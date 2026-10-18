@@ -1,47 +1,38 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koru/engine.dart';
 import 'package:koru/models.dart';
+import 'package:koru/packet.dart';
 
 import 'test_store.dart';
 
 /// Projects have been in the database since the schema landed and were in
 /// nothing the model could read. It knew who owed money and nothing about what
 /// any of it was for, so "where are we on the shop" had no answer.
+///
+/// What reaches a model is [ProfileStore.packet], which is the only constructor
+/// for the context that leaves the phone. Projects had to be added to it, and
+/// this is what stops that being undone: the dense per-record renderer that fed
+/// the removed on-device model is gone, and these tests now assert against the
+/// one path that is left.
 void main() {
-  test('a project reaches the model, with its target and latest note', () async {
+  test('a client project reaches the model as what the work is, not whose',
+      () async {
     final store = await openTestStore();
-    final id = await store.addProject(const Project(
+    await store.addProject(const Project(
       name: 'Bilal shop',
       kind: ProjectKind.client,
       target: 'the shop is open',
       progress: 0.4,
       progressNote: 'two rooms left',
     ));
-    await store.addProjectNote(ProjectNote(
-      projectId: id,
-      body: 'electrician booked for Thursday',
-      created: DateTime.now().toIso8601String(),
-    ));
 
-    final projects = await store.projects();
-    final notes = <int, String>{};
-    for (final p in projects) {
-      final pid = p.id;
-      if (pid == null) continue;
-      final latest = await store.projectNotes(pid, limit: 1);
-      if (latest.isNotEmpty) notes[pid] = latest.first.body;
-    }
+    final text = (await store.packet()).renderForCloud();
 
-    final text = LocalEngineFacts(
-      projects: projects,
-      projectNotes: notes,
-    ).renderForModel();
-
-    expect(text, contains('Bilal shop'));
+    expect(text, contains('the shop is open'));
     expect(text, contains('client'), reason: 'the kind has to be legible');
     expect(text, contains('40%'));
-    expect(text, contains('the shop is open'));
-    expect(text, contains('electrician booked for Thursday'));
+    expect(text, isNot(contains('Bilal shop')),
+        reason: 'the project is named by its owner on a client project, and the '
+            'owner is a person, and this leaves the phone');
   });
 
   test('a personal project is marked personal and carries no money', () async {
@@ -52,8 +43,7 @@ void main() {
       progress: 0.1,
     ));
 
-    final text =
-        LocalEngineFacts(projects: await store.projects()).renderForModel();
+    final text = (await store.packet()).renderForCloud();
 
     expect(text, contains('Learn Arabic'));
     expect(text, contains('personal'));
@@ -61,23 +51,64 @@ void main() {
     expect(text, isNot(contains('invoice')));
   });
 
-  test('a project with no note is still listed', () async {
+  test("a client project's owner is kept out of what leaves the phone",
+      () async {
+    // The client's name is a person, and this string goes upstream. What goes
+    // instead is what the work is, which is the whole point of carrying projects
+    // at all.
+    final store = await openTestStore();
+    final id = await store.addClient(
+      const Client(name: 'Bilal', amount: 2000, status: 'delivered'),
+    );
+    await store.addProject(Project(
+      name: 'the rebrand',
+      kind: ProjectKind.client,
+      clientId: id,
+      target: 'the new site is live',
+      progress: 0.5,
+    ));
+
+    final text = (await store.packet()).renderForCloud();
+
+    expect(text, contains('the new site is live'));
+    expect(text, isNot(contains('Bilal')));
+  });
+
+  test('a client project with no target is still listed', () async {
     // Omitting it would make the model believe the project does not exist,
-    // which is the opposite of the awareness this is for.
+    // which is the opposite of the awareness this is for. With nothing to
+    // describe it by, the line falls back to saying it is client work.
     final store = await openTestStore();
     await store.addProject(const Project(name: 'Solo project', progress: 0.2));
 
-    final text =
-        LocalEngineFacts(projects: await store.projects()).renderForModel();
-
-    expect(text, contains('Solo project'));
+    expect((await store.packet()).renderForCloud(), contains('client work'));
   });
 
-  test('facts are not empty just because there are no clients', () async {
+  test('a personal project is named, because there is nobody to protect',
+      () async {
+    // The other half of the rule: a personal project's owner is the user, and
+    // the packet already speaks about them in the third person. Naming it is
+    // what makes "what am I working on" answerable at all.
     final store = await openTestStore();
-    await store.addProject(const Project(name: 'Anything', progress: 0.5));
+    await store.addProject(const Project(
+      name: 'Solo project',
+      kind: ProjectKind.personal,
+      progress: 0.2,
+    ));
 
-    final facts = LocalEngineFacts(projects: await store.projects());
-    expect(facts.isEmpty, isFalse);
+    expect((await store.packet()).renderForCloud(), contains('Solo project'));
+  });
+
+  test('the packet stays inside its word budget with projects in it', () async {
+    final store = await openTestStore();
+    for (var i = 0; i < 12; i++) {
+      await store.addProject(Project(name: 'Project $i', progress: 0.1));
+    }
+
+    final packet = await store.packet();
+    // The project lines are capped rather than the packet being allowed to grow:
+    // a long project list spends the budget the question itself needs.
+    expect(packet.wordCount, lessThanOrEqualTo(ContextPacket.maxCloudWords));
+    expect(packet.renderForCloud(), contains('and 8 more project(s)'));
   });
 }

@@ -63,8 +63,8 @@ class KoruSelectableTile extends StatelessWidget {
   /// One line under the label saying what picking this actually gets you.
   ///
   /// There because a row that names a choice without saying what it costs is how
-  /// "the local model" got picked by somebody expecting a chatbot and
-  /// got a lookup table.
+  /// somebody picks one and only afterwards finds out what it takes — a company
+  /// with twenty models is a different promise from one with three.
   final String? blurb;
 
   /// Centres a bigger label and drops the tick: the number is the whole mark.

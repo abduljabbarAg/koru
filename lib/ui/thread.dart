@@ -147,111 +147,55 @@ class KoruMessageMeta extends StatelessWidget {
   }
 }
 
-/// Says which engine answered, as one pill's worth of label.
+/// Says which model answered, as one pill's worth of label.
 ///
 /// One function, because two widgets say this and they must never disagree: the
-/// control in the app bar names the engine that is answering *now* and the small
-/// mark on a reply names the engine that wrote *that*. A second copy of the
-/// switch is how the bar ends up claiming one thing while a reply underneath it
-/// says the same thing in different words.
+/// control in the app bar names the model that is answering *now* and the small
+/// mark on a reply names the model that wrote *that*.
 ///
-/// The names are [KoruEngine.label] in small caps and nothing else — "LOCAL
-/// MODEL", "CLOUD MODEL". Four different ways of naming the same engine across
-/// four screens is what a person reads as "the app has two or three engines",
-/// which is worse than any one of the names being poor. The states that matter
-/// are appended, because they are the thing that changes and the name is not.
+/// Null means no model wrote it — the opening greeting, a card the app built, a
+/// write it confirmed, the "nothing is connected" reply. That is the case worth
+/// being careful with: it used to be spelled by picking an engine and marking it
+/// as not running, which is a sentence about a model under a reply no model
+/// wrote.
 ({String label, IconData icon, ({Color ink, Color fill}) tone}) koruEngineSummary({
   required KoruEngine? engine,
-  bool starting = false,
-  int? progress,
-  bool failed = false,
-  double? tokensPerSecond,
 }) {
-  final speed = tokensPerSecond;
   return switch (engine) {
     null => (
         label: '',
-        icon: Icons.memory_rounded,
+        icon: Icons.cloud_outlined,
         tone: KoruTones.neutral,
       ),
-    // The three states that are not "running" come first inside this case,
-    // because a start that failed has already been through the branch that
-    // reported it starting, and a stale progress value must not keep a dead
-    // engine looking like it is on its way up.
-    KoruEngine.onDevice => (
-        label: switch ((failed, starting, progress)) {
-          (true, _, _) => 'LOCAL MODEL  NOT RUNNING',
-          // The copy out of the APK has no percentage. Saying so beats printing
-          // "-1%" or pretending it is 0.
-          (false, true, EngineProgress.unpacking) => 'LOCAL MODEL  UNPACKING',
-          (false, true, final int percent?) => 'LOCAL MODEL  $percent%',
-          (false, true, _) => 'LOCAL MODEL  STARTING',
-          _ => speed == null
-              ? 'LOCAL MODEL'
-              : 'LOCAL MODEL  ${speed.toStringAsFixed(1)} TOK/S',
-        },
-        icon: Icons.memory_rounded,
-        tone: failed ? KoruTones.clay : KoruTones.leaf,
-      ),
     KoruEngine.cloud => (
-        label: 'CLOUD MODEL',
+        // From the engine's own name rather than spelled here, so the badge on a
+        // reply and the engine's one definition cannot drift apart.
+        label: engine.label.toUpperCase(),
         icon: Icons.cloud_outlined,
         tone: KoruTones.gold,
       ),
   };
 }
 
-/// Names the engine on a reply. A label, never a control.
+/// Names the model on a reply. A label, never a control.
 ///
 /// It used to open the switcher, and that is the thing it must not do again:
 /// changing who answers is a decision about the app, not about the sentence
 /// above it, and a control sitting on each reply means the place you change it
 /// is somewhere different every time you look. The control lives in the app bar,
 /// which is always in the same place.
-///
-/// What is left here is the provenance. The engine that wrote a reply can be a
-/// different one from the engine that will write the next, and the difference
-/// has to be readable on the reply itself, so this says what is honest about a
-/// starting engine too: a label saying the local model is ready while it is
-/// still being copied out of the APK is the one thing this must never say,
-/// because the reader acts on it.
 class KoruEngineBadge extends StatelessWidget {
-  const KoruEngineBadge({
-    super.key,
-    required this.engine,
-    this.tokensPerSecond,
-    this.starting = false,
-    this.progress,
-    this.failed = false,
-  });
+  const KoruEngineBadge({super.key, required this.engine});
 
+  /// Null on anything the app said itself, which is most of a work session.
   final KoruEngine? engine;
-  final double? tokensPerSecond;
-
-  /// The engine is being brought up right now.
-  ///
-  /// Only consulted for the local engine: the other one has nothing to start, so
-  /// a "starting" line on it would be noise.
-  final bool starting;
-
-  /// How far the start has got, 0 to 100, while it is in one.
-  final int? progress;
-
-  /// The last attempt to start it did not work.
-  final bool failed;
 
   @override
   Widget build(BuildContext context) {
     final engine = this.engine;
     if (engine == null) return const SizedBox.shrink();
 
-    final summary = koruEngineSummary(
-      engine: engine,
-      tokensPerSecond: tokensPerSecond,
-      starting: starting,
-      progress: progress,
-      failed: failed,
-    );
+    final summary = koruEngineSummary(engine: engine);
     return KoruPill(
       label: summary.label,
       color: summary.tone.ink,
@@ -263,65 +207,55 @@ class KoruEngineBadge extends StatelessWidget {
 
 /// The engine control for the chat's app bar.
 ///
-/// Where the switcher is opened from. It lives in the bar rather than on a
-/// reply because the answer to "who is answering, and can I change it" is a
-/// property of the screen, not of any one message: a control that is only
-/// reachable once a conversation exists is a control nobody finds while they are
-/// still deciding who they are talking to.
+/// Where the switcher is opened from. It lives in the bar rather than on a reply
+/// because the answer to "who is answering, and can I change it" is a property
+/// of the screen, not of any one message: a control that is only reachable once
+/// a conversation exists is a control nobody finds while they are still deciding
+/// who they are talking to.
 ///
 /// Two lines, because one cannot carry what is being asked for. The first is
-/// the engine's own name — including the starting and failed states, so a slow
-/// phone explains itself. The second is the detail that makes the name mean
-/// something: which model the local engine is running, which company answers the
-/// cloud one, or how fast the last answer actually came back.
+/// what is answering — the company's name, or plainly that nothing is — and the
+/// second is the model underneath it. When nothing is connected both lines say
+/// so, because a bar that reads "CLOUD MODEL" over a reply saying "I cannot
+/// answer that" is the contradiction this whole change exists to remove.
 class KoruEngineBarButton extends StatelessWidget {
   const KoruEngineBarButton({
     super.key,
-    required this.engine,
+    required this.title,
     required this.detail,
     required this.onTap,
-    this.tokensPerSecond,
-    this.starting = false,
-    this.progress,
-    this.failed = false,
+    this.connected = true,
   });
 
-  final KoruEngine? engine;
+  /// What is answering. Never empty.
+  final String title;
 
-  /// The model, the provider company, or the speed — whichever this engine can
-  /// be honest about. Empty means "not known yet", and the line is left out
-  /// rather than filled with a placeholder.
+  /// The model underneath it. Empty means "not known yet", and the line is left
+  /// out rather than filled with a placeholder.
   final String? detail;
 
   final VoidCallback onTap;
-  final double? tokensPerSecond;
-  final bool starting;
-  final int? progress;
-  final bool failed;
+
+  /// False when nothing is connected, which tints the control with the tone the
+  /// rest of the app uses for "needs you" rather than the one for "fine".
+  final bool connected;
 
   @override
   Widget build(BuildContext context) {
-    final engine = this.engine;
-    if (engine == null) return const SizedBox.shrink();
-
-    final summary = koruEngineSummary(
-      engine: engine,
-      tokensPerSecond: tokensPerSecond,
-      starting: starting,
-      progress: progress,
-      failed: failed,
-    );
+    final tone = connected ? KoruTones.gold : KoruTones.clay;
     final detail = this.detail?.trim();
-    // The speed is already in the label for a local model that has answered, so
-    // saying it twice in two different type sizes reads as a mistake.
-    final second = detail == null || detail.isEmpty || detail == summary.label
+    // The model's own name is not repeated as the detail when the title is
+    // already the provider and the model happens to be the provider's, which is
+    // two identical lines of the same fact.
+    final second = detail == null || detail.isEmpty || detail == title
         ? null
         : detail;
 
     return Semantics(
       button: true,
-      label: 'Change who answers. ${summary.label}'
-          '${second == null ? '' : '. $second'}',
+      label: 'Change who answers. $title'
+          '${second == null ? '' : '. $second'}'
+          '${connected ? '' : '. Nothing is connected yet.'}',
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
@@ -336,9 +270,9 @@ class KoruEngineBarButton extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  summary.icon,
+                  connected ? Icons.cloud_outlined : Icons.cloud_off_rounded,
                   size: KoruSize.iconSm,
-                  color: summary.tone.ink,
+                  color: tone.ink,
                 ),
                 const SizedBox(width: KoruSpace.xsm),
                 // Bounded rather than wrapped: a long model name has to give way
@@ -351,7 +285,7 @@ class KoruEngineBarButton extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        summary.label,
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: KoruType.rowTitleCompact,
@@ -378,67 +312,6 @@ class KoruEngineBarButton extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// The engine warming up, or having failed to.
-///
-/// Full-bleed rather than a card, because it sits between the thread and the
-/// composer and is about this screen rather than part of it. It is the one place
-/// the app interrupts a conversation, so it earns the tint but not a shadow.
-class KoruEngineBanner extends StatelessWidget {
-  const KoruEngineBanner({super.key, this.progress, this.problem});
-
-  final int? progress;
-  final String? problem;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = progress;
-    if (p == null && problem == null) return const SizedBox.shrink();
-    final failed = p == null;
-    final tone = failed ? KoruTones.clay : KoruTones.leaf;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: KoruSpace.gutter,
-        vertical: KoruSpace.md,
-      ),
-      color: tone.fill,
-      child: Row(
-        children: [
-          if (!failed)
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: tone.ink,
-              ),
-            )
-          else
-            Icon(Icons.error_outline_rounded, size: KoruSize.iconSm, color: tone.ink),
-          const SizedBox(width: KoruSpace.sm),
-          Expanded(
-            child: Text(
-              // The copy out of the APK gets its own line rather than a
-              // percentage. It is the one part of a cold start that takes tens
-              // of seconds and reports nothing, and a bar sitting at zero for
-              // thirty seconds is what made the app look dead on first launch.
-              failed
-                  ? 'The local model did not start. $problem'
-                  : p == EngineProgress.unpacking
-                      ? 'Unpacking the local model, 248 MB. Once, on first use. '
-                          'You can carry on in the meanwhile.'
-                      : 'Starting the local model, $p%. You can carry on in the '
-                          'meanwhile.',
-              style: KoruType.bodyCompactStrong,
-            ),
-          ),
-        ],
       ),
     );
   }

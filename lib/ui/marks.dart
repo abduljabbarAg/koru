@@ -26,11 +26,11 @@ class KoruProgressBar extends StatelessWidget {
 
   /// Zero to one, or null when nothing is being counted yet.
   ///
-  /// Null is the honest state, not a missing one: the first-run copy of the
-  /// local model out of the APK takes tens of seconds and reports no percentage
-  /// at all, and a bar sitting at zero through all of it is a bar telling the
-  /// reader the app is stuck. So this is a different mark rather than a bar at
-  /// the start of its range — a pulsing sweep, the shape every phone uses for
+  /// Null is the honest state, not a missing one. Work that is genuinely under
+  /// way but reports no number — a copy, a network call, a first load — spends
+  /// its whole length looking exactly like a bar stuck at zero, which is the
+  /// opposite of what it means. So this is a different mark rather than a bar at
+  /// the start of its range: a pulsing sweep, the shape every phone uses for
   /// "working, no number to give you".
   final double? value;
 

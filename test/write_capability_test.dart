@@ -9,20 +9,23 @@ import 'package:koru/store.dart';
 import 'package:koru/theme.dart';
 import 'package:koru/widgets.dart';
 
+import 'fake_cloud.dart';
 import 'test_store.dart';
 
 /// Everything the model is supposed to be able to do to the business.
 ///
 /// The audit behind this file: the write path is a parser and a resolver that
-/// run before either engine is chosen, so a capability is either available to
-/// both or to neither, and "the cloud model can do it" is never a separate
-/// question. What that leaves to prove is whether each sentence is understood at
-/// all, whether it lands as a card the person has to approve rather than a
-/// silent write, and whether approving it actually changes the records.
+/// run before any model is asked, so a capability is either available or it is
+/// not, and "the model can do it" is never a separate question. What that leaves
+/// to prove is whether each sentence is understood at all, whether it lands as a
+/// card the person has to approve rather than a silent write, and whether
+/// approving it actually changes the records.
 ///
-/// Both engines are walked over the same table because the claim being made is
-/// that both can do all of it. A case that passes on one and fails on the other
-/// is the whole bug this file was written to find.
+/// The table used to be walked once per engine, because there were two and a
+/// case that passed on one and failed on the other was the whole bug the file was
+/// written to find. There is one model now, so it is walked once — and the last
+/// group asserts the stronger half of the claim: a write lands the same way with
+/// nothing connected at all.
 class _Case {
   const _Case(
     this.what,
@@ -111,14 +114,12 @@ void main() {
         'notes[${notes.join(',')}] deadlines[$deadlines] events[$events]';
   }
 
-  Future<void> boot(WidgetTester tester, String engine) async {
-    await store.put('engine', engine);
+  Future<void> boot(WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           storeProvider.overrideWith((ref) async => store),
-          cloudKeyProvider.overrideWith((ref, providerId) async => ''),
-          secretsProvider.overrideWithValue(MemoryKeyStore()),
+          secretsProvider.overrideWithValue(const TestKeyStore()),
         ],
         child: MaterialApp(theme: buildKoruTheme(), home: const ChatScreen()),
       ),
@@ -249,60 +250,86 @@ void main() {
     ),
   ];
 
-  for (final engine in const ['onDevice', 'cloud']) {
-    group('with the $engine engine', () {
-      for (final c in cases) {
-        testWidgets(c.what, (tester) async {
-          final before = await tester.runAsync(() => snapshot(store));
+  group('every capability', () {
+    for (final c in cases) {
+      testWidgets(c.what, (tester) async {
+        final before = await tester.runAsync(() => snapshot(store));
 
-          await boot(tester, engine);
-          await say(tester, c.says);
+        await boot(tester);
+        await say(tester, c.says);
 
-          // Understood as something to record, and offered rather than done.
-          expect(find.byType(WriteCard), findsOneWidget,
-              reason: '"${c.says}" must come back as a card to approve');
-          expect(find.textContaining(c.summary!), findsWidgets,
-              reason: 'the card has to say what it understood');
+        // Understood as something to record, and offered rather than done.
+        expect(find.byType(WriteCard), findsOneWidget,
+            reason: '"${c.says}" must come back as a card to approve');
+        expect(find.textContaining(c.summary!), findsWidgets,
+            reason: 'the card has to say what it understood');
 
-          // Nothing was written yet. This is the assertion that separates a
-          // proposed write from a silent one, and it is the one that matters for
-          // a delete or a changed figure.
-          expect(await tester.runAsync(() => snapshot(store)), before,
-              reason: 'nothing may be saved before the card is approved');
+        // Nothing was written yet. This is the assertion that separates a
+        // proposed write from a silent one, and it is the one that matters for
+        // a delete or a changed figure.
+        expect(await tester.runAsync(() => snapshot(store)), before,
+            reason: 'nothing may be saved before the card is approved');
 
-          if (c.destructive) {
-            expect(find.text(c.button), findsOneWidget,
-                reason: 'a delete has to be labelled as one, not as "Save it"');
-            final card = tester.widget<KoruCard>(find.ancestor(
-              of: find.text(c.button),
-              matching: find.byType(KoruCard),
-            ).first);
-            expect(card.accent, KoruColors.clay,
-                reason: 'and it has to look like the one action that cannot be '
-                    'taken back');
-          }
+        if (c.destructive) {
+          expect(find.text(c.button), findsOneWidget,
+              reason: 'a delete has to be labelled as one, not as "Save it"');
+          final card = tester.widget<KoruCard>(find.ancestor(
+            of: find.text(c.button),
+            matching: find.byType(KoruCard),
+          ).first);
+          expect(card.accent, KoruColors.clay,
+              reason: 'and it has to look like the one action that cannot be '
+                  'taken back');
+        }
 
-          await tapVisible(tester, find.text(c.button));
+        await tapVisible(tester, find.text(c.button));
 
-          expect(find.byType(WriteCard), findsNothing,
-              reason: 'the card is replaced by what actually happened');
-          expect(await tester.runAsync(() => c.lands(store)), isTrue,
-              reason: '"${c.says}" did not land in the records');
+        expect(find.byType(WriteCard), findsNothing,
+            reason: 'the card is replaced by what actually happened');
+        expect(await tester.runAsync(() => c.lands(store)), isTrue,
+            reason: '"${c.says}" did not land in the records');
 
-          // And it is reported, not just done: the thread says what happened.
-          expect(find.textContaining('checked'), findsWidgets,
-              reason: 'the outcome has to be said, and said as checked');
-        });
-      }
-    });
-  }
+        // And it is reported, not just done: the thread says what happened.
+        expect(find.textContaining('checked'), findsWidgets,
+            reason: 'the outcome has to be said, and said as checked');
+      });
+    }
+  });
+
+  group('a write does not need a model', () {
+    // The claim this whole file rests on. If a capability ever stopped working
+    // with nothing connected, the assistant would have become a dependency of
+    // the records rather than an addition to them.
+    for (final c in [cases.first, cases[2], cases.last]) {
+      testWidgets('${c.what} still lands with nothing connected', (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              storeProvider.overrideWith((ref) async => store),
+              secretsProvider.overrideWithValue(const TestKeyStore(key: '')),
+            ],
+            child: MaterialApp(theme: buildKoruTheme(), home: const ChatScreen()),
+          ),
+        );
+        for (var i = 0; i < 8; i++) {
+          await tester.pump(const Duration(milliseconds: 40));
+        }
+
+        await say(tester, c.says);
+        await tapVisible(tester, find.text(c.button));
+
+        expect(await tester.runAsync(() => c.lands(store)), isTrue,
+            reason: '"${c.says}" needs no model to be understood or saved');
+      });
+    }
+  });
 
   group('a question that is not a write reaches the model', () {
     testWidgets('"how much does Bilal owe" is not read as a payment',
         (tester) async {
       // The parser being eager is worse than it being silent, and this is the
       // sentence that keeps it honest.
-      await boot(tester, 'onDevice');
+      await boot(tester);
       await say(tester, 'how much does Bilal owe');
       expect(find.byType(WriteCard), findsNothing);
     });

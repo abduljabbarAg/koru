@@ -1,5 +1,13 @@
 # Koru — engineering handoff
 
+> **Superseded in part.** The on-device engine described below no longer exists:
+> the bundled binary and model, the Dart client, the model picker and the launch
+> warm-up were all removed, and the APK ships one model, over the internet. The
+> measurements are kept as history because they are why it was removed — they
+> explain the 258 MB and the thirteen-second answers. Treat anything about
+> running a model on the phone as a record of a past, not a description of the
+> present.
+
 Read this before touching anything. Most of what is here is **not** derivable from
 the code, and it is the expensive part to rediscover.
 

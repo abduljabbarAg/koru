@@ -90,14 +90,13 @@ void main() {
     ''');
   }
 
-  /// The v4 to v10 shape, written out the way those migrations left it.
+  /// The v4 to v11 shape, written out the way those migrations left it.
   ///
-  /// Only needed for one test, and only because one test is about an install
-  /// that already has all of it: the chain from v1 is covered above, and what
-  /// has to be proved here is that opening a genuine v10 database adds the task
-  /// table and touches nothing else. A database built by a partial chain would
-  /// not prove that.
-  Future<void> createV4ToV10(Database d) async {
+  /// Written out rather than reached by running the chain, because the test that
+  /// matters here is about an install that genuinely is on v11 with an engine
+  /// the current build has never heard of. A database built by a partial chain
+  /// would prove nothing about that.
+  Future<void> createV4ToV11(Database d) async {
     await d.execute('ALTER TABLE business ADD COLUMN monthly REAL');
     await d.execute('ALTER TABLE business ADD COLUMN deposit REAL');
     await d.execute('ALTER TABLE business ADD COLUMN terms_days INTEGER');
@@ -144,6 +143,26 @@ void main() {
     await d.execute('CREATE INDEX idx_events_date ON events(date, time)');
     await d.execute('ALTER TABLE events ADD COLUMN recurrence TEXT');
     await d.execute('ALTER TABLE business ADD COLUMN phone TEXT');
+    await d.execute('''
+      CREATE TABLE tasks(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        client_id INTEGER,
+        project_id INTEGER,
+        due TEXT,
+        priority TEXT NOT NULL DEFAULT 'normal',
+        done INTEGER NOT NULL DEFAULT 0,
+        completed_at TEXT,
+        note TEXT,
+        created TEXT NOT NULL
+      )
+    ''');
+    await d.execute(
+        'CREATE INDEX idx_tasks_open ON tasks(done, priority, due)');
+    await d.execute(
+        'CREATE INDEX idx_tasks_project ON tasks(project_id)');
+    await d.execute(
+        'CREATE INDEX idx_tasks_client ON tasks(client_id)');
   }
 
   Future<void> createV3(Database d) async {
@@ -178,16 +197,19 @@ void main() {
         await createV1(d);
         if (v >= 2) await createV2(d);
         if (v >= 3) await createV3(d);
-        if (v >= 10) await createV4ToV10(d);
+        if (v >= 11) await createV4ToV11(d);
       },
     );
 
     await db.insert('profile', {'key': 'nickname', 'value': 'kami'});
     await db.insert('profile', {'key': 'onboarded', 'value': '1'});
-    // The engine every install had before the built-in one was deleted. It is
-    // the only value this migration has to heal, and it is not a value anybody
-    // typed: it was written by an older build of this app.
-    await db.insert('profile', {'key': 'engine', 'value': 'builtIn'});
+    // The engine an install can be on when the engine is removed. Not a value
+    // anybody typed: each was written by an older build of this app, and both
+    // are still sitting in the profile table of somebody's phone.
+    await db.insert('profile', {
+      'key': 'engine',
+      'value': version >= 11 ? 'onDevice' : 'builtIn',
+    });
     await db.insert('business', {
       'name': 'Bilal',
       'status': 'delivered',
@@ -213,7 +235,7 @@ void main() {
         'created': '2026-01-01',
       });
     }
-    if (version >= 10) {
+    if (version >= 11) {
       // The records a working install has, so the upgrade is proved against
       // something rather than against an empty table.
       await db.insert('business', {
@@ -363,9 +385,9 @@ void main() {
     });
   });
 
-group('a v10 install upgrading to v11', () {
-    test('opens, keeps everything, and gains a task list', () async {
-      final dir = await seedOldDatabase(10);
+group('a v11 install upgrading to v12', () {
+    test('opens, keeps everything, and moves off the removed engine', () async {
+      final dir = await seedOldDatabase(11);
       final store = await ProfileStore.open(directory: dir);
       addTearDown(store.close);
 
@@ -394,7 +416,7 @@ group('a v10 install upgrading to v11', () {
     });
 
     test('a task can be added to an upgraded database and kept', () async {
-      final dir = await seedOldDatabase(10);
+      final dir = await seedOldDatabase(11);
       final store = await ProfileStore.open(directory: dir);
       addTearDown(store.close);
 
@@ -415,7 +437,7 @@ group('a v10 install upgrading to v11', () {
     });
 
     test('wipe clears the task list too', () async {
-      final dir = await seedOldDatabase(10);
+      final dir = await seedOldDatabase(11);
       final store = await ProfileStore.open(directory: dir);
       addTearDown(store.close);
 
@@ -441,35 +463,60 @@ group('a fresh install', () {
       expect(c.isRetainer, isTrue);
     });
 
-    test('leaves a stored engine alone, because there are only two now', () async {
+    test('has no stored engine at all, and resolves to the one that exists',
+        () async {
+      // The migration cannot write a row that is not there, so the read is the
+      // only thing standing between a first install and no engine at all.
       final store = await openTestStore();
       addTearDown(store.close);
 
-      for (final engine in const ['onDevice', 'cloud']) {
-        await store.put('engine', engine);
-        expect(await store.get('engine'), engine);
-      }
+      expect(await store.get('engine'), isNull);
+      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.cloud);
     });
   });
 
   group('the stored engine', () {
     // The engine that is not there any more, and everything that can reach a
     // phone in a shape this build has never heard of. The rule is one sentence:
-    // an upgrade must never leave somebody with no engine to ask.
-    test('an install on the deleted built-in engine lands on one that works',
+    // an upgrade must never leave somebody with no model to ask.
+    test('an install on the removed on-device engine lands on the cloud one',
+        () async {
+      // Against a real v11 database with real rows in it, which is the only
+      // thing worth proving: the value on a phone today is 'onDevice'.
+      final dir = await seedOldDatabase(11);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      // Healed on disk, not only at the read, so nothing else has to know.
+      expect(await store.get('engine'), 'cloud');
+      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.cloud);
+    });
+
+    test('and everything else in that database is still there', () async {
+      final dir = await seedOldDatabase(11);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      expect((await store.clients()).map((c) => c.name),
+          containsAll(['Bilal', 'Acme']));
+      expect((await store.projects()).single.name, 'Acme rebrand');
+      expect(await store.chat(), isNotEmpty);
+      expect(await store.get('nickname'), 'kami');
+    });
+
+    test('an install on the older removed engine lands on the cloud one',
         () async {
       final dir = await seedOldDatabase(9);
       final store = await ProfileStore.open(directory: dir);
       addTearDown(store.close);
 
-      // Healed on disk, not only at the read, so nothing else has to know.
-      expect(await store.get('engine'), 'onDevice');
-      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.onDevice);
+      expect(await store.get('engine'), 'cloud');
+      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.cloud);
     });
 
-    test('a value this build has never heard of lands on one that works',
+    test('a value this build has never heard of lands on the one that exists',
         () async {
-      final dir = await seedOldDatabase(9);
+      final dir = await seedOldDatabase(11);
       // Written after the fact, standing in for a restored backup or a
       // truncated row: the migration has already run by this point, which is
       // exactly when the read-side fallback is all that is left.
@@ -477,12 +524,12 @@ group('a fresh install', () {
       await store.put('engine', 'somethingElse');
       addTearDown(store.close);
 
-      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.onDevice,
+      expect(KoruEngine.parse(await store.get('engine')), KoruEngine.cloud,
           reason: 'the read must not depend on the migration having run');
     });
 
     test('a real engine survives the upgrade untouched', () async {
-      final dir = await seedOldDatabase(9);
+      final dir = await seedOldDatabase(11);
       final store = await ProfileStore.open(directory: dir);
       addTearDown(store.close);
 
@@ -493,6 +540,21 @@ group('a fresh install', () {
       final again = await ProfileStore.open(directory: dir);
       addTearDown(again.close);
       expect(await again.get('engine'), 'cloud');
+    });
+
+    test('the migration does not invent a key, and says nothing about one',
+        () async {
+      // What it must not do is guess. A key lives in the Android keystore, which
+      // SQL cannot read, so the one honest outcome after the migration is "no
+      // model connected" — which the app says out loud and offers to fix.
+      final dir = await seedOldDatabase(11);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      final all = await store.all();
+      expect(all.keys, isNot(contains('cloud_key')));
+      expect(all.keys.any((k) => k.contains('key')), isFalse,
+          reason: 'the database is not where keys live');
     });
   });
 }

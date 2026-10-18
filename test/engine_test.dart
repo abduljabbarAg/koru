@@ -1,14 +1,17 @@
-import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:koru/cloud_providers.dart';
 import 'package:koru/engine.dart';
-import 'package:koru/local/bundled_engine.dart';
-import 'package:koru/local/local_model_client.dart';
-import 'package:koru/models.dart';
 import 'package:koru/packet.dart';
-/// These tests exist because of measured behaviour on the target phone, not
-/// because of theory. See docs/on-device-model.md: Qwen2.5-0.5B answered a
+
+/// The guards and the one engine, tested on their own.
+///
+/// These exist because of measured behaviour on real devices, not because of
+/// theory. The small on-device model that has since been removed answered a
 /// dosing question with dosing advice and a contract question with a ruling,
-/// after the routing gate was bypassed by talking to the server directly.
+/// after the routing gate was bypassed by talking to the server directly, and it
+/// cheerfully reported saving a record it could not have saved. The engine it
+/// ran on is gone; the obligations are not, and the lists below are what
+/// survives of them.
 void main() {
   group('ModelOutputGuard', () {
     test('flags dose advice', () {
@@ -23,6 +26,7 @@ void main() {
         isTrue,
       );
     });
+
     test('flags legal rulings', () {
       expect(
         ModelOutputGuard.needsHuman('Breaking it without telling them is illegal.'),
@@ -30,9 +34,11 @@ void main() {
       );
       expect(ModelOutputGuard.needsHuman('You can sue for that.'), isTrue);
     });
+
     test('flags the exact crisis phrasing the small model produced', () {
-      // Verbatim from the measured run. If the model changes its wording this
-      // stops matching, which is a reason to look again rather than to relax it.
+      // Verbatim from the measured run. If the wording this list is protecting
+      // against changes, this stops matching, which is a reason to look again
+      // rather than to relax it.
       expect(
         ModelOutputGuard.needsHuman(
           "That's the kind of melancholy question I often hear. It's natural to "
@@ -41,6 +47,7 @@ void main() {
         isTrue,
       );
     });
+
     test('lets ordinary answers through', () {
       const good = [
         'Your hourly rate is 250 AED.',
@@ -54,6 +61,7 @@ void main() {
         expect(ModelOutputGuard.needsHuman(text), isFalse, reason: text);
       }
     });
+
     test('does not fire on words that merely sound like a trigger', () {
       expect(ModelOutputGuard.needsHuman('Please legalise this contract.'), isFalse);
       expect(ModelOutputGuard.needsHuman('My dose of coffee was fine.'), isFalse);
@@ -61,459 +69,13 @@ void main() {
       expect(ModelOutputGuard.needsHuman('The class was great, I stopped taking notes.'),
           isFalse);
     });
+
     test('an empty answer is not a violation', () {
       expect(ModelOutputGuard.needsHuman(''), isFalse);
       expect(ModelOutputGuard.needsHuman('   '), isFalse);
     });
   });
-  group('LocalModelPrompt', () {
-    const packet = ContextPacket(
-      nickname: 'kami',
-      lifeStage: 'running a business',
-      business: 'solo dev',
-      goals: 'two more clients',
-      focus: 'Getting paid',
-    );
-    test('never carries the nickname', () {
-      final prompt = LocalModelPrompt.build(
-        packet: packet,
-        facts: const LocalEngineFacts(),
-      );
-      expect(prompt, isNot(contains('kami')));
-    });
-    test('states the three rules a small model needs', () {
-      final prompt = LocalModelPrompt.build(
-        packet: packet,
-        facts: const LocalEngineFacts(),
-      );
-      expect(prompt, contains('Be brief and concrete'));
-      // Kept as one plain sentence rather than three rules, with
-      // ModelOutputGuard and the routing gate doing the actual enforcement.
-      expect(prompt, contains('Never give a medical or legal opinion'));
-      expect(prompt, contains('say so rather than guessing'),
-          reason: 'still honest about what it cannot see, without defaulting '
-              'to refusal for anything outside the facts');
-    });
-    test('leaves the question to the user message', () {
-      final prompt = LocalModelPrompt.build(
-        packet: packet,
-        facts: const LocalEngineFacts(),
-      );
-      // The question is deliberately not here: it is the user message, and
-      // the system prompt has to stay identical turn to turn so glen can reuse
-      // the token prefix instead of prefilling the lot again.
-      expect(prompt, isNot(contains('what should I charge?')));
-    });
-    group('tells the model what the app is for', () {
-      // The prompt used to say only what the model must not do. With no idea what
-      // it was for, asked about a client it began an answer, abandoned it
-      // mid-sentence and produced "I am Koru, a personal assistant" instead.
-      final prompt = LocalModelPrompt.build(
-        packet: packet,
-        facts: const LocalEngineFacts(),
-      );
-      test('says what the app keeps track of', () {
-        expect(prompt, contains('clients, money owed to you, deadlines'));
-      });
-      test('says it can record things, and how', () {
-        expect(prompt, contains('can record any of those'));
-        expect(prompt, contains('add client Bilal for 2000'),
-            reason: 'an example phrase is what makes the rest usable');
-      });
-      test('leads with what the app does, not with what it must not do', () {
-        // The first thing the model reads decides what it thinks it is for.
-        final firstSentence = prompt.split('\n').first;
-        expect(firstSentence, contains('assistant for a freelancer'));
-        expect(firstSentence, isNot(contains('Never')));
-        expect(firstSentence, isNot(contains('do not')));
-      });
-      test('still refuses rather than inventing', () {
-        // Honesty about what is missing, without a wall of prohibitions in front
-      // of the question. A model handed a list of never do this declines the
-      // ordinary things too, which is how asking it to add a client produced
-      // "I cannot help with that request".
-      expect(prompt, contains('say so rather than guessing'));
-      });
-      test('is short enough that the prefill is worth paying', () {
-        // Every line here is time the user waits before the first word. Capped so
-        // a future change cannot quietly triple it.
-        expect(prompt.trim().split('\n').length, lessThan(20),
-            reason: 'prompt line count');
-      });
-    });
-    test('omits the context block when there is nothing to say', () {
-      final prompt = LocalModelPrompt.build(
-        packet: packet,
-        facts: const LocalEngineFacts(),
-      );
-      expect(prompt, isNot(contains('What you know right now')));
-    });
-  });
-  group('LocalEngineFacts', () {
-    test('is empty with no records', () {
-      expect(const LocalEngineFacts().isEmpty, isTrue);
-    });
-    test('names who owes what, from the ledger', () {
-      const facts = LocalEngineFacts(
-        clients: [
-          Client(id: 1, name: 'A', status: 'paid', amount: 5000),
-          Client(id: 2, name: 'B', status: 'delivered', amount: 2400),
-        ],
-        received: {1: 5000},
-      );
-      final rendered = facts.renderForModel();
-      expect(rendered, contains('Clients: 2, 1 settled'));
-      // Only B owes. Summing every client gave 7400 and told the model to chase
-      // money that was already in the bank.
-      expect(rendered, contains('Still owed in total: 2400 across 1'));
-      expect(rendered, contains('B owes 2400'));
-      expect(rendered, isNot(contains('A owes')));
-    });
-    test('a part payment leaves the rest owed', () {
-      const facts = LocalEngineFacts(
-        clients: [Client(id: 1, name: 'Bilal', status: 'delivered', amount: 2000)],
-        received: {1: 500},
-      );
-      final rendered = facts.renderForModel();
-      expect(rendered, contains('Bilal owes 1500'));
-      expect(rendered, contains('Still owed in total: 1500'));
-    });
-    test('an invoiced client who has not paid still owes, whatever the status',
-        () {
-      // The old rendering only counted 'delivered', so an invoice sent to an
-      // active client was invisible to the model until the status happened to
-      // change. The ledger does not care about the label.
-      const facts = LocalEngineFacts(
-        clients: [Client(id: 1, name: 'Bilal', status: 'active', amount: 900)],
-      );
-      expect(facts.renderForModel(), contains('Bilal owes 900'));
-    });
-    test('overpaying never reads as money owed to the freelancer', () {
-      const facts = LocalEngineFacts(
-        clients: [Client(id: 1, name: 'A', status: 'paid', amount: 100)],
-        received: {1: 250},
-      );
-      final rendered = facts.renderForModel();
-      expect(rendered, contains('Still owed in total: 0 across 0'));
-      expect(rendered, isNot(contains('owes 0')));
-      expect(rendered, isNot(contains('-')));
-    });
-    test('deadlines are named so they can be discussed', () {
-      const facts = LocalEngineFacts(
-        deadlines: [Deadline(title: 'Send invoice', due: '2026-03-01')],
-      );
-      expect(facts.renderForModel(), contains('Send invoice (due 2026-03-01)'));
-      expect(const LocalEngineFacts(deadlines: [Deadline(title: 'x', due: 'd')]).isEmpty,
-          isFalse);
-    });
-    test('includes goals and focus', () {
-      const facts = LocalEngineFacts(goals: 'ship more', focus: 'Career');
-      final rendered = facts.renderForModel();
-      expect(rendered, contains('Their goal: ship more'));
-      expect(rendered, contains('They want help with: Career'));
-    });
-    // Prefill dominates the latency on this phone, so the facts block has to
-    // stay bounded no matter how much the user accumulates. These assert the
-    // caps themselves rather than a line count, so widening a cap is a
-    // deliberate edit rather than a number that drifts.
-    test('names at most four clients and four deadlines, then counts the rest', () {
-      final facts = LocalEngineFacts(
-        clients: [
-          for (var i = 1; i <= 8; i++)
-            Client(id: i, name: 'C$i', status: 'delivered', amount: 100.0 * i),
-        ],
-        deadlines: [
-          for (var i = 1; i <= 8; i++) Deadline(title: 'D$i', due: '2026-03-0$i'),
-        ],
-      );
-      final rendered = facts.renderForModel();
-      expect(rendered, contains('Still owed in total: 3600 across 8'));
-      // C8 is the biggest balance, so it leads.
-      expect(rendered, contains('C8 owes 800'));
-      expect(rendered, isNot(contains('C1 owes')));
-      expect(rendered, contains('and 4 more client(s) with a balance'));
-      expect(rendered, contains('and 4 more after those'));
-    });
-    test('stays short enough to be worth prefilling', () {
-      const facts = LocalEngineFacts(
-        goals: 'g',
-        focus: 'f',
-        clients: [
-          Client(id: 1, name: 'A', status: 'paid', amount: 100),
-          Client(id: 2, name: 'B', status: 'delivered', amount: 200),
-        ],
-        received: {1: 100},
-      );
-      expect(facts.renderForModel().split('\n').length, lessThanOrEqualTo(10));
-    });
-  });
-  group('LocalModelConfig', () {
-    test('round trips through json', () {
-      const config = LocalModelConfig(
-        endpoint: 'http://127.0.0.1:8099',
-        modelId: 'qwen2.5-0.5b-instruct',
-        label: 'Qwen 0.5B',
-        sizeBytes: 491400032,
-      );
-      final restored = LocalModelConfig.fromMap(
-        jsonDecode(jsonEncode(config.toMap())) as Map<String, Object?>,
-      );
-      expect(restored.endpoint, config.endpoint);
-      expect(restored.modelId, config.modelId);
-      expect(restored.sizeBytes, config.sizeBytes);
-    });
-    test('estimates ram above the file size', () {
-      const config = LocalModelConfig(sizeBytes: 491400032, label: 'Qwen 0.5B');
-      expect(config.estimatedRamMb, greaterThan(468));
-    });
-  });
-  group('endpoint handling', () {
-    const client = LocalModelClient();
-    test('adds a scheme when one is missing', () {
-      expect(client.normaliseEndpoint('127.0.0.1:8099'), 'http://127.0.0.1:8099');
-    });
-    test('strips trailing slashes', () {
-      expect(client.normaliseEndpoint('http://127.0.0.1:8099//'), 'http://127.0.0.1:8099');
-    });
-    test('accepts a pasted full path', () {
-      expect(
-        client.normaliseEndpoint('http://127.0.0.1:8099/v1/chat/completions'),
-        'http://127.0.0.1:8099',
-      );
-      expect(
-        client.normaliseEndpoint('http://127.0.0.1:8099/v1'),
-        'http://127.0.0.1:8099',
-      );
-    });
-    test('falls back to the default when empty', () {
-      expect(client.normaliseEndpoint('   '), 'http://127.0.0.1:8080');
-    });
-  });
-  group('streaming parser', () {
-    test('reads an OpenAI delta chunk', () {
-      const chunk = '{"choices":[{"delta":{"content":"hello"}}]}';
-      expect(LocalModelClient.parseDelta(chunk), 'hello');
-    });
-    test('ignores a chunk with no content yet', () {
-      const chunk = '{"choices":[{"delta":{"role":"assistant"}}]}';
-      expect(LocalModelClient.parseDelta(chunk), '');
-    });
-    test('falls back to a full message when that is what arrives', () {
-      const chunk = '{"choices":[{"message":{"content":"whole"}}]}';
-      expect(LocalModelClient.parseDelta(chunk), 'whole');
-    });
-    test('skips malformed chunks rather than throwing', () {
-      expect(LocalModelClient.parseDelta('not json'), '');
-      expect(LocalModelClient.parseDelta('{}'), '');
-      expect(LocalModelClient.parseDelta('{"choices":[]}'), '');
-      expect(LocalModelClient.parseDelta('{"choices":[1]}'), '');
-    });
-    // The engine sends prefill progress as an SSE comment, which a conforming
-    // reader ignores. That is the point: a stock OpenAI client must still see
-    // exactly the tokens it always did.
-    test('reads prefill progress out of a comment', () {
-      expect(LocalModelClient.parseProgress(': prefill 128/300'), (128, 300));
-      expect(LocalModelClient.parseProgress(':prefill 1/2'), (1, 2));
-    });
-    test('an ordinary line is never mistaken for progress', () {
-      expect(LocalModelClient.parseProgress('data: {"choices":[]}'), isNull);
-      expect(LocalModelClient.parseProgress(''), isNull);
-      expect(LocalModelClient.parseProgress(': something else'), isNull);
-    });
-    test('a nonsense comment is ignored rather than crashing the stream', () {
-      expect(LocalModelClient.parseProgress(': prefill'), isNull);
-      expect(LocalModelClient.parseProgress(': prefill 5'), isNull);
-      expect(LocalModelClient.parseProgress(': prefill x/y'), isNull);
-      expect(LocalModelClient.parseProgress(': prefill 5/0'), isNull);
-    });
-    test('an opening role chunk carries no text and does not look like one', () {
-      // glen sends this before prefill so the client stops waiting blind. It
-      // must contribute nothing to the answer, or every reply gains a blank.
-      const opening = '{"choices":[{"delta":{"role":"assistant","content":""}}]}';
-      expect(LocalModelClient.parseDelta(opening), '');
-    });
-  });
-  group('KoruEngine', () {
-    // The migration. This is the only thing standing between an install that was
-    // on the deleted built-in engine and a chat that cannot answer anything, so
-    // it is checked on the exact strings that are sitting in the profile table
-    // on somebody's phone rather than on the shape of the enum.
-    test('an install on the deleted built-in engine lands on a working one', () {
-      expect(KoruEngine.parse('builtIn'), KoruEngine.onDevice,
-          reason: "the literal string on disk today is 'builtIn'");
-    });
 
-    test('an unknown or corrupt stored value lands on a working one', () {
-      for (final stored in [null, '', 'nonsense', 'BUILTIN', 'on device', '0']) {
-        expect(KoruEngine.parse(stored), KoruEngine.onDevice,
-            reason: 'parse($stored) must not leave the app with no engine');
-      }
-    });
-
-    test('a stored value that is still a real engine is respected', () {
-      expect(KoruEngine.parse('onDevice'), KoruEngine.onDevice);
-      expect(KoruEngine.parse('cloud'), KoruEngine.cloud);
-    });
-
-    test('there are two engines, and both are models', () {
-      expect(KoruEngine.values, [KoruEngine.onDevice, KoruEngine.cloud]);
-    });
-
-    test('every engine explains itself', () {
-      for (final engine in KoruEngine.values) {
-        expect(engine.label, isNotEmpty);
-        expect(engine.blurb, isNotEmpty);
-      }
-    });
-  });
-  group('EngineUnavailable', () {
-    // The wording is the feature. The old behaviour answered a question nobody
-    // asked with rules-based prose; what replaced it has to say what is missing
-    // and what to do about it, in that order, on every path.
-    test('a model that is not running says so and offers to start it', () {
-      const down = EngineUnavailable(
-        detail: 'Could not reach it',
-        recovery: EngineRecovery.startLocalModel,
-      );
-      expect(down.text, contains('cannot answer'));
-      expect(down.text, contains('not running'));
-      expect(down.actionLabel, 'Start the local model');
-    });
-
-    test('a missing key says which provider and offers to add one', () {
-      const down = EngineUnavailable(
-        detail: 'There is no OpenRouter key saved',
-        recovery: EngineRecovery.addCloudKey,
-      );
-      expect(down.text, contains('cannot answer'));
-      expect(down.text, contains('OpenRouter'));
-      expect(down.actionLabel, 'Add a cloud key');
-    });
-
-    test('no offer is phrased as an answer', () {
-      for (final recovery in EngineRecovery.values) {
-        final down = EngineUnavailable(detail: 'x', recovery: recovery);
-        expect(down.text, startsWith('I cannot answer that.'));
-      }
-    });
-  });
-  group('routing gate covers the model failure cases', () {
-    // The three questions the measured model got dangerously wrong. Each has to
-    // be stopped before an engine runs, which is the actual safety property.
-    test('gate catches the phrasings that used to slip through', () {
-      // Each of these reached a live model before the list was extended.
-      const phrases = [
-        'Should I take two of my blood pressure pills instead of one?',
-        'I do not want to be alive anymore.',
-        'I do not really want to live like this.',
-        'Is it legal to break this contract?',
-      ];
-      for (final phrase in phrases) {
-        expect(
-          RoutingDecision.route(phrase).needsHuman,
-          isTrue,
-          reason: 'must never reach an engine: "$phrase"',
-        );
-      }
-    });
-    test('gate intercepts every case the small model failed', () {
-      const cases = [
-        'Should I take two of my blood pressure pills instead of one?',
-        'Can I break this contract without telling the other side?',
-        'I do not want to be alive anymore.',
-      ];
-      for (final question in cases) {
-        expect(
-          RoutingDecision.route(question).needsHuman,
-          isTrue,
-          reason: 'must never reach an engine: "$question"',
-        );
-      }
-    });
-  });
-  group('bundled engine results', () {
-    test('a build without a model says so plainly', () {
-      const result = BundledStartResult.notBundled();
-      expect(result.started, isFalse);
-      expect(result.reason, contains('does not include a model'));
-      expect(result.kind, BundledStartKind.notBundled);
-    });
-    test('a failure carries the reason', () {
-      const result = BundledStartResult.failed('out of memory');
-      expect(result.started, isFalse);
-      expect(result.reason, 'out of memory');
-      expect(result.kind, BundledStartKind.failed);
-    });
-    test('a ready result carries the endpoint', () {
-      const result = BundledStartResult.ready('http://127.0.0.1:8099');
-      expect(result.started, isTrue);
-      expect(result.endpoint, 'http://127.0.0.1:8099');
-      expect(result.reason, isNull);
-    });
-  });
-  group('bundled engine status', () {
-    test('an unavailable status explains itself', () {
-      const status = BundledEngineStatus.unavailable('libglen.so is not extracted');
-      expect(status.available, isFalse);
-      expect(status.summary, contains('not extracted'));
-    });
-    test('ready says both the engine and the model are there', () {
-      const status = BundledEngineStatus(
-        available: true,
-        path: '/data/app/lib/arm64/libglen.so',
-        exists: true,
-        executable: true,
-        modelAvailable: true,
-      );
-      expect(status.summary, contains('on disk'));
-    });
-    test('engine without a model is called out rather than claimed ready', () {
-      const status = BundledEngineStatus(
-        available: true,
-        modelAvailable: false,
-      );
-      expect(status.summary, contains('not been unpacked'));
-    });
-    test('a missing file names where it looked', () {
-      const status = BundledEngineStatus(
-        available: false,
-        path: '/data/app/~~x/com.abduljabbar.koru/lib/arm64/libglen.so',
-        exists: false,
-        reason: 'libglen.so is not there',
-      );
-      expect(status.summary, contains('not there'));
-      expect(status.path, contains('libglen.so'));
-    });
-  });
-  group('the local prompt does not pay for the cloud packet twice', () {
-    test('drops the cloud packet when local facts exist', () {
-      final prompt = LocalModelPrompt.build(
-        packet: const ContextPacket(
-          nickname: '',
-          lifeStage: 'freelance',
-          business: 'design',
-          goals: 'ship more',
-          focus: 'money',
-        ),
-        facts: const LocalEngineFacts(goals: 'ship more'),
-      );
-      // Duplicated prefill the user waits through before the first token.
-      expect(prompt, isNot(contains('ship more. ship more')));
-    });
-    test('keeps it as a fallback when there are no facts at all', () {
-      final prompt = LocalModelPrompt.build(
-        packet: const ContextPacket(
-          nickname: '',
-          lifeStage: 'freelance',
-          business: 'design',
-          goals: '',
-          focus: '',
-        ),
-        facts: const LocalEngineFacts(),
-      );
-      expect(prompt, contains('stage: freelance'));
-    });
-  });
   group('a model claiming it saved something', () {
     test('catches the ordinary ways of claiming one', () {
       for (final claim in [
@@ -527,13 +89,15 @@ void main() {
         expect(WriteClaimGuard.claimsWrite(claim), isTrue, reason: claim);
       }
     });
+
     test('catches it through curly punctuation and odd casing', () {
       // The guard folds case and punctuation before matching, and used to fold
       // the answer but not the needle, so an apostrophe in the needle made it
       // match nothing at all.
-      expect(WriteClaimGuard.claimsWrite('I\u2019ve added Bilal'), isTrue);
+      expect(WriteClaimGuard.claimsWrite('I’ve added Bilal'), isTrue);
       expect(WriteClaimGuard.claimsWrite('ADDED SUCCESSFULLY'), isTrue);
     });
+
     test('does not fire on an ordinary answer', () {
       for (final answer in [
         'Bilal owes you 2000.',
@@ -543,9 +107,201 @@ void main() {
         expect(WriteClaimGuard.claimsWrite(answer), isFalse, reason: answer);
       }
     });
+
     test('the replacement tells you the phrasing that would work', () {
       expect(WriteClaimGuard.nothingWasSaved, contains('add client'));
       expect(WriteClaimGuard.nothingWasSaved, contains('not saved'));
+    });
+  });
+
+  group('KoruEngine', () {
+    // The migration. This is the only thing standing between an install that was
+    // on a removed engine and a chat that cannot answer anything, so it is
+    // checked on the exact strings that are sitting in the profile table on
+    // somebody's phone rather than on the shape of the enum.
+    test('an install on the removed on-device engine lands on the one that exists',
+        () {
+      expect(KoruEngine.parse('onDevice'), KoruEngine.cloud,
+          reason: "the literal string on disk today is 'onDevice'");
+    });
+
+    test('an install on the older removed engine lands on the one that exists', () {
+      expect(KoruEngine.parse('builtIn'), KoruEngine.cloud,
+          reason: "the literal string on disk was 'builtIn'");
+    });
+
+    test('an unknown or absent stored value lands on the one that exists', () {
+      for (final stored in [null, '', 'nonsense', 'BUILTIN', 'on device', '0']) {
+        expect(KoruEngine.parse(stored), KoruEngine.cloud,
+            reason: 'parse($stored) must not leave the app with no engine');
+      }
+    });
+
+    test('a stored value that is still the real engine is respected', () {
+      expect(KoruEngine.parse('cloud'), KoruEngine.cloud);
+    });
+
+    test('there is exactly one engine, and it is the cloud one', () {
+      // A second value here would be a claim the app cannot keep: there is
+      // nothing to add it to.
+      expect(KoruEngine.values, [KoruEngine.cloud]);
+    });
+
+    test('the engine names itself, and the name is used everywhere', () {
+      // One getter, because the app bar, the switcher, the badge on a reply and
+      // Settings all read it. Four copies of the words is how the same engine
+      // came to be called four different things.
+      expect(KoruEngine.cloud.label, 'Cloud model');
+    });
+  });
+
+  group('EngineLink', () {
+    CloudProvider stub(String id, String label) =>
+        CloudProvider(
+          id: id,
+          label: label,
+          baseUrl: 'https://example.test',
+          format: CloudWireFormat.openai,
+          keyHint: 'sk-test',
+        );
+
+    test('a saved key is the only thing that counts as connected', () {
+      // Not the selection: a provider is always "selected", the default one is
+      // filled in for somebody who has never chosen anything, so a link reading
+      // "connected" from that would be true on a fresh install and mean nothing.
+      final provider = stub('openrouter', 'OpenRouter');
+      expect(
+        EngineLink(provider: provider, model: 'a', hasKey: true).isConnected,
+        isTrue,
+      );
+      expect(
+        EngineLink(provider: provider, model: 'a', hasKey: false).isConnected,
+        isFalse,
+      );
+    });
+
+    test('the label names the company when there is one, and says so when not',
+        () {
+      final provider = stub('openrouter', 'OpenRouter');
+      expect(
+        EngineLink(provider: provider, model: 'a', hasKey: true).label,
+        'OpenRouter',
+      );
+      expect(
+        EngineLink(provider: provider, model: 'a', hasKey: false).label,
+        'No model connected',
+      );
+    });
+
+    test('two missing-key states, two different sentences', () {
+      final provider = stub('openrouter', 'OpenRouter');
+      // Nobody has chosen anything yet.
+      final nothing = EngineLink(provider: provider, model: 'a', hasKey: false);
+      // A company was chosen and its key never arrived.
+      final missing = EngineLink(
+        provider: provider,
+        model: 'a',
+        hasKey: false,
+        providerChosen: true,
+      );
+      expect(nothing.missing, 'No model is connected yet.');
+      expect(missing.missing, 'No OpenRouter key is saved.');
+      expect(nothing.recovery, EngineRecovery.connectCloud);
+      expect(missing.recovery, EngineRecovery.addCloudKey);
+    });
+
+    test('a link that could not be read says so rather than guessing', () {
+      // A keystore that is gone leaves the app unable to tell. It says nothing
+      // is connected, which is a statement about what it knows, and offers the
+      // same tap.
+      expect(EngineLink.unreadable.isConnected, isFalse);
+      expect(EngineLink.unreadable.missing, 'No model is connected yet.');
+      expect(EngineLink.unreadable.label, 'No model connected');
+      expect(EngineLink.unreadable.recovery, EngineRecovery.connectCloud);
+    });
+
+    test('a connected link has nothing missing to report', () {
+      final link = EngineLink(
+        provider: stub('openrouter', 'OpenRouter'),
+        model: 'a',
+        hasKey: true,
+      );
+      expect(link.missing, isEmpty);
+    });
+  });
+
+  group('EngineUnavailable', () {
+    // The wording is the feature. The old behaviour answered a question nobody
+    // asked with rules-based prose; what replaced it has to say what is missing
+    // and what to do about it, in that order, on every path.
+    test('a missing key says which provider and offers to add one', () {
+      const down = EngineUnavailable(
+        detail: 'There is no OpenRouter key saved',
+        recovery: EngineRecovery.addCloudKey,
+      );
+      expect(down.text, contains('cannot answer'));
+      expect(down.text, contains('OpenRouter'));
+      expect(down.actionLabel, 'Add a cloud key');
+    });
+
+    test('nothing connected offers to connect one', () {
+      const down = EngineUnavailable(
+        detail: 'No model is connected yet.',
+        recovery: EngineRecovery.connectCloud,
+      );
+      expect(down.title, 'No model connected');
+      expect(down.text, contains('Nothing is connected'));
+      expect(down.actionLabel, 'Connect a cloud model');
+    });
+
+    test('no offer is phrased as an answer', () {
+      for (final recovery in EngineRecovery.values) {
+        final down = EngineUnavailable(detail: 'x', recovery: recovery);
+        expect(down.text, startsWith('I cannot answer that.'));
+        expect(down.title, isNot(contains('?')));
+      }
+    });
+  });
+
+  group('routing gate covers the model failure cases', () {
+    // The three questions the measured model got dangerously wrong. Each has to
+    // be stopped before a model is asked, which is the actual safety property.
+    test('gate catches the phrasings that used to slip through', () {
+      // Each of these reached a live model before the list was extended.
+      const phrases = [
+        'Should I take two of my blood pressure pills instead of one?',
+        'I do not want to be alive anymore.',
+        'I do not really want to live like this.',
+        'Is it legal to break this contract?',
+      ];
+      for (final phrase in phrases) {
+        expect(
+          RoutingDecision.route(phrase).needsHuman,
+          isTrue,
+          reason: 'must never reach a model: "$phrase"',
+        );
+      }
+    });
+
+    test('gate intercepts every case the small model failed', () {
+      const cases = [
+        'Should I take two of my blood pressure pills instead of one?',
+        'Can I break this contract without telling the other side?',
+        'I do not want to be alive anymore.',
+      ];
+      for (final question in cases) {
+        expect(
+          RoutingDecision.route(question).needsHuman,
+          isTrue,
+          reason: 'must never reach a model: "$question"',
+        );
+      }
+    });
+
+    test('an ordinary question is handed on, and says which model takes it', () {
+      final decision = RoutingDecision.route('who owes me money?');
+      expect(decision.needsHuman, isFalse);
+      expect(decision.reason, contains('cloud model'));
     });
   });
 }

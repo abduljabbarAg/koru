@@ -21,13 +21,14 @@ class Schema {
   const Schema._();
 
   /// What this build writes.
-  static const int version = 11;
+  static const int version = 12;
 
   /// A database being created at [version].
   ///
   /// Runs every step from the start, in order, rather than only the last: a
   /// fresh install and an upgrade must end up with exactly the same shape, and
-  /// building v11 directly would be the one way of finding out that they do not.
+  /// building the current version directly would be the one way of finding out
+  /// that they do not.
   static Future<void> create(Database d, int version) async {
     await _createV1(d);
     if (version >= 2) await _migrateToV2(d);
@@ -40,6 +41,7 @@ class Schema {
     if (version >= 9) await _migrateToV9(d);
     if (version >= 10) await _migrateToV10(d);
     if (version >= 11) await _migrateToV11(d);
+    if (version >= 12) await _migrateToV12(d);
   }
 
   /// A database that already existed, opened at a higher [to].
@@ -58,6 +60,36 @@ class Schema {
     if (from < 9) await _migrateToV9(d);
     if (from < 10) await _migrateToV10(d);
     if (from < 11) await _migrateToV11(d);
+    if (from < 12) await _migrateToV12(d);
+  }
+
+  /// Every stored engine becomes the one that is left.
+  ///
+  /// The on-device engine is gone — the bundled 1.7B model took the APK from
+  /// 16 MB to 258 MB and was the direct cause of every complaint about the
+  /// assistant — so an install still holding `'onDevice'` names something this
+  /// build cannot run. It is rewritten here rather than only guarded at the read,
+  /// so the value is healed once, on the device, and every later read (the app
+  /// bar, the switcher, a backup) sees an engine that exists instead of each of
+  /// them remembering a fallback. `KoruEngine.parse` heals it again at the read
+  /// for the cases the migration cannot: a value written by a later build, or a
+  /// profile row that was truncated.
+  ///
+  /// `'cloud'` is the only value this build accepts, so the one statement covers
+  /// `'onDevice'`, the older `'builtIn'`, and anything this build has never heard
+  /// of. One statement, no read-modify-write, and no way for it to fail on real
+  /// data: the profile table has existed since v1 and value is NOT NULL, so the
+  /// worst case is a row that does not match and nothing happens.
+  ///
+  /// It deliberately does *not* decide whether a key exists. A key lives in the
+  /// Android keystore, not in this database, so SQL cannot see it and must not
+  /// guess: after this runs, a person with no key is in the honest
+  /// nothing-connected state, which the app bar, the switcher and the reply card
+  /// all say out loud and offer to fix.
+  static Future<void> _migrateToV12(Database d) async {
+    await d.execute(
+      "UPDATE profile SET value = 'cloud' WHERE key = 'engine' AND value <> 'cloud'",
+    );
   }
 
   /// Things to do, as a list in their own right.
@@ -118,6 +150,12 @@ class Schema {
   /// One statement, no read-modify-write, and no way for it to fail on real data:
   /// the profile table has existed since v1 and value is NOT NULL, so the worst
   /// case is a row that does not match and nothing happens.
+  ///
+  /// Superseded by [_migrateToV12], which is the same sentence with one engine
+  /// left instead of two. It is kept because a migration runs once per person and
+  /// is never revisited: an install going from v9 today runs this and then v12,
+  /// and deleting a step an existing phone has not taken yet is how a database
+  /// stops opening.
   static Future<void> _migrateToV10(Database d) async {
     await d.execute(
       "UPDATE profile SET value = 'onDevice' "

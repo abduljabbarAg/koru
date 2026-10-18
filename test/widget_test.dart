@@ -201,20 +201,21 @@ void main() {
     /// Walks the whole flow the way a person does. The regression this covers is
     /// real: the Start button used to do nothing, because RootGate held the
     /// onboarded flag in a field and never watched the provider onboarding set.
-    /// The regression that made the app unusable. The splash used to hold until
-    /// the engine reported progress, which made the start screen hostage to work
-    /// happening behind it: a system dialog for battery optimisation, a slow
-    /// model copy, a health check that never answered. Any of those left the
-    /// user on the splash with nothing to tap.
     ///
-    /// So the splash now leaves on a plain timer that none of that can starve.
-    testWidgets('the splash leaves on a timer whatever the engine is doing',
+    /// The splash used to hold until the local model reported progress, which
+    /// made the start screen hostage to work happening behind it: a system
+    /// dialog for battery optimisation, a slow model copy, a health check that
+    /// never answered. Any of those left the user on the splash with nothing to
+    /// tap. It now leaves on a plain timer that none of that can starve, and
+    /// this is what holds that line.
+    testWidgets('the splash leaves on a timer whatever is behind it',
         (tester) async {
       useTallSurface(tester);
       await pumpApp(tester, const RootGate());
 
-      // Put the engine into its slowest possible state: warming, and never
-      // finishing. A splash that waited on this would hang forever.
+      // Nothing on the splash reports progress any more, so the only thing to
+      // wait on is the clock. Reading the chat notifier keeps that read in the
+      // frame rather than leaving a provider unopened.
       final container = ProviderScope.containerOf(
           tester.element(find.byType(RootGate)));
       container.read(chatProvider.notifier);
@@ -223,7 +224,7 @@ void main() {
       await pumpFrames(tester, frames: 12);
 
       expect(find.byType(SplashScreen), findsNothing,
-          reason: 'the splash must not wait on the engine');
+          reason: 'the splash must not wait on anything behind it');
       expect(find.byType(OnboardingScreen), findsOneWidget);
     });
 
@@ -583,11 +584,15 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('the empty state says the answer stays on the phone',
+    testWidgets('the empty state says where the answers come from',
         (tester) async {
       await pumpApp(tester, const ChatScreen());
-      expect(find.textContaining('answered by the local model'), findsOneWidget);
-      expect(find.text('CLOUD MODEL'), findsNothing);
+      // It used to promise an answer from the phone. There is no model on the
+      // phone any more, so the copy names the one there is rather than implying
+      // a local one.
+      expect(find.textContaining('cloud model you connect in Settings'),
+          findsOneWidget);
+      expect(find.textContaining('local model'), findsNothing);
     });
 
     testWidgets('a blank question is not sent', (tester) async {
@@ -602,18 +607,16 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('an unanswered question says the engine is not running, and offers '
-        'to start it', (tester) async {
-      // No model is serving in a widget test and there is no second engine to
-      // answer instead, which is exactly the state the deleted built-in
-      // assistant used to paper over with an answer out of the records. The
-      // question asked for the profile; the profile must not be read back as if
-      // a model had said it.
+    testWidgets('an unanswered question says nothing is connected, and offers to '
+        'connect something', (tester) async {
+      // No key is set in a widget test and there is nothing to answer instead,
+      // which is exactly the state the deleted built-in assistant used to paper
+      // over with an answer out of the records. The question asked for the
+      // profile; the profile must not be read back as if a model had said it.
       await seed(tester, () async {
         await store.put('nickname', 'kami');
         await store.put('goals', 'two more clients');
         await store.completeOnboarding();
-        await store.put('engine', 'onDevice');
       });
       await pumpApp(tester, const ChatScreen());
 
@@ -624,17 +627,10 @@ void main() {
       expect(find.textContaining('cannot answer'), findsWidgets);
       expect(find.textContaining('two more clients'), findsNothing,
           reason: 'the answer must not be written out of the records');
-      expect(find.text('Start the local model'), findsOneWidget);
+      expect(find.text('Connect a cloud model'), findsOneWidget);
       // Nothing on the reply claims a model produced the sentence above it.
-      // Scoped to the badge, because the app bar above names the engine that is
-      // selected, which is a different claim and a true one.
-      expect(
-        find.descendant(
-          of: find.byType(KoruEngineBadge),
-          matching: find.text('LOCAL MODEL'),
-        ),
-        findsNothing,
-      );
+      expect(find.byType(KoruEngineBadge), findsNothing,
+          reason: 'the app built this reply, so no engine label goes on it');
     });
 
     testWidgets('a question needing a person shows the handoff card', (tester) async {
@@ -652,23 +648,23 @@ void main() {
       );
     });
 
-    testWidgets('a cloud question without a key says so instead of guessing',
+    testWidgets('a question for the selected company without a key names it',
         (tester) async {
-      // The online engine has to be selected first, because the on-device one is
-      // the default and is what answers when nothing else can. It used to answer
-      // from the user's records with a bracketed note about the key underneath,
-      // which is how a missing key looked like a working assistant.
+      // A company that has been chosen and has no key is a different state from
+      // nothing connected, and the difference is which tap is offered. It used to
+      // answer from the user's records with a bracketed note about the key
+      // underneath, which is how a missing key looked like a working assistant.
       await seed(tester, () async {
         await store.completeOnboarding();
-        await store.put('engine', 'cloud');
+        await store.put('cloud_provider', 'groq');
       });
       await pumpApp(tester, const ChatScreen());
 
-      await tester.enterText(find.byType(TextField), 'is this islam');
+      await tester.enterText(find.byType(TextField), 'what should I chase?');
       await tester.tap(find.byTooltip('Send'));
       await pumpFrames(tester, frames: 12);
 
-      expect(find.textContaining('key is set'), findsWidgets);
+      expect(find.textContaining('key is saved'), findsWidgets);
       expect(find.textContaining('cannot answer'), findsWidgets);
       // And the fix is offered rather than described in a privacy policy.
       expect(find.text('Add a cloud key'), findsOneWidget);
@@ -680,7 +676,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
-      // Enough frames for the engine path to finish saying it cannot answer.
+      // Enough frames for the chat path to finish saying it cannot answer.
       await pumpFrames(tester, frames: 20);
 
       final roles = await tester.runAsync(() async {
@@ -696,7 +692,7 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'hello');
       await tester.tap(find.byTooltip('Send'));
-      // Enough frames for the engine path to finish saying it cannot answer.
+      // Enough frames for the chat path to finish saying it cannot answer.
       await pumpFrames(tester, frames: 20);
 
       await tester.tap(find.byTooltip('Clear conversation'));
@@ -926,20 +922,21 @@ void main() {
     testWidgets('says what the model is doing, not just that something is',
         (tester) async {
       // The dots answered "is it working". They did not answer "is it working on
-      // the right thing", and on this phone prefill takes seconds and decode
-      // runs at four tokens a second, which feel identical as bouncing dots.
+      // the right thing", and a model reading your records before it answers
+      // takes real time, which feels identical to bouncing dots.
       await pumpApp(tester, const MaterialApp(
-        home: Scaffold(body: KoruThinkingDots(activity: KoruActivity.reading)),
+        home: Scaffold(body: KoruThinkingDots(activity: KoruActivity.readingList)),
       ));
-      expect(find.text('Reading your records'), findsOneWidget);
+      expect(find.text('Reading your list'), findsOneWidget);
     });
 
     testWidgets('every phase has its own wording', (tester) async {
       final labels = <String, KoruActivity>{
-        'Waking up': KoruActivity.waking,
-        'Reading your records': KoruActivity.reading,
         'Writing an answer': KoruActivity.writing,
         'Working out what you meant': KoruActivity.thinking,
+        'Reading your list': KoruActivity.readingList,
+        'Checking what is due': KoruActivity.checking,
+        'Looking up your clients': KoruActivity.looking,
       };
       for (final entry in labels.entries) {
         await pumpApp(tester, MaterialApp(

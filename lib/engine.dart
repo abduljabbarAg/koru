@@ -1,138 +1,181 @@
-import 'models.dart';
-import 'packet.dart';
+import 'cloud_providers.dart';
 
-/// Which engine answers a question.
+/// Which model answers.
 ///
-/// Two, and both of them are models. There used to be a third: a deterministic
-/// assistant that answered out of the user's own records without any model
-/// running. It is gone, and it is gone deliberately — see [KoruEngine.parse] for
-/// what happens to an install that had it selected, and the note on
-/// [EngineUnavailable] for why it must never answer again.
+/// There is one. There used to be two — a model served on this device and a
+/// frontier model over the internet — and before that three, the third being a
+/// rules-based assistant that answered out of the user's records with no model
+/// running at all.
 ///
-/// The two names are the two words the person who tested this on a phone asked
-/// for: "Local model" and "Cloud model", and nothing else. The same engine had
-/// been called "On this phone", "Model on this phone", "MODEL ON THIS PHONE" and
-/// "on this phone" depending on which screen you were looking at, and every one
-/// of those made the engine describe *where the answer comes from* rather than
-/// say what it is. A label that explains itself is a label that has to be read
-/// twice. So: local, cloud, and the noun.
+/// Both of the others are gone, and the reason is worth writing down because it
+/// is the reason for the app's size as much as its behaviour. The bundled 1.7B
+/// Q1_0 model took the APK from 16 MB to 258 MB and, asked a question, talked
+/// about a client instead of answering it, invented exchange rates, repeated
+/// itself, and took about thirteen seconds for forty tokens. Every complaint
+/// reported about "the AI" was that model. The rules-based one answered in
+/// milliseconds, which is exactly why it made a broken engine look like a fast
+/// one, so it went too.
 ///
-/// These are also the words used everywhere else — the switcher, the app bar,
-/// the badge on a reply, Settings, the legal copy and the failure card. The
-/// provider company behind the cloud engine is named for the company, on its own
-/// page, and is never what this enum calls an engine.
+/// What is left is a model over the internet, which is the one thing this app
+/// needs from AI: turning what somebody types into a record they then confirm.
+///
+/// So this enum is a single value. It survives because the stored profile key
+/// does, because every surface still needs the one honest name for it, and
+/// because [KoruEngine.parse] has to keep resolving an install's stored string
+/// whatever it says. It is no longer a choice, so nothing writes it any more
+/// except the migration in `schema.dart`, which heals whatever an older install
+/// already had.
 enum KoruEngine {
-  /// A model served on this device over loopback. Real generation, no network.
-  onDevice,
-
   /// A frontier model over the internet.
   cloud;
 
   /// The one name this engine has anywhere in the app.
-  String get label => switch (this) {
-        KoruEngine.onDevice => 'Local model',
-        KoruEngine.cloud => 'Cloud model',
-      };
+  ///
+  /// A getter on a one-value enum on purpose: the app bar, the switcher, the
+  /// badge on a reply and Settings all read it, and four copies of the words is
+  /// how the same engine came to be called "Cloud model", "cloud", "Cloud" and
+  /// "the online model" in four places.
+  String get label => 'Cloud model';
 
-  /// What picking it costs, in one sentence.
+  /// Reads a stored engine name, and always lands on the one that exists.
   ///
-  /// Says what the model is rather than where it sits. "Running on this phone"
-  /// described the plumbing; what somebody choosing between two rows needs to
-  /// know is that one of them is free, offline and wants memory.
-  String get blurb => switch (this) {
-        KoruEngine.onDevice =>
-          'A real model that runs here. Slower, and it wants memory.',
-        KoruEngine.cloud => 'A frontier model over the internet. Needs a key.',
-      };
-
-  /// Reads a stored engine name, and always lands on a working one.
+  /// A total function, not a nullable one, because an install can hold anything
+  /// at all in that column: the literal string `'onDevice'` from before the
+  /// bundled engine was removed, `'builtIn'` from before the rules-based one
+  /// was, or nothing at all on a fresh install. All of them mean the same thing
+  /// now — there is one engine and this is it — and anything else can only have
+  /// come from a downgrade, a restored backup or a truncated row.
   ///
-  /// The migration, and the reason it is a total function rather than a nullable
-  /// one. Installs that were on the deleted `builtIn` engine still have the
-  /// literal string `'builtIn'` in the profile table, and an install can hold
-  /// anything at all if the row was truncated or a later build writes a value
-  /// this build has never heard of. Both used to resolve to nothing usable, so
-  /// the only safe reading of an engine this build does not know is the one that
-  /// ships inside the app: [onDevice] needs no key, no account and no network,
-  /// and it is the engine the person already chose by installing this app.
-  ///
-  /// Landing on `onDevice` means a user upgrading from the built-in engine opens
-  /// a real model rather than an empty engine. They get the wait for a cold
-  /// start, which is honest, instead of a rules-based answer dressed as an AI.
+  /// Whether that one engine can actually answer is a different question, and
+  /// one this cannot answer: it depends on whether a key is saved, which lives
+  /// in the keystore rather than in the database. That is [EngineLink].
   static KoruEngine parse(String? value) => KoruEngine.values.firstWhere(
         (e) => e.name == value,
-        orElse: () => KoruEngine.onDevice,
+        orElse: () => KoruEngine.cloud,
       );
 }
 
-/// How far the local model has got coming up, as the number the whole app
-/// passes around.
+/// Whether anything can answer, and which model.
 ///
-/// A single int rather than a phase object because six widgets read it and none
-/// of them decides anything about it — they print a percentage or draw a bar.
-/// What they do need is to tell the two halves of a cold start apart, because
-/// only one of them has a percentage.
-///
-/// Measured on the phone: the first-run unpack of the 248 MB model is a copy
-/// with no progress behind it and takes tens of seconds, while the engine's own
-/// load after that is about 3 seconds and reports properly. Reporting both as
-/// "0%" is what made the splash look frozen for the whole of the slow part and
-/// then suddenly jump — so [unpacking] is its own value, outside the percentage
-/// range, and every surface switches on it.
-class EngineProgress {
-  const EngineProgress._();
+/// The whole of the engine question, as one value. The app bar, the switcher,
+/// the badge on a reply, Settings and the failure card all have to answer it the
+/// same way, and five reads of two keys from the store and the keystore is how
+/// any of them ends up claiming a model is connected when it is not.
+class EngineLink {
+  final KoruEngine engine;
 
-  /// Copying the model out of the APK. There is no percentage to report: the
-  /// platform does the copy and reports nothing until it is done.
+  /// The company that would answer. Defaults to the first one in the list on an
+  /// install where nobody has chosen, which is a default rather than a
+  /// decision — hence [providerChosen] beside it.
+  final CloudProvider provider;
+
+  final String model;
+
+  /// Whether a key is saved for [provider] in the keystore.
+  final bool hasKey;
+
+  /// Whether this person has ever picked a company, as opposed to inheriting the
+  /// default one.
   ///
-  /// Negative, and therefore impossible to confuse with a real percentage. Any
-  /// surface that forgets to handle it shows a bar pinned to zero, which is the
-  /// one thing it must not do.
-  static const int unpacking = -1;
+  /// The difference between "you have not connected anything" and "you picked
+  /// OpenRouter and have not added its key". They are the same repair and very
+  /// different sentences, and only this column distinguishes them.
+  final bool providerChosen;
+
+  const EngineLink({
+    this.engine = KoruEngine.cloud,
+    required this.provider,
+    required this.model,
+    required this.hasKey,
+    this.providerChosen = false,
+  });
+
+  /// True when a question can leave the phone and be answered.
+  ///
+  /// The key is the test rather than the selection. Every provider Koru ships
+  /// asks for one, and a provider is always "selected" — the default one is
+  /// filled in for somebody who has never chosen anything — so a link that read
+  /// "connected" from the selection alone would be true on a fresh install and
+  /// mean nothing.
+  bool get isConnected => hasKey;
+
+  /// The headline, for the app bar and the top of the switcher.
+  ///
+  /// The company's name rather than the engine's, because "Cloud model" says
+  /// something is answering and "OpenRouter" says who. When nothing is
+  /// connected it says that instead, which is the state a fresh install and
+  /// every install that never added a key are honestly in.
+  String get label => isConnected ? provider.label : 'No model connected';
+
+  /// What is missing, in one sentence, and empty when nothing is.
+  String get missing => isConnected
+      ? ''
+      : providerChosen
+          ? 'No ${provider.label} key is saved.'
+          : 'No model is connected yet.';
+
+  /// The one tap that fixes a link that is not connected.
+  EngineRecovery get recovery =>
+      providerChosen ? EngineRecovery.addCloudKey : EngineRecovery.connectCloud;
+
+  /// The state when the link could not be read at all.
+  ///
+  /// A keystore that is gone or locked leaves the app unable to tell whether
+  /// anything is connected. That is not the same as a key being absent, but it
+  /// is the same remedy and the same honest thing to say: the app cannot answer,
+  /// and here is where to fix it. Nothing here is a guess that a model is
+  /// missing — it says nothing is connected because nothing is known to be.
+  static const EngineLink unreadable = EngineLink(
+    provider: CloudProvider(
+      id: '',
+      label: 'the cloud provider',
+      baseUrl: '',
+      format: CloudWireFormat.openai,
+      keyHint: '',
+    ),
+    model: '',
+    hasKey: false,
+  );
 }
 
-/// The one thing to do about an engine that could not answer.
+/// The one thing to do about a model that could not answer.
 ///
-/// Kept as a value rather than as a sentence per call site so the button on the
-/// card, the tests and the two failure paths cannot disagree about what "start
-/// it" means.
+/// Two values rather than three, because there were three: the local model being
+/// down is not a state this app has any more.
 enum EngineRecovery {
-  /// The local model is not up. The action starts it.
-  startLocalModel,
+  /// Nobody has picked a company yet. The action opens the switcher, which is
+  /// where the picking happens.
+  connectCloud,
 
-  /// The selected cloud provider has no key. The action opens where keys are
-  /// entered.
+  /// A company is picked and its key is not saved. The action opens the screen
+  /// that takes a key.
   addCloudKey,
-
-  /// Nothing is configured. The action opens the switcher.
-  chooseEngine,
 }
 
-/// What to say, and what to offer, when no engine could answer.
+/// What to say, and what to offer, when no model could answer.
 ///
-/// This is the whole of the answer for that turn, on purpose. The app had a third
-/// engine — a rules-based one that answered from the user's own records — and it
-/// reached for it whenever a model could not be reached: a missing key, a model
-/// that had not started, a crash. It produced a sentence immediately, so the
-/// model looked fast, and it produced rubbish, because it was matching phrases
-/// rather than understanding questions. Someone asking for an answer got an
-/// answer; they just never got one from a model, and nothing on screen said so.
+/// This is the whole of the answer for that turn. The app had a third engine — a
+/// rules-based one that answered from the user's own records — and it reached for
+/// it whenever a model could not be reached: a missing key, a model that had not
+/// started, a crash. It produced a sentence immediately, so the model looked
+/// fast, and it produced rubbish, because it was matching phrases rather than
+/// understanding questions. Someone asking for an answer got an answer; they
+/// just never got one from a model, and nothing on screen said so.
 ///
-/// So there is no fallback any more. If neither engine can answer, the app says
-/// which one is missing and offers the tap that fixes it.
+/// So there is no fallback. If nothing can answer, the app says what is missing
+/// and offers the tap that fixes it.
 class EngineUnavailable {
   const EngineUnavailable({required this.detail, required this.recovery});
 
-  /// What went wrong, in the engine's own terms. Always shown, never guessed at.
+  /// What is missing, in the app's own terms. Always shown, never guessed at.
   final String detail;
 
   final EngineRecovery recovery;
 
   /// The headline on the card under the reply.
   String get title => switch (recovery) {
-        EngineRecovery.startLocalModel => 'The local model is not up',
+        EngineRecovery.connectCloud => 'No model connected',
         EngineRecovery.addCloudKey => 'No key for the cloud model',
-        EngineRecovery.chooseEngine => 'No engine to ask',
       };
 
   /// The sentence that goes in the bubble.
@@ -141,236 +184,17 @@ class EngineUnavailable {
   /// the records, an apology with an answer attached — is the behaviour this
   /// replaced.
   String get text => switch (recovery) {
-        EngineRecovery.startLocalModel =>
-          'I cannot answer that. The local model is not running'
-              '${detail.isEmpty ? '' : ': $detail'}.',
+        EngineRecovery.connectCloud =>
+          'I cannot answer that. Nothing is connected, so there is nothing to ask.',
         EngineRecovery.addCloudKey =>
           'I cannot answer that. $detail, so there is nothing to ask.',
-        EngineRecovery.chooseEngine =>
-          'I cannot answer that. $detail, so there is no engine to ask.',
       };
 
   /// The label on the button that fixes it.
   String get actionLabel => switch (recovery) {
-        EngineRecovery.startLocalModel => 'Start the local model',
+        EngineRecovery.connectCloud => 'Connect a cloud model',
         EngineRecovery.addCloudKey => 'Add a cloud key',
-        EngineRecovery.chooseEngine => 'Choose who answers',
       };
-}
-
-/// Builds the system prompt for a small local model.
-///
-/// A 0.5B model needs a narrower brief than a frontier one. Long instructions
-/// wash out, so this is short, concrete, and repeats the one rule that matters
-/// most: do not invent a diagnosis or a ruling.
-class LocalModelPrompt {
-  static String build({
-    required ContextPacket packet,
-    required LocalEngineFacts facts,
-    String currency = 'AED',
-  }) {
-    // Short, and about what this app is rather than about rules.
-    //
-    // The previous prompt led with six prohibitions. A small model reads a list
-    // of "never do this" as a list of things it is unwilling to do, and then
-    // refuses the ordinary things too: asked to add a client it would answer
-    // that it cannot help with that request. Leading with what the app does and
-    // what it can record gets a useful answer; leading with rules gets a shrug.
-    final buffer = StringBuffer()
-      ..writeln('You are Koru, an assistant for a freelancer. Answer from the')
-      ..writeln('facts below. Be brief and concrete. If a figure is not in the')
-      ..writeln('facts, say so rather than guessing.')
-      ..writeln()
-      ..writeln('This app keeps clients, money owed to you, deadlines and your')
-      ..writeln('own projects. Koru can record any of those. To record something,')
-      ..writeln('say it plainly, like "add client Bilal for 2000", and the app will')
-      ..writeln('show what it understood before saving.')
-      ..writeln('All amounts below are in $currency.')
-      // One line, not three. The clinical, legal and crisis rules used to be
-      // spelled out in the prompt as well as enforced by ModelOutputGuard and
-      // the routing gate. Keeping one plain sentence and relying on the
-      // deterministic layers is defence in depth rather than three ways of
-      // saying the same thing to a model that struggles with long rules.
-      ..writeln('Never give a medical or legal opinion; say who should decide.');
-
-    // Rendered before the fallback check on purpose. isEmpty only looks at
-    // clients and deadlines, so a user with goals set and no records yet counts
-    // as empty, and asking that question is exactly the case where duplicating
-    // the goals into the prompt costs prefill for nothing.
-    final context = facts.renderForModel();
-
-    // The cloud packet is deliberately not sent to a model running on this
-    // phone. renderForCloud is documented as what goes upstream, it duplicates
-    // the goals and the body logs that the facts above already carry, and every
-    // duplicated token is prefill the user sits through before the first word
-    // appears. It is used only when the facts render to nothing at all, so a
-    // fresh install still says something useful.
-    if (context.isEmpty) {
-      final cloud = packet.renderForCloud();
-      if (cloud.isNotEmpty) buffer.writeln(cloud);
-    }
-
-    // The model cannot see the database, so anything it should reason over has
-    // to be spelled out here. This is the whole value of a local model: it can
-    // answer questions the records were never written to be queried by.
-    if (context.isNotEmpty) {
-      buffer
-        ..writeln()
-        ..writeln('What you know right now:')
-        ..writeln(context);
-    }
-
-    // The question is NOT in this prompt either. It travels as the user message,
-    // and repeating it here would cost a second copy of every question on the
-    // most expensive machine in the app.
-    //
-    // Earlier turns are NOT written into this prompt either.
-    //
-    // They travel as real chat messages instead, and that is not a style
-    // choice. glen reuses the longest common token prefix between turns, so a
-    // system prompt that changes on every turn means every turn is a full
-    // prefill again. Prefill costs about 7 tokens a second on this phone: a
-    // 754-token prompt measured 106 seconds cold and 1.2 seconds when the prefix
-    // was already cached. Flattening the conversation into the system prompt
-    // would have thrown that away and made every follow-up take a minute and a
-    // half.
-    //
-    // So the system prompt stays byte-identical turn to turn, and the history
-    // rides along in the messages array where the chat template puts it.
-
-    return buffer.toString();
-  }
-}
-
-/// The slice of the user's data a small model is allowed to reason over.
-///
-/// Deliberately small. Everything here is already on the device, but a 0.5B
-/// model has a short effective context, so it gets a short, dense brief rather
-/// than the whole database.
-class LocalEngineFacts {
-  final String nickname;
-  final String goals;
-  final String focus;
-  final List<Client> clients;
-
-  /// Money received per client id, so a balance can be stated without the model
-  /// having to do arithmetic on numbers it was handed as loose text.
-  final Map<int, double> received;
-
-  /// Open deadlines, soonest first.
-  final List<Deadline> deadlines;
-
-  /// Calendar entries, today forward.
-  ///
-  /// Without these the model could answer "what is due" and not "what am I
-  /// doing tomorrow", which is the same loop seen from the other side.
-  final List<CalendarEvent> events;
-
-  /// Client and personal projects, with the latest note for each.
-  ///
-  /// Projects existed in the database from the start and were never in this, so
-  /// the model could not answer a single question about the work someone was
-  /// actually doing. It knew who owed money and nothing about what any of it
-  /// was for.
-  final List<Project> projects;
-
-  final Map<int, String> projectNotes;
-
-  const LocalEngineFacts({
-    this.nickname = '',
-    this.goals = '',
-    this.focus = '',
-    this.clients = const [],
-    this.received = const {},
-    this.deadlines = const [],
-    this.events = const [],
-    this.projects = const [],
-    this.projectNotes = const {},
-  });
-
-  bool get isEmpty =>
-      clients.isEmpty &&
-      deadlines.isEmpty &&
-      projects.isEmpty &&
-      events.isEmpty;
-
-  double balanceOf(Client c) =>
-      c.id == null ? 0 : c.balanceWith(received[c.id!] ?? 0);
-
-  /// Compact, roughly one line per fact.
-  ///
-  /// Every line is prefill the user waits through before the first word appears,
-  /// so the budget is enforced rather than assumed: clients who owe money are
-  /// named individually because that is the question actually asked, and
-  /// everything past a handful is counted instead of listed.
-  String renderForModel() {
-    final lines = <String>[];
-    if (goals.isNotEmpty) lines.add('Their goal: $goals');
-    if (focus.isNotEmpty) lines.add('They want help with: $focus');
-
-    if (clients.isNotEmpty) {
-      // Balances come from the ledger, not from the status. Summing every
-      // client counted money that had already been paid, and money for work not
-      // finished yet, as "unpaid", so the model was told to chase money it
-      // already had.
-      final owing = clients.where((c) => balanceOf(c) > 0).toList()
-        ..sort((a, b) => balanceOf(b).compareTo(balanceOf(a)));
-      final outstanding = owing.fold<double>(0, (a, c) => a + balanceOf(c));
-      final paid = clients.where((c) => c.status == 'paid').length;
-      final overdue = clients.where((c) => c.isOverdueOn(DateTime.now())).length;
-
-      lines.add('Clients: ${clients.length}, $paid settled');
-      lines.add('Still owed in total: ${outstanding.toStringAsFixed(0)} across ${owing.length} client(s)');
-      for (final c in owing.take(4)) {
-        lines.add('${c.name} owes ${balanceOf(c).toStringAsFixed(0)}');
-      }
-      if (owing.length > 4) {
-        lines.add('and ${owing.length - 4} more client(s) with a balance');
-      }
-      if (overdue > 0) lines.add('$overdue client(s) are past their due date');
-    }
-
-    if (projects.isNotEmpty) {
-      // One line per project, newest note folded in. This is prefill the user
-      // waits through, so a project with no note still gets named: "Bilal site,
-      // no update" is information, and omitting it makes the model believe the
-      // project does not exist.
-      for (final pr in projects.take(6)) {
-        final note = projectNotes[pr.id]?.trim();
-        final progress = (pr.progress * 100).round();
-        final bits = <String>['$progress% along'];
-        if (pr.target != null && pr.target!.isNotEmpty) {
-          bits.add('done when ${pr.target}');
-        }
-        if (note != null && note.isNotEmpty) bits.add('latest: $note');
-        lines.add('${pr.name} (${pr.kind == ProjectKind.client ? 'client' : 'personal'}): ${bits.join(', ')}');
-      }
-      if (projects.length > 6) {
-        lines.add('and ${projects.length - 6} more project(s)');
-      }
-    }
-
-    if (deadlines.isNotEmpty) {
-      final items = deadlines.take(4).map((d) => '${d.title} (due ${d.due})').join('; ');
-      lines.add('Deadlines coming up: $items');
-      if (deadlines.length > 4) {
-        lines.add('and ${deadlines.length - 4} more after those');
-      }
-    }
-
-    if (events.isNotEmpty) {
-      final items = events
-          .take(4)
-          .map((e) => '${e.title} (${e.date}${e.time == null ? '' : ' ${e.time}'})')
-          .join('; ');
-      lines.add('On the calendar: $items');
-      if (events.length > 4) {
-        lines.add('and ${events.length - 4} more calendar entries');
-      }
-    }
-
-    return lines.join('\n');
-  }
 }
 
 /// One earlier turn, carried into the model prompt.
@@ -385,15 +209,15 @@ enum ChatRole { user, koru }
 
 /// Re-checks what a model returned before it is shown.
 ///
-/// The routing gate already stops sensitive questions reaching any engine, and
-/// that is the real control. This is defence in depth, and it exists because of
-/// something measured rather than imagined: asked about doubling a blood
-/// pressure dose, Qwen2.5-0.5B on the target phone answered with dose advice.
-/// Asked whether breaking a contract was allowed, it ruled on it. A small model
-/// has no reliable notion of where its competence ends, so the answer is
-/// checked instead of trusted.
+/// The routing gate already stops sensitive questions reaching the model, and
+/// that is the real control. This is defence in depth, and the list exists
+/// because of something measured rather than imagined: the small on-device model
+/// that has since been removed was asked about doubling a blood pressure dose
+/// and answered with dose advice, and asked whether breaking a contract was
+/// allowed and ruled on it. A model has no reliable notion of where its
+/// competence ends, so the answer is checked rather than trusted.
 ///
-/// Pure and synchronous so the rules are unit testable without a model.
+/// Pure and synchronous so the rules are unit testable without a network.
 class ModelOutputGuard {
   const ModelOutputGuard._();
 
@@ -446,10 +270,9 @@ class ModelOutputGuard {
 
 /// Catches a model claiming it saved something it could not have.
 ///
-/// The model is a text generator running on the phone. It cannot write to the
-/// database; it emits words. Everything that gets saved is written by Dart
-/// after the user approves a card. So any sentence saying it added, saved or
-/// created something is false by construction.
+/// The model emits words. It cannot write to the database; everything that gets
+/// saved is written by Dart after the user approves a card. So any sentence
+/// saying it added, saved or created something is false by construction.
 ///
 /// It is also the most damaging thing a helper can say, because it is the one
 /// the user cannot check: the chat looks like a receipt, and the record simply

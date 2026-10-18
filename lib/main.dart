@@ -8,8 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'attention.dart';
 import 'attention_bridge.dart';
 import 'deep_link.dart';
-import 'engine.dart';
-import 'engine_launch.dart';
 import 'mascot/mascot.dart';
 import 'onboarding.dart';
 import 'permission_consent.dart';
@@ -76,7 +74,7 @@ class RootGate extends ConsumerStatefulWidget {
   ConsumerState<RootGate> createState() => _RootGateState();
 }
 
-class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver {
+class _RootGateState extends ConsumerState<RootGate> {
   bool? _ready;
   bool _splashDone = false;
 
@@ -95,53 +93,14 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
   /// Cancelled with the gate rather than left running behind it.
   Timer? _patience;
 
-  /// Whether the app is currently in the background.
-  ///
-  /// Tracked rather than acted on directly, because the only thing worth doing
-  /// is what happens on the way *back*. Nothing is stopped on the way out: see
-  /// [resumeLocalEngine], which is where that decision is written down.
-  bool _away = false;
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-
-    // First thing in the app, before anything that has to be awaited.
-    //
-    // The warm-up used to be reached through chatProvider.load(), which could not
-    // run until the store was open, onboarding had been checked, and the
-    // permission consent had been resolved — three platform round trips before a
-    // single byte of engine start. None of that has anything to do with bringing
-    // a model up, and all of it happens on every launch. About 3 seconds of
-    // engine spawn plus, on a first run, a 248 MB unpack, all of it now spent
-    // while the user is reading the splash rather than after they press send.
-    //
-    // Fire and forget on purpose. Nothing in the UI waits on this; the only
-    // thing it delays is the first question, and only for as long as the engine
-    // really takes.
-    unawaited(ref.read(engineWarmUpProvider.future));
-
     _check();
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final away = state != AppLifecycleState.resumed;
-    if (away == _away) return;
-    _away = away;
-    // Nothing is stopped on the way out. See [resumeLocalEngine] for why, and for
-    // what is done instead on the way back in.
-    if (away || !mounted) return;
-    resumeLocalEngine(ref);
-  }
-
-  @override
   void dispose() {
-    // Removed before the super call, because the observer list outlives this
-    // state object and a late lifecycle change into a disposed gate is an
-    // exception in the log of every app switch on the way out.
-    WidgetsBinding.instance.removeObserver(this);
     _patience?.cancel();
     _patience = null;
     super.dispose();
@@ -168,10 +127,7 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
     // the question is asked with onboarding already behind it.
     if (done) {
       unawaited(_decideConsent());
-      // The stored conversation, once the gate knows who this is. The engine is
-      // not started here: that moved to initState, ahead of every await in this
-      // method, so it no longer waits on the store, on onboarding and on the
-      // permission consent in turn.
+      // The stored conversation, once the gate knows who this is.
       ref.read(chatProvider.notifier).load();
     }
   }
@@ -225,9 +181,9 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
     });
   }
 
-  /// Lets the splash go, once. Not tied to the engine: the loading bar under it
-  /// reports real progress, and a start screen that can be starved by a system
-  /// dialog or a slow model copy is how this deadlocked before.
+  /// Lets the splash go, once. On a timer rather than on a task finishing,
+  /// because a start screen that can be starved by a system dialog or a slow
+  /// keystore read is how this deadlocked before.
   void _leaveSplash() {
     if (_splashDone) return;
     setState(() => _splashDone = true);
@@ -251,10 +207,9 @@ class _RootGateState extends ConsumerState<RootGate> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     if (_ready == null || !_splashDone) {
-      // Five seconds, first run or not, because the loading bar underneath it
-      // is real: it reports the model actually being unpacked and warmed, and a
-      // flash of a bar going nowhere is worse than a few seconds of honesty. The
-      // bar still moves with real engine progress, not a timer.
+      // Long enough to read and to let the character get a few idle cycles. The
+      // bar underneath sweeps rather than pretending to a number, because there
+      // is no counted work left to report — the store opens and the app draws.
       return SplashScreen(onDone: _leaveSplash);
     }
     // Watched, not cached in a field. Onboarding flips this provider when the
@@ -328,10 +283,9 @@ class ConsentCheckScreen extends StatelessWidget {
 /// in, which is the whole point of animating it. Long enough to read, short
 /// enough not to be in the way.
 ///
-/// It is also held while the local engine is actually starting, because that
-/// takes tens of seconds on a cold install and the splash is the only honest
-/// place to say so. Capped, so a model that never arrives still lets the user in
-/// to read the error rather than stranding them on a progress bar forever.
+/// It used to also be held while the local model was unpacked and warmed, which
+/// took tens of seconds on a cold install. There is no local model and nothing
+/// left to wait for, so the splash is a timer and no longer a hostage.
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({
     super.key,
@@ -364,15 +318,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     // One timer, one hard deadline. Deliberately not a chain that waits for
     // anything.
     //
-    // The splash used to poll the engine's progress and hold until the model had
+    // The splash used to poll the model engine's progress and hold until it had
     // finished starting. That made the start screen hostage to work happening
     // behind it: a system dialog for battery optimisation, a model copy that
     // took longer than expected, or a health check that never answered, and the
     // app sat there with no way forward and nothing to tap.
     //
-    // The splash now leaves on a timer that cannot be starved by any of it, and
-    // the engine reports its progress inside the chat instead, where being slow
-    // is fine because there is other work to do.
+    // There is no engine to poll now, and the rule is worth keeping anyway: the
+    // splash leaves on a timer that nothing can starve.
     _timer = Timer(widget.minimum + const Duration(milliseconds: 250), _leave);
   }
 
@@ -414,14 +367,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 style: KoruType.bodyCompactStrong,
               ),
               const SizedBox(height: KoruSpace.xxl),
-              // Determinate when there is real progress to report, and honest
-              // about what it is. The old bar swept forever regardless of
-              // whether anything was happening, which is a bar that tells you
-              // nothing while the app is doing its slowest work.
-              _EngineLoadingBar(
-                progress: ref.watch(chatProvider).engineProgress,
-                health: ref.watch(healthProvider).valueOrNull,
-              ),
+              // Sweeps, because nothing here is a counted task any more and a
+              // bar pinned at zero for the length of the splash is a bar telling
+              // the reader the app is stuck. What it can report honestly is what
+              // Android still has not granted, which is the health line under it.
+              const _EngineLoadingBar(),
             ],
           ),
         ),
@@ -430,23 +380,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 }
 
-/// The splash's loading bar, which knows what it is loading.
-class _EngineLoadingBar extends StatelessWidget {
-  const _EngineLoadingBar({this.progress, this.health});
-
-  /// What the engine is doing, as [EngineProgress] describes it. Null while it
-  /// is not doing anything, which is not the same as doing nothing.
-  final int? progress;
-
-  /// Shown only once there is something worth saying about it.
-  final KoruHealth? health;
+/// The splash's loading bar, and what it knows.
+///
+/// Sweeps rather than counting, because there is no counted work left to report:
+/// the store opening and the first frame are the only things it waits on, and a
+/// determinate bar over those is a bar inventing a number. What it does carry is
+/// the health check, which is real and actionable — each problem named
+/// separately, because each can be refused on its own and "something is not set
+/// up" gives the reader nothing to do.
+class _EngineLoadingBar extends ConsumerWidget {
+  const _EngineLoadingBar();
 
   @override
-  Widget build(BuildContext context) {
-    final p = progress;
-    // No percentage exists for the copy out of the APK, so the bar sweeps rather
-    // than lying about being stuck at zero.
-    final copying = p == EngineProgress.unpacking;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final health = ref.watch(healthProvider).valueOrNull;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -454,36 +401,16 @@ class _EngineLoadingBar extends StatelessWidget {
           width: 120,
           child: LinearProgressIndicator(
             minHeight: 3,
-            // Null value means the bar sweeps, which is right when nothing is
-            // being reported yet, right while the copy is running because there
-            // is no percentage to report, and wrong once there is one.
-            value: (p == null || copying) ? null : (p / 100).clamp(0.0, 1.0),
+            value: null,
             backgroundColor: KoruColors.line,
             valueColor: AlwaysStoppedAnimation(KoruColors.leaf),
           ),
         ),
         const SizedBox(height: KoruSpace.sml),
-        SizedBox(
-          child: Text(
-            switch (p) {
-              // Copying 248 MB out of the APK is the slowest thing this app ever
-              // does, and it is not obvious why. Named, given its size, and put
-              // here rather than after the first question: this is a splash, and
-              // the user has nothing else to read yet.
-              EngineProgress.unpacking =>
-                'Unpacking the local model, 248 MB. Once, on first use.',
-              null => 'Getting things ready',
-              _ => 'Starting the local model  $p%',
-            },
-            textAlign: TextAlign.center,
-            style: KoruType.caption,
-          ),
-        ),
-        if (health != null && !health!.complete) ...[
+        Text('Getting things ready', style: KoruType.caption),
+        if (health != null && !health.complete) ...[
           const SizedBox(height: KoruSpace.mdl),
-          // Named individually, because each of these can be refused on its own
-          // and "something is not set up" gives the reader nothing to do.
-          ...health!.problems.map(
+          ...health.problems.map(
             (problem) => Padding(
               padding: const EdgeInsets.only(bottom: KoruSpace.xs),
               child: Row(

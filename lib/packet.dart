@@ -105,22 +105,24 @@ class ContextPacket {
   static const int maxCloudWords = 90;
 }
 
-/// Turns a domain question into a routing decision, with no configuration
-/// surface exposed to the user.
+/// Turns a question into a routing decision, with no configuration surface
+/// exposed to the user.
 ///
 /// Routing rule, hardcoded by design:
-///   faith, mental health, medical, legal  -> cloud, and flag for human handoff
-///   everything else                         -> local
+///   crisis, diagnosis, legal ruling  -> hand to a person
+///   everything else                  -> ask the model
+///
+/// There is no longer a choice of engine here, and that is what removed the rest
+/// of the router. There used to be a second list of domains that decided which
+/// of two models a question went to — faith, health, medicine and law to the
+/// frontier one, everything else to the small one on the phone. With one model
+/// over the internet that list decides nothing, so it is gone rather than left
+/// behind returning a reason it can no longer justify.
 class RoutingDecision {
-  final bool useCloud;
   final bool needsHuman;
   final String reason;
 
-  const RoutingDecision({
-    required this.useCloud,
-    required this.needsHuman,
-    required this.reason,
-  });
+  const RoutingDecision({required this.needsHuman, required this.reason});
 
   /// Phrasings that mean a person should answer, not a model.
   ///
@@ -186,8 +188,6 @@ class RoutingDecision {
     'without telling the other side',
   ];
 
-  static const _cloudDomains = ['faith', 'religion', 'islam', 'mental', 'health', 'medical', 'legal'];
-
   /// Multi-word terms must match as a phrase, and every term must respect word
   /// boundaries, so "empty my folder" never matches a bare "empty".
   static bool _matches(String haystack, String needle) {
@@ -226,25 +226,14 @@ class RoutingDecision {
     for (final h in _handoff) {
       if (_matches(q, h)) {
         return const RoutingDecision(
-          useCloud: true,
           needsHuman: true,
           reason: 'This one deserves a person, not a model.',
         );
       }
     }
-    for (final c in _cloudDomains) {
-      if (_matches(q, c)) {
-        return const RoutingDecision(
-          useCloud: true,
-          needsHuman: false,
-          reason: 'Sent to a frontier model for a stronger answer.',
-        );
-      }
-    }
     return const RoutingDecision(
-      useCloud: false,
       needsHuman: false,
-      reason: 'Answered by the local model.',
+      reason: 'Answered by the cloud model.',
     );
   }
 }

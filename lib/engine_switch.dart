@@ -1,29 +1,20 @@
-/// The one place an engine, a provider or a model is chosen.
+/// The one place a provider is chosen.
 ///
-/// The chat's switcher and the Settings pickers both call these. They used to
-/// each write the store and invalidate the providers itself, which is exactly
-/// how two screens end up disagreeing about which engine is running: one wrote
-/// and forgot to invalidate, or invalidated a provider the other had already
-/// read. There is one write and one invalidation per choice now, and every
-/// caller goes through it.
+/// The switcher sheet in the chat and the Settings pickers both call this. They
+/// used to each write the store and invalidate the providers itself, which is
+/// exactly how two screens end up disagreeing about which company answers: one
+/// wrote and forgot to invalidate, or invalidated a provider the other had
+/// already read. There is one write and one invalidation per choice now, and
+/// every caller goes through it.
+///
+/// Nothing here chooses an *engine*. There is one, it is the cloud model, and
+/// the only decision left about it is the key.
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'cloud_providers.dart';
-import 'engine.dart';
-import 'local/bundled_engine.dart';
 import 'state.dart';
-
-/// Switches which engine answers.
-///
-/// Same write the Settings picker has always done, so the two cannot drift, and
-/// the chat reads the same key the moment the write lands.
-Future<void> selectEngine(WidgetRef ref, KoruEngine engine) async {
-  final store = await ref.read(storeProvider.future);
-  await store.put('engine', engine.name);
-  ref.invalidate(engineProvider);
-}
 
 /// Switches the cloud provider, and the model that goes with it.
 ///
@@ -45,27 +36,5 @@ Future<void> selectCloudProvider(WidgetRef ref, String providerId) async {
     }
   }
   ref.invalidate(cloudSelectionProvider);
+  ref.invalidate(engineLinkProvider);
 }
-
-/// Points the engine at one of the .gguf files this app can see.
-///
-/// The bundled model is stored as an empty path rather than as its own path.
-/// That is what the launcher reads to decide between "start the default" and
-/// "start this file", so writing the bundled path would work today and break the
-/// day the bundled file is unpacked somewhere else.
-Future<void> selectLocalModel(WidgetRef ref, LocalModelFile model) async {
-  final store = await ref.read(storeProvider.future);
-  await store.put('model_path', isBundledModel(model) ? '' : model.path);
-  ref.invalidate(chosenModelProvider);
-}
-
-/// Whether this row is the model that ships inside the app.
-///
-/// The platform lists it first and marks it "(bundled)". The old name is also
-/// checked, because an install from before the rename still has that file on
-/// disk and still offers it, and a label that no longer says "bundled" must not
-/// be able to turn the default into a chosen file.
-bool isBundledModel(LocalModelFile model) =>
-    model.label.contains('(bundled)') ||
-    model.label.startsWith(BundledEngine.bundledModelId) ||
-    model.label.startsWith('Qwen2.5');

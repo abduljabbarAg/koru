@@ -9,7 +9,6 @@ void main() {
     test('crisis routes to a human', () {
       final d = RoutingDecision.route('I have not slept in four days');
       expect(d.needsHuman, isTrue);
-      expect(d.useCloud, isTrue);
     });
 
     // Phrasings that a narrower list would have let through to a plain model
@@ -106,16 +105,17 @@ void main() {
       expect(RoutingDecision.route('i want to die laughing at that joke').needsHuman, isTrue);
     });
 
-    test('faith routes to cloud without a handoff', () {
+    test('faith goes to a model without a handoff', () {
       final d = RoutingDecision.route('is this islam');
-      expect(d.useCloud, isTrue);
       expect(d.needsHuman, isFalse);
+      // There is one model now, so there is nowhere else for this to go.
+      expect(d.reason, contains('cloud model'));
     });
 
-    test('business stays local', () {
+    test('business goes to the same model', () {
       final d = RoutingDecision.route('draft a follow up for my client');
-      expect(d.useCloud, isFalse);
       expect(d.needsHuman, isFalse);
+      expect(d.reason, contains('cloud model'));
     });
 
     test('punctuation and case do not change the outcome', () {
@@ -159,7 +159,6 @@ void main() {
         packet: packet,
         question: 'how do I price this?',
         routing: const RoutingDecision(
-          useCloud: true,
           needsHuman: false,
           reason: 'cloud',
         ),
@@ -178,7 +177,6 @@ void main() {
         packet: packet,
         question: 'hello',
         routing: const RoutingDecision(
-          useCloud: true,
           needsHuman: false,
           reason: 'ordinary question',
         ),
@@ -187,7 +185,6 @@ void main() {
         packet: packet,
         question: 'is this a diagnosis?',
         routing: const RoutingDecision(
-          useCloud: true,
           needsHuman: true,
           reason: 'deserves a person',
         ),
@@ -221,7 +218,6 @@ void main() {
 
   group('handoff', () {
     const needsHuman = RoutingDecision(
-      useCloud: true,
       needsHuman: true,
       reason: 'deserves a person',
     );
@@ -246,7 +242,7 @@ void main() {
     test('refuses to build a plan for a question that did not need one', () {
       expect(
         () => handoffPlanFor(
-          const RoutingDecision(useCloud: false, needsHuman: false, reason: 'local'),
+          const RoutingDecision(needsHuman: false, reason: 'asked without a handoff'),
           'draft an invoice',
         ),
         throwsArgumentError,

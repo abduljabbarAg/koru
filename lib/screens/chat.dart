@@ -220,9 +220,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               // which is the one place a reader loses their
                               // bearings.
                               dayDivider: _dayDivider(above, m),
-                              engineStarting: st.engineProgress != null,
-                              engineProgress: st.engineProgress,
-                              engineProblem: st.engineProblem,
                               onEdit: (text) => _editMessage(context, i, text),
                               onApprove: () => ref
                                   .read(chatProvider.notifier)
@@ -253,17 +250,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ],
             ),
           ),
-          // The engine's progress lives here rather than on the splash.
-          //
-          // It is the same information in the same place, but here being slow
-          // costs nothing: the user can read the conversation, start typing, or
-          // close the app, whereas holding the start screen for it meant a slow
-          // copy or a system dialog left them stuck with nothing to do.
-          if (st.engineProgress != null || st.engineProblem != null)
-            KoruEngineBanner(
-              progress: st.engineProgress,
-              problem: st.engineProblem,
-            ),
           KoruComposer(
             controller: _input,
             focusNode: _focus,
@@ -401,9 +387,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           style: KoruType.rowTitleLarge,
         ),
         const SizedBox(height: KoruSpace.sm),
+        // Says what is behind the answers rather than pretending there is one on
+        // the phone. It used to promise a local model and route faith, health,
+        // medicine and law somewhere else; there is one model now, and it is
+        // online.
         Text(
-          'Those questions are answered by the local model. Faith, health, '
-          'medicine and law go to the cloud model instead.',
+          'Answers come from the cloud model you connect in Settings. Faith, '
+          'health, medicine and law go to a person instead.',
           textAlign: TextAlign.center,
           style: KoruType.bodySmall,
         ),
@@ -430,24 +420,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  /// Carries out the action on a "no engine could answer" card.
+  /// Carries out the action on a "nothing could answer" card.
   ///
-  /// Three destinations and no fourth. The local model is started here rather
-  /// than by opening the switcher, because the person is already looking at the
-  /// question they asked and a start takes a moment: sending them somewhere to
-  /// arrange it is the thing that made "I cannot select the local model" feel
-  /// like a dead end.
+  /// Two destinations and no third. Both are one tap from the question the
+  /// person just asked, which is the point of the card: a failure that sends
+  /// them somewhere else to arrange it reads as a dead end, and the sentence
+  /// above it already said there was nothing they could do about it.
   Future<void> _fixEngine(BuildContext context, EngineUnavailable down) async {
+    if (!context.mounted) return;
     switch (down.recovery) {
-      case EngineRecovery.startLocalModel:
-        await ref.read(chatProvider.notifier).ensureEngineRunning();
       case EngineRecovery.addCloudKey:
-        if (!context.mounted) return;
         await Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => const CloudSettingsScreen()),
         );
-      case EngineRecovery.chooseEngine:
-        if (!context.mounted) return;
+      case EngineRecovery.connectCloud:
+        // Nobody has picked a company yet, so the sheet is where that happens —
+        // and it says plainly that nothing is connected rather than opening on
+        // a list of companies with no tick on any of them.
         await showEngineSwitcher(context);
     }
   }
@@ -504,9 +493,6 @@ class _ChatBubble extends StatefulWidget {
     required this.onApprove,
     required this.onDiscard,
     required this.onFixEngine,
-    required this.engineStarting,
-    required this.engineProgress,
-    required this.engineProblem,
     required this.grouped,
     required this.dayDivider,
   });
@@ -522,11 +508,6 @@ class _ChatBubble extends StatefulWidget {
 
   /// Set when this turn opens a new day in the thread.
   final String? dayDivider;
-
-  /// Whether the local model is being brought up right now, and how far.
-  final bool engineStarting;
-  final int? engineProgress;
-  final String? engineProblem;
 
   final void Function(String text) onEdit;
   final VoidCallback onApprove;
@@ -571,13 +552,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
           if (!isUser && opens)
             KoruMessageMeta(
               leading: const KoruMark(size: KoruSize.markSm),
-              badge: KoruEngineBadge(
-                engine: m.engine,
-                tokensPerSecond: m.tokensPerSecond,
-                starting: widget.engineStarting,
-                progress: widget.engineProgress,
-                failed: widget.engineProblem != null,
-              ),
+              // Built only when a model actually wrote this. A badge with a
+              // null engine renders nothing, but constructing one for every app
+              // reply means the tree claims there was provenance to report.
+              badge: m.engine == null ? null : KoruEngineBadge(engine: m.engine),
               why: m.why,
               clock: time == null ? null : _clock(time),
             ),
@@ -589,14 +567,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     // reply came from somewhere; this means it came from her.
                     showMascot: true,
                     activity: switch (widget.activity) {
-                      'Reading your records' => KoruActivity.reading,
                       'Writing an answer' => KoruActivity.writing,
-                      'Waking up' => KoruActivity.waking,
-                      // The engine is not up yet. Named rather than left as a
-                      // generic wait, so the silence after send reads as a start
-                      // and not as a failure.
-                      'Starting the local model' =>
-                        KoruActivity.startingLocalModel,
                       'Reading your list' => KoruActivity.readingList,
                       'Checking what is due' => KoruActivity.checking,
                       'Looking up your clients' => KoruActivity.looking,

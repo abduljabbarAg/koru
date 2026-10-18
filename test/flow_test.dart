@@ -1,12 +1,10 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/backup.dart';
-import 'package:koru/local/bundled_engine.dart';
-import 'package:koru/local/local_model_client.dart';
+import 'package:koru/cloud.dart';
 import 'package:koru/local/write_intent.dart';
 import 'package:koru/models.dart';
 import 'package:koru/screens/chat.dart';
@@ -15,6 +13,7 @@ import 'package:koru/state.dart';
 import 'package:koru/store.dart';
 import 'package:koru/widgets.dart';
 
+import 'fake_cloud.dart';
 import 'test_store.dart';
 
 /// End to end across the whole app, not one layer at a time.
@@ -24,43 +23,16 @@ import 'test_store.dart';
 /// was understood, approve it, and find it on the Business screen. These walk
 /// the whole path and assert on what actually ended up in the database, because
 /// that is the only place a mistake becomes a user's problem.
-class _RecordingClient extends LocalModelClient {
-  _RecordingClient(this.reply);
-
-  final String reply;
-  final prompts = <String>[];
-  final turns = <List<({String role, String content})>>[];
-  final progress = <(int, int)>[];
-
-  @override
-  Future<LocalModelResult> chatStream({
-    required String endpoint,
-    required String model,
-    required String system,
-    required String question,
-    required void Function(String delta) onToken,
-    void Function(int done, int total)? onProgress,
-    List<({String role, String content})> history = const [],
-    int maxTokens = 160,
-    double temperature = 0.7,
-  }) async {
-    prompts.add(system);
-    turns.add(history);
-    progress.addAll(const [(0, 100), (100, 100)]);
-    onProgress?.call(0, 100);
-    // Split into a few pieces so the streaming path is genuinely exercised
-    // rather than one blob arriving at once.
-    for (final piece in reply.split(' ')) {
-      onToken('$piece ');
-    }
-    return LocalReply(reply, 4.0);
-  }
-}
+///
+/// There is one model and it is the cloud one, so [TestCloudModel] is the only
+/// thing standing in for it. The fakes this file used to carry — one per rate of
+/// speech, one that hung, one that threw — are now knobs on that one class,
+/// which is also why a test cannot quietly reach for a second engine.
 
 /// The greeting, so a test can tell it apart from a real reply.
 const _greetingText =
-    'I am here, and I answer with the local model. Ask about your work, your '
-    'money and your deadlines. I will tell you when a person should answer '
+    'I am here. Tell me what you need recorded, or ask me about your work, your '
+    'money and what is due. I will tell you when a person should answer '
     'instead of me.';
 
 void main() {
@@ -88,21 +60,23 @@ void main() {
     }
   }
 
+  /// Mounts the chat. A key is set by default, because a test that reaches the
+  /// model at all is a test about the model, and the nothing-connected state has
+  /// its own tests further down rather than being a wall every one of them has
+  /// to climb.
   Future<void> boot(
     WidgetTester tester, {
-    required String engine,
-    LocalModelClient? model,
-    BundledEngine? bundled,
+    CloudModel? model,
+    bool connected = true,
   }) async {
-    await store.put('engine', engine);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           storeProvider.overrideWith((ref) async => store),
-          cloudKeyProvider.overrideWith((ref, providerId) async => ''),
-          secretsProvider.overrideWithValue(MemoryKeyStore()),
-          localModelClientProvider.overrideWithValue(model ?? const LocalModelClient()),
-          if (bundled != null) bundledEngineProvider.overrideWithValue(bundled),
+          secretsProvider.overrideWithValue(
+            TestKeyStore(key: connected ? 'test-key' : ''),
+          ),
+          cloudModelProvider.overrideWithValue(model ?? TestCloudModel()),
         ],
         child: const MaterialApp(home: ChatScreen()),
       ),
@@ -180,7 +154,7 @@ void main() {
 
   group('chat to database, end to end', () {
     testWidgets('a sentence creates a client that exists afterwards', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'add client Bilal for 2000');
 
       // It was understood as a write, not sent to any engine.
@@ -197,7 +171,7 @@ void main() {
     });
 
     testWidgets('discarding writes nothing at all', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'add client Sara for 900');
 
       await tapVisible(tester, find.text('Discard'));
@@ -208,7 +182,7 @@ void main() {
 
     testWidgets('a payment for an unknown client is refused, not invented',
         (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'Ghost paid 500');
 
       expect(find.textContaining('I do not have a client called Ghost'), findsOneWidget);
@@ -219,7 +193,7 @@ void main() {
 
     testWidgets('two clients, two payments, and a balance that adds up',
         (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
 
       await say(tester, 'add client Bilal for 2000');
       await tapVisible(tester, find.text('Save it'));
@@ -250,7 +224,7 @@ void main() {
     });
 
     testWidgets('a deadline asked for in chat lands with its date', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'add a deadline to send the invoice on 2026-07-04');
 
       await tapVisible(tester, find.text('Save it'));
@@ -266,7 +240,7 @@ void main() {
       // The model is not answering, so what comes back is the "cannot answer"
       // card rather than anything at all. It still must not be a write: a
       // question about money is not an instruction to record one.
-      await boot(tester, engine: 'onDevice', model: _ThrowingClient());
+      await boot(tester, model: const FailingCloudModel());
       await say(tester, 'how much does Bilal owe?');
 
       expect(find.text('Save it'), findsNothing);
@@ -274,8 +248,8 @@ void main() {
     });
 
     testWidgets('the model is never asked when a write is recognised', (tester) async {
-      final model = _RecordingClient('the model should not have been called');
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(reply: 'the model should not have been called');
+      await boot(tester, model: model);
 
       await say(tester, 'add client Bilal for 2000');
 
@@ -294,7 +268,10 @@ void main() {
     // Uses a model that fails fast rather than a real socket, so the answer
     // settles inside a handful of frames and Stop has something to interrupt.
     testWidgets('a message sent after Stop still appears', (tester) async {
-      await boot(tester, engine: 'onDevice', model: _HangingClient('one two three'));
+      await boot(
+          tester,
+          model: TestCloudModel(reply: 'one two three', hangFirstCall: true),
+        );
 
       await tester.enterText(find.byType(TextField).last, 'who owes me money?');
       await tester.testTextInput.receiveAction(TextInputAction.send);
@@ -314,7 +291,10 @@ void main() {
 
     testWidgets('a message sent after Stop is actually answered',
         (tester) async {
-      await boot(tester, engine: 'onDevice', model: _HangingClient('one two three'));
+      await boot(
+          tester,
+          model: TestCloudModel(reply: 'one two three', hangFirstCall: true),
+        );
 
       await tester.enterText(find.byType(TextField).last, 'who owes me money?');
       await tester.testTextInput.receiveAction(TextInputAction.send);
@@ -339,7 +319,7 @@ void main() {
       // The other half of the bug. The edit deleted the stored records and
       // trimmed the screen before checking whether it could finish, so an edit
       // during a reply wiped the conversation and added nothing.
-      await boot(tester, engine: 'onDevice', model: _ThrowingClient());
+      await boot(tester, model: const FailingCloudModel());
       await say(tester, 'who owes me money?');
       await say(tester, 'and the total?');
       final before = (await tester.runAsync(() => store.chat()))!.length;
@@ -361,7 +341,7 @@ void main() {
     });
 
     testWidgets('editing a message Koru sent says why', (tester) async {
-      await boot(tester, engine: 'onDevice', model: _ThrowingClient());
+      await boot(tester, model: const FailingCloudModel());
       await say(tester, 'who owes me money?');
 
       final notifier = notifierOf(tester);
@@ -416,8 +396,11 @@ void main() {
 
     testWidgets('is asked, and carries the exchange that came before it',
         (tester) async {
-      final model = _TwoAnswerClient();
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(
+        replies: const ['first answer', 'second answer'],
+        gap: const Duration(milliseconds: 30),
+      );
+      await boot(tester, model: model);
 
       await fire(tester, 'who owes me money?');
       // The second question is typed while the first answer is still arriving,
@@ -457,8 +440,11 @@ void main() {
       // What somebody would find in the stored thread afterwards: a question
       // with no answer under it, because the answer that was on screen belonged
       // to the question before.
-      final model = _TwoAnswerClient();
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(
+        replies: const ['first answer', 'second answer'],
+        gap: const Duration(milliseconds: 30),
+      );
+      await boot(tester, model: model);
 
       await fire(tester, 'who owes me money?');
       await fire(tester, 'what about Sara?');
@@ -479,8 +465,11 @@ void main() {
 
     testWidgets('three questions in a row all get asked', (tester) async {
       // A queue of one would fix the report and lose the next one.
-      final model = _TwoAnswerClient();
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(
+        replies: const ['first answer', 'second answer'],
+        gap: const Duration(milliseconds: 30),
+      );
+      await boot(tester, model: model);
 
       await fire(tester, 'first question');
       await fire(tester, 'second question');
@@ -497,7 +486,7 @@ void main() {
     // whole reply landed. Not a server problem, glen streams correctly.
     testWidgets('a partial answer is visible before the reply finishes',
         (tester) async {
-      await boot(tester, engine: 'onDevice', model: _SlowClient('one two three'));
+      await boot(tester, model: TestCloudModel(reply: 'one two three', gap: const Duration(milliseconds: 1)));
 
       await tester.tap(find.byType(TextField));
       await tester.enterText(find.byType(TextField), 'who owes me money?');
@@ -518,8 +507,8 @@ void main() {
     });
 
     testWidgets('history is carried into the next question', (tester) async {
-      final model = _RecordingClient('Bilal owes you 1500 AED');
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(reply: 'Bilal owes you 1500 AED');
+      await boot(tester, model: model);
 
       await say(tester, 'who owes me money?');
       await say(tester, 'how much is that?');
@@ -536,7 +525,7 @@ void main() {
         (tester) async {
       // The whole point of the feature, walked the way a person does it: paste,
       // see the plan, press the button, find the rows on the Business page.
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
 
       await tester.enterText(
         find.byType(TextField).last,
@@ -562,7 +551,7 @@ void main() {
     });
 
     testWidgets('pasting the same list twice does not double it', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       const list = 'Bilal 3000\nAcme 5000';
 
       await tester.enterText(find.byType(TextField).last, list);
@@ -584,7 +573,7 @@ void main() {
         (tester) async {
       // One line must not take the list path, or its amount stops being
       // correctable in the card.
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'add client Bilal for 3000');
       expect(find.byType(PlanCard), findsNothing);
       expect(find.byType(WriteCard), findsOneWidget);
@@ -594,8 +583,8 @@ void main() {
       // The engine runs a 1024 token KV cache. History that pushes the prompt
       // past it used to kill glen outright, which is not a slow answer, it is a
       // dead server and a colder one on every question afterwards.
-      final model = _RecordingClient('sure');
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(reply: 'sure');
+      await boot(tester, model: model);
 
       for (var i = 0; i < 6; i++) {
         await say(tester, 'x' * 700);
@@ -607,23 +596,24 @@ void main() {
           reason: 'history budget is 1200 characters, about 300 tokens');
     });
 
-    testWidgets('history stays out of the system prompt', (tester) async {
-      final model = _RecordingClient('sure');
-      await boot(tester, engine: 'onDevice', model: model);
+    testWidgets('history rides in the messages, not flattened into the prompt',
+        (tester) async {
+      final model = TestCloudModel(reply: 'sure');
+      await boot(tester, model: model);
 
       await say(tester, 'who owes me money?');
       await say(tester, 'and who else?');
 
-      // glen reuses the longest common token prefix between turns, so a system
-      // prompt that changed every turn would mean a full prefill every turn.
-      // Prefill on this phone runs about 7 tokens a second, so that is the
-      // difference between 1.2 seconds and over a minute.
-      expect(model.prompts[0], model.prompts[1],
-          reason: 'if this changes, every turn is a full prefill again');
+      // The prompt is the packet and this question. Everything before it goes in
+      // the message list, where a provider's own chat template lays it out.
+      // Flattening it into prose would put the whole transcript in the prompt of
+      // every turn and pay for all of it each time.
+      expect(model.prompts[1], isNot(contains('who owes me money?')));
+      expect(model.turns[1].map((t) => t.content), contains('who owes me money?'));
     });
 
     testWidgets('stopping leaves a truthful bubble', (tester) async {
-      await boot(tester, engine: 'onDevice', model: _SlowClient('one two three'));
+      await boot(tester, model: TestCloudModel(reply: 'one two three', gap: const Duration(milliseconds: 1)));
 
       await tester.tap(find.byType(TextField));
       await tester.enterText(find.byType(TextField), 'who owes me money?');
@@ -642,10 +632,10 @@ void main() {
     });
   });
 
-  group('the on-device model path, end to end', () {
+  group('the model, end to end', () {
     testWidgets('streams a reply and records it', (tester) async {
-      final model = _RecordingClient('Bilal owes you 1500 AED on that invoice');
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(reply: 'Bilal owes you 1500 AED on that invoice');
+      await boot(tester, model: model);
 
       await say(tester, 'who owes me money?');
 
@@ -655,13 +645,13 @@ void main() {
       final chat = await tester.runAsync(() => store.chat());
       expect(chat!.last.role, 'koru');
       expect(chat.last.text, contains('Bilal owes'));
-      expect(chat.last.why, contains('local model'));
+      expect(chat.last.why, isNotEmpty);
     });
 
-    testWidgets('the prompt carries the balances, so the model can discuss them',
+    testWidgets('the prompt carries the context packet, and nothing else',
         (tester) async {
-      final model = _RecordingClient('He owes 1500');
-      await boot(tester, engine: 'onDevice', model: model);
+      final model = TestCloudModel(reply: 'He owes 1500');
+      await boot(tester, model: model);
 
       final id = await tester.runAsync(
         () => store.addClient(const Client(name: 'Bilal', amount: 2000, status: 'delivered')),
@@ -672,63 +662,125 @@ void main() {
 
       await say(tester, 'who owes me money?');
 
-      expect(model.prompts.single, contains('Bilal owes 1500'));
+      // What goes upstream is the pseudonymous packet and the question, never a
+      // client's name and never an amount. Asserted because that is the whole
+      // privacy claim, and it used to be checked on the prompt for a model that
+      // has since been removed.
+      final prompt = model.prompts.single;
+      expect(prompt, contains('who owes me money?'));
+      expect(prompt, isNot(contains('Bilal')));
+      expect(prompt, isNot(contains('1500')));
     });
 
-    testWidgets('an unreachable model produces no answer at all, and says so',
+    testWidgets('an unreachable provider is reported in its own words',
         (tester) async {
-      // This is the complaint that removed the built-in engine. It used to fall
-      // back to one: a rules-based answer out of the user's records, produced in
-      // milliseconds, under a Koru badge, with a bracketed note about the model
-      // underneath. It read as a fast model and it was not one.
-      final broken = _ThrowingClient();
-      await boot(tester, engine: 'onDevice', model: broken);
+      // This used to be worse than a failure: the app used to fall back to a
+      // rules-based assistant that answered out of the user's records in
+      // milliseconds, under a Koru badge. It read as a fast model and it was not
+      // one, so a provider being down looked like the app working.
+      const broken = FailingCloudModel();
+      await boot(tester, model: broken);
 
       await say(tester, 'how am i doing?');
 
-      // Nothing from the records: the ledger is empty here, so a substitute
-      // answer would have been its own small talk, which is the point.
+      expect(lastReply(tester), contains('Could not reach OpenRouter'));
+      // And it is not dressed up as an answer from the records.
+      expect(lastReply(tester), isNot(contains('cannot answer')));
+    });
+
+    testWidgets('with nothing connected, the reply says so and offers the key',
+        (tester) async {
+      // The state a fresh install and every install that never added a key are
+      // honestly in. There is no engine to start any more, so the only thing
+      // this can offer is the thing that is missing.
+      await boot(tester, connected: false);
+
+      await say(tester, 'how am i doing?');
+
       expect(lastReply(tester), contains('cannot answer'));
-      expect(find.text('Start the local model'), findsOneWidget);
-
-      // And the reason it could not answer is on the screen rather than in a
-      // log, because "it is broken" and "it did not answer" are different bugs.
-      expect(find.textContaining('Could not reach the local model'),
-          findsWidgets);
+      expect(find.byType(KoruEngineDownCard), findsOneWidget);
+      // Nobody has picked a company yet on a fresh install, so the offer is to
+      // connect one rather than to add a key to a company that was never chosen.
+      expect(find.text('Connect a cloud model'), findsOneWidget);
     });
 
-    testWidgets('the card starts the engine rather than sending them elsewhere',
+    testWidgets('and that offer opens the place a company is chosen',
         (tester) async {
-      // The complaint behind this was "I cannot select the local model": the
-      // choice existed, but starting it was a second job somewhere else. So the
-      // offer on the card is the same one-tap start the switcher makes.
-      final engine = _FakeBundledEngine();
-      await boot(
-        tester,
-        engine: 'onDevice',
-        model: _ThrowingClient(),
-        bundled: engine,
-      );
+      await boot(tester, connected: false);
 
       await say(tester, 'how am i doing?');
-      expect(find.byType(KoruEngineDownCard), findsOneWidget);
-
-      final before = engine.starts;
-      await tester.tap(find.text('Start the local model'));
+      await tester.tap(find.text('Connect a cloud model'));
       await pump(tester, frames: 20);
 
-      expect(engine.starts, before + 1,
-          reason: 'the button starts the model where the question was asked');
+      expect(find.text('Who answers'), findsOneWidget);
+      expect(find.text('Nothing is connected'), findsOneWidget,
+          reason: 'the sheet has to agree with the card, or one of them is lying');
+      expect(find.widgetWithText(KoruSelectableTile, 'OpenRouter'), findsOneWidget);
     });
 
-    testWidgets('no engine answers, and no record is read to fake it',
+    testWidgets('a company with no key says which company, and offers its key',
+        (tester) async {
+      await tester.runAsync(
+        () => store.put('cloud_provider', 'openrouter'),
+      );
+      await boot(tester, connected: false);
+
+      await say(tester, 'how am i doing?');
+
+      expect(lastReply(tester), contains('OpenRouter'));
+      expect(find.text('Add a cloud key'), findsOneWidget);
+    });
+
+    testWidgets('the card takes you to where a key is entered',
+        (tester) async {
+      await tester.runAsync(
+        () => store.put('cloud_provider', 'openrouter'),
+      );
+      await boot(tester, connected: false);
+
+      await say(tester, 'how am i doing?');
+      await tester.tap(find.text('Add a cloud key'));
+      await pump(tester, frames: 20);
+
+      expect(find.text('Cloud provider'), findsWidgets,
+          reason: 'the button goes where the key is taken, one tap from the '
+              'question that needed it');
+    });
+
+    testWidgets('a keystore that cannot be read refuses rather than hanging',
+        (tester) async {
+      // The keystore is the one dependency here that can be gone — reinstall, a
+      // locked screen, a vendor keystore that refuses. A turn that threw on it
+      // would leave the composer on a pending bubble forever, so the read is
+      // caught and reported as the state it cannot rule out.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            storeProvider.overrideWith((ref) async => store),
+            secretsProvider.overrideWithValue(const BrokenKeyStore()),
+            cloudModelProvider.overrideWithValue(TestCloudModel()),
+          ],
+          child: const MaterialApp(home: ChatScreen()),
+        ),
+      );
+      await pump(tester);
+
+      await say(tester, 'how am i doing?');
+
+      expect(lastReply(tester), contains('cannot answer'));
+      expect(find.byType(KoruEngineDownCard), findsOneWidget);
+      expect(container(tester).read(chatProvider).busy, isFalse,
+          reason: 'the turn has to finish, or the composer stays stuck');
+    });
+
+    testWidgets('nothing is read to fake an answer, and nothing is written',
         (tester) async {
       // The strongest form of the property. With the model down and a client in
       // the database, the reply must not contain the client's name or the
       // balance: the deleted assistant's whole trick was answering from these
       // very rows and passing it off as an answer.
-      final broken = _ThrowingClient();
-      await boot(tester, engine: 'onDevice', model: broken);
+      const broken = FailingCloudModel();
+      await boot(tester, model: broken);
       final id = await tester.runAsync(
         () => store.addClient(const Client(name: 'Acme', amount: 5000, status: 'delivered')),
       );
@@ -748,7 +800,7 @@ void main() {
 
   group('a backup survives the app being gone', () {
     testWidgets('exports what the chat just created', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'add client Bilal for 2000');
       await tapVisible(tester, find.text('Save it'));
       await say(tester, 'Bilal paid 500');
@@ -801,7 +853,7 @@ void main() {
 
   group('the assistant can add a project, in every mode', () {
     testWidgets('a personal project is proposed and lands', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'start a project called Learn Arabic');
 
       await tapVisible(tester, find.text('Save it'));
@@ -813,7 +865,7 @@ void main() {
     });
 
     testWidgets('"done when" is read into the project', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester,
           'start a project called the shop, done when the door is open');
 
@@ -826,7 +878,7 @@ void main() {
     });
 
     testWidgets('a project for a named client attaches to them', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'add client Bilal for 2000');
       await tapVisible(tester, find.text('Save it'));
 
@@ -842,14 +894,14 @@ void main() {
     });
 
     testWidgets('a project for someone who does not exist says so', (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'start a project called the rebrand for Zohaib');
       expect(lastReply(tester), contains('do not have a client called Zohaib'));
     });
 
     testWidgets('a project with no name asks rather than saving nothing',
         (tester) async {
-      await boot(tester, engine: 'onDevice');
+      await boot(tester);
       await say(tester, 'start a project');
       expect(find.text('Save it'), findsNothing);
       final projects = await tester.runAsync(() => store.projects());
@@ -858,234 +910,53 @@ void main() {
   });
 
 
-  group('every engine gets the same writes', () {
-    // The claim worth testing is that the AI is an addition, not the mechanism:
-    // a client, a project and a calendar entry are recorded the same way with
-    // the on-device model and with a cloud model. If that ever stops being true
-    // the assistant has become a dependency of the records.
-    for (final engine in const ['onDevice', 'cloud']) {
-      testWidgets('$engine can add a client', (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'add client Bilal for 2000');
-        await tapVisible(tester, find.text('Save it'));
-        final clients = await tester.runAsync(() => store.clients());
-        expect(clients!.map((c) => c.name), contains('Bilal'));
-      });
+  group('the AI is an addition, not the mechanism', () {
+    // The claim worth testing is that a client, a project and a calendar entry
+    // are recorded the same way whether or not a model exists, and that the card
+    // is what writes them. This used to be walked over both engines; there is
+    // one now, and the property is unchanged.
+    testWidgets('a client is recorded with a model connected', (tester) async {
+      await boot(tester);
+      await say(tester, 'add client Bilal for 2000');
+      await tapVisible(tester, find.text('Save it'));
+      final clients = await tester.runAsync(() => store.clients());
+      expect(clients!.map((c) => c.name), contains('Bilal'));
+    });
 
-      testWidgets('$engine can add a project', (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'start a project called the rebrand');
-        await tapVisible(tester, find.text('Save it'));
-        final projects = await tester.runAsync(() => store.projects());
-        expect(projects!.map((p) => p.name), contains('the rebrand'));
-      });
+    testWidgets('a client is recorded with nothing connected', (tester) async {
+      await boot(tester, connected: false);
+      await say(tester, 'add client Bilal for 2000');
+      await tapVisible(tester, find.text('Save it'));
+      final clients = await tester.runAsync(() => store.clients());
+      expect(clients!.map((c) => c.name), contains('Bilal'));
+    });
 
-      testWidgets('$engine can add a calendar entry', (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'schedule a call with Bilal tomorrow at 3pm');
-        await tapVisible(tester, find.text('Save it'));
-        final events = await tester.runAsync(() => store.events());
-        expect(events!.map((e) => e.title).join(' ').toLowerCase(),
-            contains('bilal'));
-      });
+    testWidgets('a project is recorded', (tester) async {
+      await boot(tester);
+      await say(tester, 'start a project called the rebrand');
+      await tapVisible(tester, find.text('Save it'));
+      final projects = await tester.runAsync(() => store.projects());
+      expect(projects!.map((p) => p.name), contains('the rebrand'));
+    });
 
-      testWidgets('$engine shows a card rather than writing silently',
-          (tester) async {
-        await boot(tester, engine: engine, model: _SilentClient());
-        await say(tester, 'add client Bilal for 2000');
-        // The card is the approval step. Nothing is written until it is used.
-        expect(find.text('Save it'), findsOneWidget);
-        final clients = await tester.runAsync(() => store.clients());
-        expect(clients, isEmpty);
-      });
-    }
+    testWidgets('a calendar entry is recorded', (tester) async {
+      await boot(tester);
+      await say(tester, 'schedule a call with Bilal tomorrow at 3pm');
+      await tapVisible(tester, find.text('Save it'));
+      final events = await tester.runAsync(() => store.events());
+      expect(events!.map((e) => e.title).join(' ').toLowerCase(),
+          contains('bilal'));
+    });
+
+    testWidgets('a card is shown rather than writing silently', (tester) async {
+      // What the AI must never become: the thing that decides a record exists.
+      // A model that answers everything, connected or not, would make the card
+      // optional, and the card is the approval step.
+      await boot(tester);
+      await say(tester, 'add client Bilal for 2000');
+      expect(find.text('Save it'), findsOneWidget);
+      final clients = await tester.runAsync(() => store.clients());
+      expect(clients, isEmpty);
+    });
   });
-}
-
-/// Emits one token per event loop turn, the way a real server does.
-///
-/// The other fakes emit every token in a tight synchronous loop, which is why
-/// this bug survived 334 passing tests: no frame was ever rendered between the
-/// first token and the last, so nothing could observe the intermediate state.
-/// A real socket hands control back to the event loop between chunks, and that
-/// is the only place the bug was visible.
-class _SlowClient extends LocalModelClient {
-  _SlowClient(this.reply);
-
-  final String reply;
-
-  @override
-  Future<LocalModelResult> chatStream({
-    required String endpoint,
-    required String model,
-    required String system,
-    required String question,
-    required void Function(String delta) onToken,
-    void Function(int done, int total)? onProgress,
-    List<({String role, String content})> history = const [],
-    int maxTokens = 160,
-    double temperature = 0.7,
-  }) async {
-    final pieces = reply.split(' ');
-    for (var i = 0; i < pieces.length; i++) {
-      onToken('${pieces[i]} ');
-      // Yields, so a frame can be pumped with a partial reply on screen.
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
-    return LocalReply(reply, 4.0);
-  }
-}
-
-/// Answers differently each time, slowly, and records what it was asked.
-///
-/// The delay is the point. Every other fake in this file emits its whole answer
-/// in a tight synchronous loop, so by the time a test typed the next question
-/// the turn was already over and the case that matters could not be set up at
-/// all — which is how a dropped question survives a suite this size.
-class _TwoAnswerClient extends LocalModelClient {
-  int calls = 0;
-  final questions = <String>[];
-  final turns = <List<({String role, String content})>>[];
-
-  @override
-  Future<LocalModelResult> chatStream({
-    required String endpoint,
-    required String model,
-    required String system,
-    required String question,
-    required void Function(String delta) onToken,
-    void Function(int done, int total)? onProgress,
-    List<({String role, String content})> history = const [],
-    int maxTokens = 160,
-    double temperature = 0.7,
-  }) async {
-    questions.add(question);
-    turns.add(history);
-    final reply = calls++ == 0 ? 'first answer' : 'second answer';
-    for (final word in reply.split(' ')) {
-      onToken('$word ');
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-    }
-    return LocalReply(reply, 4.0);
-  }
-}
-
-/// Hangs on the first call, then answers normally.
-///
-/// _SlowClient finishes in a couple of fake-milliseconds, and pumping four
-/// frames advances far past that, so by the time the test pressed Stop the reply
-/// had already landed and there was no Stop button left to press. This one stays
-/// busy until told otherwise, which is the only state in which Stop exists.
-class _HangingClient extends LocalModelClient {
-  _HangingClient(this.reply);
-
-  final String reply;
-  int calls = 0;
-
-  @override
-  Future<LocalModelResult> chatStream({
-    required String endpoint,
-    required String model,
-    required String system,
-    required String question,
-    required void Function(String delta) onToken,
-    void Function(int done, int total)? onProgress,
-    List<({String role, String content})> history = const [],
-    int maxTokens = 160,
-    double temperature = 0.7,
-  }) async {
-    calls++;
-    if (calls == 1) {
-      onToken('thinking');
-      // Never resolves on its own within a test run.
-      await Completer<void>().future;
-    }
-    onToken(reply);
-    return LocalReply(reply, 4.0);
-  }
-}
-
-/// The bundled engine, standing in for the one that execs a binary.
-///
-/// Reports a start and comes straight back, which is all the card's button has
-/// to be shown doing.
-class _FakeBundledEngine extends BundledEngine {
-  int starts = 0;
-
-  /// The model is on disk, so the start does not report a copy out of the APK.
-  ///
-  /// Also stops the platform channel being reached: a method channel with no
-  /// handler never answers inside a widget test, and a start that hangs there is
-  /// indistinguishable from a slow engine.
-  @override
-  Future<BundledEngineStatus> status() async => const BundledEngineStatus(
-        available: true,
-        modelAvailable: true,
-        modelBytes: BundledEngine.bundledModelBytes,
-      );
-
-  @override
-  Future<bool> get available async => true;
-
-  @override
-  Future<List<LocalModelFile>> models() async => const [
-        LocalModelFile(
-          label: 'Bonsai-1.7B-Q1_0 (bundled)',
-          path: '/data/models/Bonsai-1.7B-Q1_0.gguf',
-        ),
-      ];
-
-  @override
-  Future<BundledStartResult> start({
-    int port = BundledEngine.defaultPort,
-    String? modelPath,
-    Duration timeout = const Duration(seconds: 180),
-    Future<bool> Function() isHealthy = _neverHealthy,
-    void Function(int percent)? onProgress,
-  }) async {
-    starts++;
-    onProgress?.call(0);
-    return BundledStartResult.ready('http://127.0.0.1:$port');
-  }
-
-  static Future<bool> _neverHealthy() async => false;
-}
-
-/// A local model that is not answering, standing in for glen not having started.
-class _ThrowingClient extends LocalModelClient {
-  @override
-  Future<LocalModelResult> chatStream({
-    required String endpoint,
-    required String model,
-    required String system,
-    required String question,
-    required void Function(String delta) onToken,
-    void Function(int done, int total)? onProgress,
-    List<({String role, String content})> history = const [],
-    int maxTokens = 160,
-    double temperature = 0.7,
-  }) async =>
-      const LocalFailed('Could not reach the local model.');
-
-}
-
-/// A model that answers, but says nothing a parser could use.
-///
-/// The claim these tests exist to check is that Koru understood the request, not
-/// that a model produced the record. A silent client makes that visible: if the
-/// card ever stops appearing, the engine has quietly become the mechanism.
-class _SilentClient extends LocalModelClient {
-  @override
-  Future<LocalModelResult> chatStream({
-    required String endpoint,
-    required String model,
-    required String system,
-    required String question,
-    required void Function(String delta) onToken,
-    void Function(int done, int total)? onProgress,
-    List<({String role, String content})> history = const [],
-    int maxTokens = 160,
-    double temperature = 0.7,
-  }) async =>
-      const LocalReply('', 0.0);
 }

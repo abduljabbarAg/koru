@@ -10,12 +10,12 @@ import 'legal.dart';
 /// goes once it leaves.
 ///
 /// Kept as its own page because this is the claim the rest of the app rests on.
-/// It used to be a card between the engine and the cloud key, which is exactly
-/// the place nobody reads a privacy statement from.
+/// It used to be a card between the engine picker and the cloud key, which is
+/// exactly the place nobody reads a privacy statement from.
 ///
-/// The routing table names the engines and says nothing about companies, so the
-/// two never collide here: "Cloud model" is the engine, and which company that
-/// model is served by is one page away under Cloud provider.
+/// The table below says where a question goes and nothing about companies, so
+/// the two never collide here: which company serves the model is one page away
+/// under Cloud provider.
 class PrivacySettingsScreen extends ConsumerWidget {
   const PrivacySettingsScreen({super.key});
 
@@ -34,7 +34,7 @@ class PrivacySettingsScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'When the cloud model answers, only this is sent:',
+                    'When Koru asks a model, only this is sent:',
                     style: KoruType.bodyCompactStrong,
                   ),
                   const SizedBox(height: KoruSpace.sml),
@@ -66,9 +66,10 @@ class PrivacySettingsScreen extends ConsumerWidget {
             const KoruSection(
               label: 'Routing',
               children: [
-                _Route('Faith, mental health, medical, legal', 'Cloud model'),
-                _Route('Everything else', 'Local model'),
+                _Route('Everything else', 'The cloud model you connected'),
+                _Route('Faith, mental health, medical, legal', 'The same model'),
                 _Route('Crisis, diagnosis, legal ruling', 'Hand to a person'),
+                _Route('No model connected', 'Nothing is sent'),
               ],
             ),
             // The policy is the long version of this screen, so it is reachable
