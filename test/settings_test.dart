@@ -93,7 +93,11 @@ void main() {
     expect(find.byType(page.runtimeType), findsOneWidget,
         reason: 'tapping "$title" pushes its page');
 
-    await tester.tap(find.byTooltip('Back'));
+    // `.last` because one page can be open over another now — the legal hub
+    // pushes four documents of its own — and both routes render a Back button
+    // while the top one is up. The last one in the tree is the top one, which
+    // is the one a person taps.
+    await tester.tap(find.byTooltip('Back').last);
     for (var i = 0; i < 20 && find.byType(page.runtimeType).evaluate().isNotEmpty; i++) {
       await tester.pump(const Duration(milliseconds: 60));
     }
