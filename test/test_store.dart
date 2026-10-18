@@ -30,3 +30,14 @@ Future<ProfileStore> openTestStore() async {
   final dir = await Directory.systemTemp.createTemp('koru_test');
   return ProfileStore.open(directory: dir);
 }
+
+/// A store together with the directory holding it.
+///
+/// For the tests that have to close a database and open it again, which is the
+/// only honest check that a row was really written rather than still sitting in
+/// the connection. Everything else uses [openTestStore] and never needs this.
+Future<(ProfileStore, Directory)> openTestStoreWithDirectory() async {
+  initTestDatabase();
+  final dir = await Directory.systemTemp.createTemp('koru_test');
+  return (await ProfileStore.open(directory: dir), dir);
+}

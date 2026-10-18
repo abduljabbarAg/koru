@@ -7,9 +7,11 @@ import 'package:koru/main.dart';
 import 'package:koru/mascot/mascot.dart';
 import 'package:koru/models.dart';
 import 'package:koru/onboarding.dart';
-import 'package:koru/screens/business.dart';
 import 'package:koru/screens/chat.dart';
+import 'package:koru/screens/clients.dart';
 import 'package:koru/screens/permissions_intro.dart';
+import 'package:koru/screens/revenue.dart';
+import 'package:koru/screens/tasks.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
 import 'package:koru/store.dart';
@@ -708,7 +710,7 @@ void main() {
     });
   });
 
-  group('BusinessScreen', () {
+  group('the client and money tabs', () {
     /// Adds a client and returns it, from inside the fake clock.
     Future<Client> seedClient(
       WidgetTester tester, {
@@ -731,8 +733,14 @@ void main() {
       return created;
     }
 
-    Future<void> open(WidgetTester tester) async {
-      await pumpApp(tester, const BusinessScreen());
+    /// Opens one of the three tabs the old Business screen was split into.
+    ///
+    /// Which one is named per test rather than assumed, because the split is the
+    /// point: a client's row and the money they owe are two different questions
+    /// and the tests should be answering them somewhere that says so.
+    Future<void> open(WidgetTester tester,
+        {Widget screen = const ClientsScreen()}) async {
+      await pumpApp(tester, screen);
       await pumpFrames(tester);
     }
 
@@ -770,6 +778,20 @@ void main() {
       await pumpFrames(tester);
     }
 
+    /// Drags the page until a target exists in the tree.
+    ///
+    /// A ListView only builds what is near the viewport, so a section further
+    /// down is not in the tree at all and the finder reports nothing — which
+    /// reads exactly like the row not being there.
+    Future<void> reveal(WidgetTester tester, Finder finder) async {
+      final list = find.byType(Scrollable);
+      if (list.evaluate().isEmpty) return;
+      for (var i = 0; i < 12 && finder.evaluate().isEmpty; i++) {
+        await tester.drag(list.first, const Offset(0, -240));
+        await pumpFrames(tester, frames: 2);
+      }
+    }
+
     /// Back to the top, where the totals live.
     ///
     /// Tapping something near the bottom leaves the summary tiles scrolled out
@@ -785,7 +807,7 @@ void main() {
 
     testWidgets('shows what is owed rather than counting statuses', (tester) async {
       await seedClient(tester, name: 'Bilal', amount: 2000);
-      await open(tester);
+      await open(tester, screen: const RevenueScreen());
 
       expect(find.text('2000'), findsWidgets);
       expect(find.text('AED, 1 to chase'), findsOneWidget);
@@ -824,6 +846,9 @@ void main() {
           await tester.runAsync(() async => (await store.clients()).single);
       expect(client!.status, 'paid');
       expect(await tester.runAsync(() => store.balanceFor(bilal)), 0);
+      // The figure lives on the money tab now, which is where somebody asks the
+      // "all clear" question.
+      await open(tester, screen: const RevenueScreen());
       await scrollToTop(tester);
       expect(find.text('AED, all clear'), findsOneWidget);
     });
@@ -864,6 +889,9 @@ void main() {
       await tester.enterText(find.widgetWithText(TextField, '2000'), '750');
       await tapVisible(tester, find.text('Record payment'));
 
+      // Recorded on the client's row, listed in the ledger on the money tab.
+      await open(tester, screen: const RevenueScreen());
+      await reveal(tester, find.text('750 AED  ·  Bilal'));
       expect(find.text('750 AED  ·  Bilal'), findsOneWidget);
 
       await tapVisible(tester, find.byTooltip('Undo this payment'));
@@ -876,7 +904,9 @@ void main() {
 
     testWidgets('deadlines can be added and ticked off', (tester) async {
       await seedClient(tester, name: 'Bilal', amount: 100);
-      await open(tester);
+      // A deadline is work with a date on it, so it is listed with the rest of
+      // the work rather than inside a page about money.
+      await open(tester, screen: const TasksScreen());
 
       expect(find.text('Nothing scheduled'), findsOneWidget);
 

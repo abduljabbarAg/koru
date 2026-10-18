@@ -7,6 +7,9 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'project_detail.dart';
+import 'task_sheet.dart';
+import 'work_rows.dart';
 
 /// The first match, or null.
 ///
@@ -17,18 +20,23 @@ Client? _firstClient(Iterable<Client> xs) => xs.isEmpty ? null : xs.first;
 
 /// Everything about one client, in one place.
 ///
-/// The Business screen is a list to scan, and that is the right shape for "who
-/// is late". It is the wrong shape for "what is actually going on with Acme",
-/// which is per client and spread across three tables: the invoice, the ledger
-/// and the deadlines. Until this screen existed the app had the data and
-/// nowhere to show it, which is also why asking the model about a specific
-/// client was a guess.
+/// The Clients tab is a list to scan, and that is the right shape for "who is
+/// late". It is the wrong shape for "what is actually going on with Acme", which
+/// is per client and spread across three tables: the invoice, the ledger and the
+/// deadlines. Until this screen existed the app had the data and nowhere to show
+/// it, which is also why asking the model about a specific client was a guess.
 ///
 /// The order is the order the questions get asked: what do they owe, is that
 /// overdue, is there a standing arrangement, what was agreed, what came in,
 /// what is still open. The ledger is below the list of payments rather than
 /// folded into the headline, because a balance you cannot trace back to the
 /// rows that made it is not a balance anybody trusts.
+///
+/// Their work is on this screen too, not only on the Tasks tab. "What is
+/// actually going on with Acme" is one question, and it is spread across three
+/// tables: the invoice, the ledger, and now the tasks and projects attached to
+/// them. A client is the unit people think in, so this is where their work
+/// belongs.
 ///
 /// The bar carries no title. Everywhere else in the app a bar names the screen
 /// and the page says whose it is; here the page is one client, and putting the
@@ -55,6 +63,7 @@ class ClientDetailScreen extends ConsumerWidget {
             ?.where((d) => d.clientId == clientId)
             .toList() ??
         const <Deadline>[];
+    final projects = ref.watch(projectsProvider).valueOrNull ?? const <Project>[];
 
     final client =
         clients == null ? null : _firstClient(clients.where((c) => c.id == clientId));
@@ -80,7 +89,7 @@ class ClientDetailScreen extends ConsumerWidget {
                         icon: Icons.person_off_outlined,
                         title: 'That client is gone',
                         body: 'They were deleted from the list, so there is no '
-                            'history left to show. Go back to Business to see '
+                            'history left to show. Go back to Clients to see '
                             'who is on it now.',
                       ),
                     ),
@@ -124,6 +133,14 @@ class ClientDetailScreen extends ConsumerWidget {
               const SectionLabel('Note'),
               KoruCard(child: Text(client.note!, style: KoruType.bodyCompact)),
             ],
+            _Work(
+              clientId: clientId,
+              clientName: client.name,
+              projects: projects
+                  .where((p) => p.clientId == clientId)
+                  .toList(),
+              today: today,
+            ),
             KoruSection(
               label: 'Payments',
               hint: payments.isEmpty ? null : '${payments.length} recorded',
@@ -135,7 +152,7 @@ class ClientDetailScreen extends ConsumerWidget {
                       title: 'Nothing recorded yet',
                       body: 'Money only lands here once it is recorded. Say '
                           '"Bilal paid 500" in Talk, or use Record payment on '
-                          'the Business screen, and the balance follows.',
+                          'the Revenue tab, and the balance follows.',
                     ),
               children: [
                 for (final p in payments) _paymentRow(ref, p, currency),
@@ -244,7 +261,7 @@ class ClientDetailScreen extends ConsumerWidget {
         onPressed: () async {
           final store = await ref.read(storeProvider.future);
           await store.deletePayment(p.id!);
-          _refresh(ref);
+          invalidateWorkData(ref);
         },
       ),
     );
@@ -322,13 +339,79 @@ class ClientDetailScreen extends ConsumerWidget {
     if (context.mounted) toast(context, 'Retainer due ${readableDate(next)} added');
   }
 
-  static void _refresh(WidgetRef ref) {
-    ref
-      ..invalidate(clientsProvider)
-      ..invalidate(paymentsProvider)
-      ..invalidate(receivedTotalsProvider)
-      ..invalidate(openDeadlinesProvider)
-      ..invalidate(guideFactsProvider);
+}
+
+/// The work being done for this client: their tasks and their projects.
+///
+/// Two sections rather than one merged list, because a project is a piece of work
+/// with a finish line and a task is a step on it, and merging them produced the
+/// confusion the task table exists to remove — a 40% project and a single
+/// deadline reading as two entries in one list of "things".
+///
+/// Nothing here opens a project to get at its tasks: the tick is on the row, so
+/// finishing a piece of work never means going somewhere else first.
+class _Work extends ConsumerWidget {
+  const _Work({
+    required this.clientId,
+    required this.clientName,
+    required this.projects,
+    required this.today,
+  });
+
+  final int clientId;
+  final String clientName;
+  final List<Project> projects;
+  final DateTime today;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tasksAsync = ref.watch(tasksProvider);
+    final tasks = tasksAsync.valueOrNull
+            ?.where((t) => t.clientId == clientId)
+            .toList() ??
+        const <Task>[];
+    final waiting = tasksAsync.isLoading;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        KoruSection(
+          label: 'Tasks',
+          hint: 'Open work for ${clientName.replaceAll('  ', ' ')}.',
+          dividerIndent: KoruSpace.row,
+          action: TextButton.icon(
+            onPressed: () => taskSheet(context, ref, clientId: clientId),
+            icon: const Icon(Icons.add_rounded, size: KoruSize.icon),
+            label: const Text('Add'),
+          ),
+          empty: waiting && tasks.isEmpty
+              ? const KoruListSkeleton(rows: 2)
+              : const EmptyHint(
+                  icon: Icons.task_alt_rounded,
+                  title: 'Nothing open for them',
+                  body: 'Work with no client is on the Tasks tab. This is the '
+                      'work that belongs to this one.',
+                ),
+          children: [
+            for (final t in orderedTasks(tasks, today))
+              TaskRow(
+                task: t,
+                today: today,
+                onTap: () => taskSheet(context, ref, existing: t),
+              ),
+          ],
+        ),
+        if (projects.isNotEmpty)
+          KoruSection(
+            label: 'Projects',
+            hint: 'The pieces of work the tasks belong to.',
+            dividerIndent: KoruSpace.row,
+            children: [
+              for (final p in projects) ProjectLineRow(project: p),
+            ],
+          ),
+      ],
+    );
   }
 }
 

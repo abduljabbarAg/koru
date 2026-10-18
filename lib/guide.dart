@@ -56,6 +56,30 @@ class Guide {
     return null;
   }
 
+  /// Picks a line for the clients list, where the question is who the work is
+  /// for rather than what it is worth.
+  ///
+  /// Separate from [forBusiness] because the two screens look at the same
+  /// records and say different things about them. A list of people asking what
+  /// everybody owes them is answering a question nobody asked.
+  static String? forClients(ScreenFacts f) {
+    if (f.clients.isEmpty) {
+      return 'No clients yet. Add one and I can start keeping track of who owes '
+          'you what, and what is still open on each one.';
+    }
+    final live = f.clients.where((c) => c.status == 'active' || c.status == 'delivered').length;
+    if (live > 0) {
+      return '$live in the pipeline or under way. Each one shows what they owe '
+          'and how much of their work is still open.';
+    }
+    final leads = f.clients.where((c) => c.status == 'lead').length;
+    if (leads > 0) {
+      return '$leads still to land and nothing under way. Worth chasing one of '
+          'them before adding another.';
+    }
+    return 'Everyone here is settled. Nothing is chasing you on this page.';
+  }
+
   /// Picks something for the chat screen, where there is no screen specific data
   /// to comment on yet.
   static String? forChat(ScreenFacts f) {

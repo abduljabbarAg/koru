@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/models.dart';
-import 'package:koru/screens/business.dart';
 import 'package:koru/screens/chat.dart';
+import 'package:koru/screens/clients.dart';
 import 'package:koru/screens/projects.dart';
+import 'package:koru/screens/revenue.dart';
 import 'package:koru/screens/settings.dart';
+import 'package:koru/screens/tasks.dart';
 import 'package:koru/screens/today.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
@@ -50,8 +52,10 @@ void main() {
 
   for (final (name, screen) in <(String, Widget)>[
     ('Today', const TodayScreen()),
+    ('Tasks', const TasksScreen()),
     ('Talk', const ChatScreen()),
-    ('Business', const BusinessScreen()),
+    ('Clients', const ClientsScreen()),
+    ('Revenue', const RevenueScreen()),
     ('Projects', const ProjectsScreen()),
     ('Settings', const SettingsScreen()),
   ]) {

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/models.dart';
-import 'package:koru/screens/business.dart';
 import 'package:koru/screens/client_detail.dart';
+import 'package:koru/screens/clients.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
 import 'package:koru/store.dart';
@@ -114,7 +114,7 @@ void main() {
       await seed(tester, name: 'A Lead', amount: 100, status: 'lead');
       await seed(tester, name: 'Settled', amount: 100, status: 'paid');
 
-      await mount(tester, const BusinessScreen());
+      await mount(tester, const ClientsScreen());
 
       // Two, not four: a lead is a hope and a settled client is history.
       expect(find.text('2 of 4'), findsOneWidget);
@@ -127,7 +127,7 @@ void main() {
       await store.putNumber('capacity', 1);
       await seed(tester, name: 'Only One', amount: 100, status: 'active');
 
-      await mount(tester, const BusinessScreen());
+      await mount(tester, const ClientsScreen());
 
       expect(find.text('1 of 1'), findsOneWidget);
       expect(find.text('at capacity'), findsOneWidget);
@@ -136,7 +136,7 @@ void main() {
 
     testWidgets('falls back to five when nothing was ever chosen', (tester) async {
       await seed(tester, name: 'Only One', amount: 100, status: 'active');
-      await mount(tester, const BusinessScreen());
+      await mount(tester, const ClientsScreen());
       expect(find.text('1 of 5'), findsOneWidget);
     });
   });
@@ -147,7 +147,7 @@ void main() {
       await seed(tester, name: 'Older', status: 'active', created: '2026-01-01');
       await seed(tester, name: 'Settled', status: 'paid', created: '2026-01-01');
 
-      await mount(tester, const BusinessScreen());
+      await mount(tester, const ClientsScreen());
       // SectionLabel uppercases its text, so this is PIPELINE on screen.
       await reveal(tester, find.text('PIPELINE (2)'));
 
@@ -161,7 +161,7 @@ void main() {
     testWidgets('marks a prospect that has gone cold', (tester) async {
       await seed(tester, name: 'Gone Cold', status: 'lead', created: daysAgo(40));
 
-      await mount(tester, const BusinessScreen());
+      await mount(tester, const ClientsScreen());
       await reveal(tester, find.text('GOING COLD'));
 
       expect(find.text('GOING COLD'), findsOneWidget);
@@ -180,6 +180,10 @@ void main() {
 
       expect(find.text('Acme'), findsOneWidget);
       expect(find.text('1800'), findsOneWidget, reason: 'invoiced 3000, received 1200');
+
+      // The client screen now carries their work as well as their money, so
+      // these two are below the fold rather than at the top of the page.
+      await reveal(tester, find.text('Send invoice'));
       expect(find.text('1 recorded'), findsOneWidget);
       expect(find.text('Send invoice'), findsOneWidget);
     });
@@ -248,7 +252,7 @@ void main() {
   group('editing a client', () {
     testWidgets('a retainer can be set and cleared', (tester) async {
       await seed(tester, name: 'Acme', amount: 100, status: 'active');
-      await mount(tester, const BusinessScreen());
+      await mount(tester, const ClientsScreen());
 
       await tapVisible(tester, find.text('Edit'));
       await pump(tester);

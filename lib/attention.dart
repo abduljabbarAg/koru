@@ -32,6 +32,15 @@ enum AttentionKind {
 
   /// Something happening in the next day or two.
   eventSoon,
+
+  /// Work the user wrote down as a task, coming up.
+  ///
+  /// Its own kind rather than folded into [dueToday] so the notification knows
+  /// where to land when it is tapped, and so a task can be told apart from a
+  /// dated piece of work the app nagged about. Added with the task table: a
+  /// badge that counts deadlines and events but not the things the user wrote
+  /// themselves is a badge that undercounts the day.
+  task,
 }
 
 /// Why this matters, in one sentence, written to be read on a lock screen.
@@ -83,6 +92,7 @@ enum AttentionTarget {
   project,
   chat,
   event,
+  task,
 }
 
 /// Decides what is worth saying out loud.
@@ -107,6 +117,7 @@ class Attention {
     required Map<int, double> received,
     List<Project> projects = const [],
     List<CalendarEvent> events = const [],
+    List<Task> tasks = const [],
     DateTime? today,
   }) {
     final now = today ?? DateTime.now();
@@ -208,6 +219,47 @@ class Attention {
       }
     }
 
+    // Tasks, weighed the same way deadlines are. A task with a date on it is
+    // work somebody committed to, and leaving it out of this list while it sat
+    // in the app's own list would mean the phone says nothing while the screen
+    // says there is something due. Undated tasks are deliberately not here:
+    // a chore with no date on it is not something to interrupt anyone about.
+    for (final t in tasks) {
+      if (t.done) continue;
+      final due = t.parsedDue;
+      if (due == null) continue;
+      final dueMidnight = DateTime(due.year, due.month, due.day);
+      final days = dueMidnight.difference(midnight).inDays;
+      if (days < 0) {
+        out.add(AttentionItem(
+          kind: AttentionKind.task,
+          title: t.title,
+          detail: '${-days} day${days == -1 ? '' : 's'} overdue',
+          target: AttentionTarget.task,
+          weight: 0.95,
+          clientId: t.clientId,
+        ));
+      } else if (days == 0) {
+        out.add(AttentionItem(
+          kind: AttentionKind.task,
+          title: t.title,
+          detail: 'Due today',
+          target: AttentionTarget.task,
+          weight: 0.9,
+          clientId: t.clientId,
+        ));
+      } else if (days <= soonWindow.inDays) {
+        out.add(AttentionItem(
+          kind: AttentionKind.task,
+          title: t.title,
+          detail: 'Due in $days day${days == 1 ? '' : 's'}',
+          target: AttentionTarget.task,
+          weight: 0.4 + (days / soonWindow.inDays) * 0.2,
+          clientId: t.clientId,
+        ));
+      }
+    }
+
     for (final p in projects) {
       if (p.status != 'active') continue;
       final touched = DateTime.tryParse(p.updated);
@@ -240,7 +292,10 @@ class Attention {
   static String headline(List<AttentionItem> items) {
     if (items.isEmpty) return '';
     final overdue = items.where((i) => i.kind == AttentionKind.overdueMoney).length;
-    final dueToday = items.where((i) => i.kind == AttentionKind.dueToday).length;
+    final dueToday = items
+        .where((i) =>
+            i.kind == AttentionKind.dueToday || i.kind == AttentionKind.task)
+        .length;
     final other = items.length - overdue - dueToday;
 
     final parts = <String>[];

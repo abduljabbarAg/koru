@@ -8,6 +8,12 @@ library;
 
 import 'local/write_intent.dart';
 
+// The task list lives in its own file and is re-exported here, because models
+// had grown past eight hundred lines and this is the one part of it that is
+// about a single thing. Everything above reads it through this import and has
+// always been able to.
+export 'task.dart';
+
 const kClientStatuses = ['lead', 'active', 'delivered', 'paid', 'lost'];
 
 /// A client or job. [due] is an ISO date, nullable.

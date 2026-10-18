@@ -70,6 +70,25 @@ class Backup {
             'done': d.done,
           }
       ],
+      // Tasks are in the backup for the reason the ledger is: a file somebody
+      // keeps for years that silently omits the list they wrote their week on
+      // is not a backup of their work. A task that belongs to a client is
+      // matched by name like everything else, and one that belongs to nobody is
+      // restored as a task that belongs to nobody — which is most of them, and
+      // the reason a restore has to be able to keep a row with no client on it.
+      'tasks': [
+        for (final t in await store.tasks())
+          {
+            'title': t.title,
+            if (t.clientId != null) 'client': _nameOf(clients, t.clientId!),
+            'due': t.due,
+            'priority': t.priority.name,
+            'done': t.done,
+            if (t.completedAt != null) 'completed_at': t.completedAt,
+            if (t.note != null) 'note': t.note,
+            'created': t.created,
+          }
+      ],
       'chat': [
         for (final c in await store.chat())
           {
@@ -200,6 +219,36 @@ class Backup {
       payments++;
     }
 
+    var tasks = 0;
+    final knownTasks = <String>{};
+    for (final t in await store.tasks()) {
+      knownTasks.add('${t.clientId ?? ''}|${t.title}|${t.due ?? ''}');
+    }
+    for (final row in _rows(decoded['tasks'])) {
+      final title = row['title'];
+      if (title is! String || title.trim().isEmpty) continue;
+      // No client is a legitimate state rather than a broken row, so it resolves
+      // to nobody rather than counting as an orphan. Skipping these would mean a
+      // restore quietly dropped exactly the one-off chores the task list was
+      // added for.
+      final client = resolve(row['client']);
+      final due = row['due'] as String?;
+      final key = '${client?.id ?? ''}|$title|${due ?? ''}';
+      if (knownTasks.contains(key)) continue;
+      await store.addTask(Task(
+        title: title,
+        clientId: client?.id,
+        due: due,
+        priority: TaskPriority.parse(row['priority']),
+        done: row['done'] == true,
+        completedAt: row['completed_at'] as String?,
+        note: row['note'] as String?,
+        created: row['created'] as String? ?? '',
+      ));
+      knownTasks.add(key);
+      tasks++;
+    }
+
     var deadlines = 0;
     final knownDeadlines = <String>{};
     for (final d in await store.deadlines(openOnly: false)) {
@@ -226,6 +275,7 @@ class Backup {
       clients: clients,
       payments: payments,
       deadlines: deadlines,
+      tasks: tasks,
       skipped: orphans,
     );
   }
@@ -245,6 +295,7 @@ class RestoreReport {
     required this.clients,
     required this.payments,
     required this.deadlines,
+    this.tasks = 0,
     required this.skipped,
   });
 
@@ -252,12 +303,16 @@ class RestoreReport {
   final int payments;
   final int deadlines;
 
+  /// Tasks restored. Optional in the constructor because an older caller that
+  /// never heard of them still builds a valid report.
+  final int tasks;
+
   /// Payments that named a client this install does not have. They are counted
   /// and dropped rather than attached to whoever happens to be first in the
   /// list, which would be a fabricated record of money.
   final int skipped;
 
-  int get total => clients + payments + deadlines;
+  int get total => clients + payments + deadlines + tasks;
 
   String get summary {
     if (total == 0) return 'Nothing new in that backup';
@@ -265,6 +320,7 @@ class RestoreReport {
       if (clients > 0) '$clients client${clients == 1 ? '' : 's'}',
       if (payments > 0) '$payments payment${payments == 1 ? '' : 's'}',
       if (deadlines > 0) '$deadlines deadline${deadlines == 1 ? '' : 's'}',
+      if (tasks > 0) '$tasks task${tasks == 1 ? '' : 's'}',
     ];
     final base = 'Restored ${parts.join(', ')}';
     return skipped == 0 ? base : '$base. $skipped payment${skipped == 1 ? '' : 's'} skipped, no matching client';

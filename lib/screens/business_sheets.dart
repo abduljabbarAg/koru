@@ -7,7 +7,8 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-/// The three sheets the Business screen opens, and the writes behind them.
+/// The three sheets the Clients and Revenue tabs open, and the writes behind
+/// them.
 ///
 /// They live here rather than inside the screen because the screen itself was
 /// thirteen hundred lines and two thirds of that was form layout. Splitting them
@@ -19,20 +20,6 @@ import '../widgets.dart';
 /// deposit still goes into the ledger rather than being subtracted from the
 /// invoice, and the due date is still worked out from the terms unless the
 /// reader overrides it.
-
-/// Drops the derived data whenever something that feeds it changes.
-///
-/// Clients, payments and deadlines all feed the same totals, so one place
-/// lists them. Missing one here is how a screen ends up showing a balance that
-/// was correct a minute ago.
-void invalidateMoneyData(WidgetRef ref) {
-  ref
-    ..invalidate(clientsProvider)
-    ..invalidate(paymentsProvider)
-    ..invalidate(receivedTotalsProvider)
-    ..invalidate(openDeadlinesProvider)
-    ..invalidate(guideFactsProvider);
-}
 
 /// Create or edit a client.
 Future<void> editClientSheet(
@@ -308,7 +295,7 @@ Future<void> editClientSheet(
       ));
     }
 
-    invalidateMoneyData(ref);
+    invalidateWorkData(ref);
     if (context.mounted) {
       toast(context, existing == null ? 'Client added' : 'Client updated');
     }
@@ -417,7 +404,7 @@ Future<void> recordPaymentSheet(
     await store.setClientStatus(c.id!, 'paid');
   }
 
-  invalidateMoneyData(ref);
+  invalidateWorkData(ref);
   if (!context.mounted) return;
   final left = c.balanceWith(alreadyReceived + amount);
   toast(
@@ -494,6 +481,6 @@ Future<void> addDeadlineSheet(
     title: title.text.trim(),
     due: isoDate(date),
   ));
-  invalidateMoneyData(ref);
+  invalidateWorkData(ref);
   if (context.mounted) toast(context, 'Deadline added');
 }

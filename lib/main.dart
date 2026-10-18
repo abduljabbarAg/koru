@@ -13,12 +13,14 @@ import 'engine_launch.dart';
 import 'mascot/mascot.dart';
 import 'onboarding.dart';
 import 'permission_consent.dart';
-import 'screens/business.dart';
 import 'screens/chat.dart';
 import 'screens/client_detail.dart';
+import 'screens/clients.dart';
 import 'screens/permissions_intro.dart';
-import 'screens/projects.dart';
-import 'screens/settings.dart';
+import 'screens/project_detail.dart';
+import 'screens/revenue.dart';
+import 'screens/shell_actions.dart';
+import 'screens/tasks.dart';
 import 'screens/today.dart';
 import 'state.dart';
 import 'theme.dart';
@@ -503,6 +505,59 @@ class _EngineLoadingBar extends StatelessWidget {
   }
 }
 
+/// The four tabs, in the order they are worth having.
+///
+/// Named rather than a bare list of numbers because the numbers are the one thing
+/// in this file that has no meaning of its own: the deep links and the taps in
+/// [_HomeShellState] all address a screen by index, and a screen that moved
+/// silently turns every one of those into a link that lands somewhere else.
+/// Four, not five. Talk and Settings are in the header of the two screens
+/// somebody opens to get something done — a person arriving for the first time
+/// should meet their work before they meet configuration.
+enum KoruAppTabs {
+  today(0, Icons.today_outlined, Icons.today_rounded, 'Today'),
+  tasks(1, Icons.checklist_rounded, Icons.checklist_rtl_rounded, 'Tasks'),
+  clients(2, Icons.people_outline_rounded, Icons.people_rounded, 'Clients'),
+  revenue(3, Icons.payments_outlined, Icons.payments_rounded, 'Revenue');
+
+  const KoruAppTabs(this.slot, this.iconOff, this.iconOn, this.label);
+
+  /// Where this tab sits in the bar. Read through here rather than written at
+  /// each call site, because a number written next to a screen is a number that
+  /// survives the screen moving.
+  final int slot;
+
+  /// Shown while another tab is showing.
+  final IconData iconOff;
+
+  /// Shown while this one is.
+  final IconData iconOn;
+
+  final String label;
+
+  /// The tab a link target opens on.
+  ///
+  /// Written here rather than at the call site because this is the one place
+  /// that has to be right when the bar changes shape. It used to be a bare number
+  /// beside each `setState`, and reordering the tabs turned every notification
+  /// that had ever been posted into a link that opened something else — which is
+  /// invisible until somebody taps one and cannot work out why they are looking
+  /// at a balance sheet instead of at their work.
+  static KoruAppTabs tabFor(AttentionTarget target) => switch (target) {
+        AttentionTarget.client => KoruAppTabs.clients,
+        // A deadline and an entry are both about today, and the queue is where
+        // they are read now. Before this they landed on the page of balances,
+        // which has never been where a deadline was.
+        AttentionTarget.deadline => KoruAppTabs.today,
+        AttentionTarget.event => KoruAppTabs.today,
+        AttentionTarget.task => KoruAppTabs.tasks,
+        // Projects are listed on the work tab, and the tap pushes the project
+        // itself, which has a screen of its own now.
+        AttentionTarget.project => KoruAppTabs.tasks,
+        AttentionTarget.chat => KoruAppTabs.today,
+      };
+}
+
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -511,6 +566,13 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
+  /// Which of the four screens is showing.
+  ///
+  /// Indexed rather than named because the whole point of the order is what
+  /// comes first: Today, the Tasks, the Clients, the Money. Every deep link in
+  /// the app resolves through [KoruAppTabs] so that a notification written
+  /// against the old five-tab order cannot land on whatever happens to sit at
+  /// that number now.
   int _tab = 0;
 
   /// Opens whatever a notification tap asked for.
@@ -521,29 +583,36 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   /// that from the notification not having worked at all.
   Future<void> _openPendingLink(KoruDeepLink? link) async {
     if (link == null) return;
+    // The tab comes from one table for every kind of link, so a link cannot
+    // land on the wrong screen because one case was written differently.
+    setState(() => _tab = KoruAppTabs.tabFor(link.target).slot);
+    final navigator = Navigator.of(context);
     switch (link.target) {
       case AttentionTarget.client:
         // A client link with no id cannot name a screen, and guessing which
         // client was meant is worse than landing on the list.
-        if (link.id == null) {
-          setState(() => _tab = 2);
-        } else {
-          final navigator = Navigator.of(context);
-          setState(() => _tab = 2);
+        if (link.id != null) {
           await navigator.push(MaterialPageRoute<void>(
             builder: (_) => ClientDetailScreen(clientId: link.id!),
           ));
         }
+      // A deadline, an entry and a task all land on their own screen rather
+      // than on a detail page, because there is no detail screen for them and
+      // the queue is where they are read.
       case AttentionTarget.event:
-      // There is no event detail screen yet, so land on the calendar section.
-        setState(() => _tab = 2);
       case AttentionTarget.deadline:
-        setState(() => _tab = 2);
+      case AttentionTarget.task:
+        break;
       case AttentionTarget.project:
-        // No detail screen for a project yet, so land where the list is.
-        setState(() => _tab = 3);
+        if (link.id != null) {
+          await navigator.push(MaterialPageRoute<void>(
+            builder: (_) => ProjectScreen(projectId: link.id!),
+          ));
+        }
       case AttentionTarget.chat:
-        setState(() => _tab = 1);
+        await navigator.push(MaterialPageRoute<void>(
+          builder: (_) => const ChatScreen(),
+        ));
     }
     // Cleared last, so a rebuild mid-navigation cannot re-enter this.
     ref.read(pendingLinkProvider.notifier).clear();
@@ -552,10 +621,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   // Not const: the screens read the palette, which is resolved per brightness.
   static final _pages = [
     const TodayScreen(),
-    const ChatScreen(),
-    const BusinessScreen(),
-    const ProjectsScreen(),
-    const SettingsScreen(),
+    const TasksScreen(),
+    const ClientsScreen(),
+    const RevenueScreen(),
   ];
 
   @override
@@ -577,66 +645,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     return Scaffold(
       body: IndexedStack(index: _tab, children: _pages),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: KoruColors.surface,
-          border: Border(top: KoruBorders.hairline()),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            // Grown from 62 for the fifth tab. Labels are kept rather than
-            // dropped: an icon with no name is a worse affordance than a
-            // slightly shorter row.
-            height: KoruSpace.xxxl * 2,
-            child: Row(
-              children: [
-                _tabButton(0, Icons.today_outlined, Icons.today_rounded, 'Today'),
-                _tabButton(1, Icons.forum_outlined, Icons.forum_rounded, 'Talk'),
-                _tabButton(2, Icons.work_outline_rounded, Icons.work_rounded, 'Business'),
-                _tabButton(3, Icons.folder_outlined, Icons.folder_rounded, 'Projects'),
-                _tabButton(4, Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _tabButton(int i, IconData off, IconData on, String label) {
-    final sel = _tab == i;
-    return Expanded(
-      child: Semantics(
-        selected: sel,
-        button: true,
-        label: label,
-        child: InkWell(
-          onTap: () {
-            // A tick, not a buzz. It confirms the tap landed without becoming
-            // the thing you notice while switching tabs.
-            HapticFeedback.selectionClick();
-            setState(() => _tab = i);
-          },
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(sel ? on : off,
-                  size: KoruSize.icon,
-                  color: sel ? KoruColors.leaf : KoruColors.inkFaint),
-              const SizedBox(height: KoruSpace.xxs),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: KoruType.tabLabel.copyWith(
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                  color: sel ? KoruColors.leaf : KoruColors.inkFaint,
-                ),
-              ),
-            ],
-          ),
-        ),
+      bottomNavigationBar: KoruTabBar(
+        selected: _tab,
+        onSelected: (slot) {
+          // A tick, not a buzz. It confirms the tap landed without becoming the
+          // thing you notice while switching tabs.
+          HapticFeedback.selectionClick();
+          setState(() => _tab = slot);
+        },
       ),
     );
   }

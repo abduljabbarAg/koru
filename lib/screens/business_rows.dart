@@ -12,11 +12,12 @@ import 'business_event_sheet.dart';
 import 'business_sheets.dart';
 import 'client_detail.dart';
 
-/// The rows the Business screen is made of, and the writes they perform.
+/// The rows the Clients and Revenue tabs are made of, and the writes they
+/// perform.
 ///
-/// They were methods on the screen, which is the right place for a screen's
-/// layout and the wrong place for a deadline's three icons: the screen file had
-/// grown past seven hundred lines, and everything in it was private, so the
+/// They were methods on the Business screen, which is the right place for a
+/// screen's layout and the wrong place for a deadline's three icons: that file
+/// had grown past seven hundred lines, and everything in it was private, so the
 /// client screen could not reach the row for the same facts and built a shorter
 /// one of its own instead.
 ///
@@ -358,7 +359,7 @@ class PaymentRow extends ConsumerWidget {
         onPressed: () async {
           final store = await ref.read(storeProvider.future);
           await store.deletePayment(p.id!);
-          invalidateMoneyData(ref);
+          invalidateWorkData(ref);
         },
       ),
     );
@@ -385,6 +386,7 @@ class ClientRow extends ConsumerWidget {
     required this.today,
     required this.currency,
     required this.received,
+    this.openTasks = 0,
   });
 
   final Client client;
@@ -396,6 +398,14 @@ class ClientRow extends ConsumerWidget {
   /// disagree.
   final double received;
 
+  /// How much of their work is still open. Counted by the screen, which has the
+  /// list already, so a row does not go and find out for itself.
+  ///
+  /// On the row because it is the other half of the question this screen asks:
+  /// somebody opening Clients wants to know both who owes them and who has work
+  /// outstanding, and the second half used to live on two other screens.
+  final int openTasks;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = client;
@@ -405,6 +415,10 @@ class ClientRow extends ConsumerWidget {
     final meta = <String>[
       if (c.amount != null) '${money(c.amount!)} ${currency.code} invoiced',
       if (received > 0) '${money(received)} received',
+      if (openTasks > 0)
+        openTasks == 1
+            ? '1 task open'
+            : '$openTasks tasks open',
       if (c.leadSource != null) 'via ${c.leadSource}',
       if (c.parsedDue != null) 'due ${formatDate(c.due, DateTime.now())}',
     ];
@@ -419,7 +433,7 @@ class ClientRow extends ConsumerWidget {
         onSelected: (v) async {
           final store = await ref.read(storeProvider.future);
           await store.setClientStatus(c.id!, v);
-          invalidateMoneyData(ref);
+          invalidateWorkData(ref);
         },
         itemBuilder: (_) => kClientStatuses
             .map((s) => PopupMenuItem(value: s, child: Text(s)))
@@ -468,7 +482,7 @@ class ClientRow extends ConsumerWidget {
                 onPressed: () async {
                   final store = await ref.read(storeProvider.future);
                   await store.deleteClient(c.id!);
-                  invalidateMoneyData(ref);
+                  invalidateWorkData(ref);
                 },
               ),
             ],

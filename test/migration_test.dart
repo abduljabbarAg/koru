@@ -90,6 +90,62 @@ void main() {
     ''');
   }
 
+  /// The v4 to v10 shape, written out the way those migrations left it.
+  ///
+  /// Only needed for one test, and only because one test is about an install
+  /// that already has all of it: the chain from v1 is covered above, and what
+  /// has to be proved here is that opening a genuine v10 database adds the task
+  /// table and touches nothing else. A database built by a partial chain would
+  /// not prove that.
+  Future<void> createV4ToV10(Database d) async {
+    await d.execute('ALTER TABLE business ADD COLUMN monthly REAL');
+    await d.execute('ALTER TABLE business ADD COLUMN deposit REAL');
+    await d.execute('ALTER TABLE business ADD COLUMN terms_days INTEGER');
+    await d.execute('ALTER TABLE business ADD COLUMN invoiced_on TEXT');
+    await d.execute('''
+      CREATE TABLE projects(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'client',
+        client_id INTEGER,
+        target TEXT,
+        plan TEXT,
+        progress REAL DEFAULT 0,
+        progress_note TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL
+      )
+    ''');
+    await d.execute('''
+      CREATE TABLE project_notes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        created TEXT NOT NULL
+      )
+    ''');
+    await d.execute(
+        'CREATE INDEX idx_projects_client ON projects(client_id)');
+    await d.execute('''
+      CREATE TABLE events(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        time TEXT,
+        title TEXT NOT NULL,
+        location TEXT,
+        note TEXT,
+        client_id INTEGER,
+        duration_min INTEGER,
+        synced INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL
+      )
+    ''');
+    await d.execute('CREATE INDEX idx_events_date ON events(date, time)');
+    await d.execute('ALTER TABLE events ADD COLUMN recurrence TEXT');
+    await d.execute('ALTER TABLE business ADD COLUMN phone TEXT');
+  }
+
   Future<void> createV3(Database d) async {
     await d.execute('''
       CREATE TABLE payments(
@@ -122,6 +178,7 @@ void main() {
         await createV1(d);
         if (v >= 2) await createV2(d);
         if (v >= 3) await createV3(d);
+        if (v >= 10) await createV4ToV10(d);
       },
     );
 
@@ -154,6 +211,40 @@ void main() {
         'role': 'koru',
         'text': 'hi',
         'created': '2026-01-01',
+      });
+    }
+    if (version >= 10) {
+      // The records a working install has, so the upgrade is proved against
+      // something rather than against an empty table.
+      await db.insert('business', {
+        'name': 'Acme',
+        'status': 'delivered',
+        'amount': 5000.0,
+        'monthly': 500.0,
+        'terms_days': 14,
+        'invoiced_on': '2026-02-01',
+        'created': '2026-02-01',
+      });
+      await db.insert('projects', {
+        'name': 'Acme rebrand',
+        'kind': 'client',
+        'client_id': 1,
+        'target': 'the new site is live',
+        'progress': 0.5,
+        'created': '2026-03-01',
+        'updated': '2026-03-01',
+      });
+      await db.insert('project_notes', {
+        'project_id': 1,
+        'body': 'wireframes signed off',
+        'created': '2026-03-02',
+      });
+      await db.insert('events', {
+        'date': '2026-04-01',
+        'time': '15:00',
+        'title': 'Kickoff with Acme',
+        'synced': 0,
+        'created': '2026-03-20',
       });
     }
     if (version >= 3) {
@@ -269,6 +360,71 @@ void main() {
       await store.addProjectNote(ProjectNote(
           projectId: p.id!, body: 'started the wireframes', created: '2026-10-02T00:00:00Z'));
       expect((await store.projectNotes(p.id!)).single.body, 'started the wireframes');
+    });
+  });
+
+group('a v10 install upgrading to v11', () {
+    test('opens, keeps everything, and gains a task list', () async {
+      final dir = await seedOldDatabase(10);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      // The records from before the upgrade, still readable.
+      final clients = await store.clients();
+      expect(clients, hasLength(2));
+      final acme = clients.firstWhere((c) => c.name == 'Acme');
+      expect(acme.monthly, 500);
+      expect(acme.termsDays, 14);
+      expect(acme.balanceWith(0), 5000);
+
+      final projects = await store.projects();
+      expect(projects.single.name, 'Acme rebrand');
+      expect(projects.single.progress, 0.5);
+      expect((await store.projectNotes(projects.single.id!)).single.body,
+          'wireframes signed off');
+      expect((await store.events(from: DateTime(2026, 1, 1))).single.title,
+          'Kickoff with Acme');
+      // The columns added along the way are still there too.
+      expect(clients.firstWhere((c) => c.name == 'Bilal').phone, isNull);
+
+      // And the new table is empty rather than missing. A migration that cannot
+      // be read as "no tasks yet" is indistinguishable from one that lost the
+      // feature.
+      expect(await store.tasks(), isEmpty);
+    });
+
+    test('a task can be added to an upgraded database and kept', () async {
+      final dir = await seedOldDatabase(10);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      final id = await store.addTask(const Task(title: 'Chase the deposit'));
+      expect(id, isNotNull);
+      final task = (await store.tasks()).single;
+      expect(task.title, 'Chase the deposit');
+      expect(task.priority, TaskPriority.normal);
+      expect(task.done, isFalse);
+      expect(task.completedAt, isNull);
+
+      // And it survives closing and reopening, which is the only honest check
+      // that the column landed rather than living in a cache.
+      await store.close();
+      final again = await ProfileStore.open(directory: dir);
+      addTearDown(again.close);
+      expect((await again.tasks()).single.id, id);
+    });
+
+    test('wipe clears the task list too', () async {
+      final dir = await seedOldDatabase(10);
+      final store = await ProfileStore.open(directory: dir);
+      addTearDown(store.close);
+
+      await store.addTask(const Task(title: 'One thing'));
+      // wipe() is the only promise the app makes about deletion, and it has to
+      // keep working on a database it did not create.
+      await store.wipe();
+      expect(await store.tasks(), isEmpty);
+      expect(await store.clients(), isEmpty);
     });
   });
 

@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../attention.dart';
 import '../currency.dart';
 import '../human_date.dart';
 import '../mascot/mascot.dart';
@@ -11,145 +9,187 @@ import '../motivation.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
-
-/// How far a row's separators start from the left edge, so they line up under
-/// the text rather than under the icon beside it: row padding, badge, gap.
-///
-/// Named as the three tokens it is rather than as the sum, because a sum is
-/// three numbers that have to be found again by anyone who wants to know why it
-/// is that wide.
-const double _rowTextInset = KoruSpace.row + KoruSize.badge + KoruSpace.md;
-
-/// How far the follow-up button on an attention row is indented.
-///
-/// The sum of the three things in front of it rather than a number of its own,
-/// so moving any of them moves this with it instead of leaving a button sitting
-/// half under the text above it.
-const double _followUpInset = KoruSize.badge + KoruSpace.md + KoruSpace.lg;
+import '../work_queue.dart';
+import 'business_rows.dart' show openClient;
+import 'project_detail.dart';
+import 'shell_actions.dart';
+import 'task_sheet.dart';
+import 'today_rows.dart';
 
 /// What needs doing today.
 ///
-/// The screen the app exists for. Everything else is a place to look at the
-/// records; this is the one that answers "what should I do right now" without
-/// the user having to open anything.
+/// The screen the app exists for, and the only one most people open. It used to
+/// be a brief: totals, four sections grouped by kind, the projects going quiet,
+/// and a line about the weather of the day. All of that is true and none of it
+/// is a list of things to do, which is why opening it in the morning produced a
+/// feeling of reading a report rather than a feeling of getting on with it.
 ///
-/// Built on [attentionProvider] rather than recomputing. The same list already
-/// feeds the notification, the widget and the launcher badge, so the three can
-/// never disagree about what is urgent, and every write invalidates one
-/// provider rather than three computations.
+/// So it is one ranked queue now. Every row is a thing that needs doing — money
+/// that is late, a task, a deadline, a place to be, a project that has gone
+/// quiet — in one order that puts the worst first, and every row opens the thing
+/// or ticks it off without going anywhere. The records behind it were all already
+/// here; what was missing was the ranking and a way to act.
 ///
-/// The shape is the shape of the morning: a greeting and the date, what the
-/// day is worth in money, then the work in the order it should be done, then
-/// the projects that have gone quiet, and one line to close on. Every state —
-/// waiting, broken, empty, full — keeps the same frame so the screen never
-/// rearranges itself under the reader.
+/// Built on [workQueueProvider] so that the list here, the badge on the phone and
+/// the notification are reading the same records rather than three answers to
+/// the same question.
 class TodayScreen extends ConsumerWidget {
   const TodayScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final items = ref.watch(attentionProvider);
+    final queue = ref.watch(workQueueProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Today'),
         backgroundColor: KoruColors.cream,
         surfaceTintColor: KoruColors.nothing,
+        // The app's chrome rather than this screen's. Talk and Settings used to
+        // be the middle and last tabs, and both of them are things a person
+        // reaches for without thinking about where they are, so they live in the
+        // header of the screen they will always be able to get back to. A new
+        // user gets to their first answer without ever opening Settings.
+        actions: const [TalkButton(), SettingsButton()],
       ),
       backgroundColor: KoruColors.cream,
       body: KoruSettle(
-        child: items.when(
+        child: queue.when(
           loading: () => _scroll(ref, const [
             _HeroHeader(),
             _Waiting(),
           ]),
           error: (e, _) => _scroll(ref, [
             const _HeroHeader(),
-            _Broken(onRetry: () => ref.invalidate(attentionProvider)),
+            _Broken(onRetry: () => ref.invalidate(workQueueProvider)),
           ]),
-          data: (list) {
-            if (list.isEmpty) {
-              return _scroll(ref, [_HeroHeader(items: list), const _AllClear()]);
-            }
-            final overdue =
-                list.where((i) => i.kind == AttentionKind.overdueMoney);
-            final dueToday = list.where((i) => i.kind == AttentionKind.dueToday);
-            final events =
-                list.where((i) => i.kind == AttentionKind.eventToday);
-            final rest = list
-                .where((i) =>
-                    i.kind != AttentionKind.overdueMoney &&
-                    i.kind != AttentionKind.dueToday &&
-                    i.kind != AttentionKind.eventToday)
-                .toList();
-
-            return _scroll(ref, [
-              _HeroHeader(items: list),
-              _Summary(items: list),
-              const SizedBox(height: 24),
-              if (overdue.isNotEmpty)
-                KoruSection(
-                  label: 'Overdue',
-                  hint: 'Past its date and still unpaid.',
-                  dividerIndent: _rowTextInset,
-                  children: [
-                    for (final i in overdue) _AttentionRow(item: i),
-                  ],
-                ),
-              if (dueToday.isNotEmpty)
-                KoruSection(
-                  label: 'Due today',
-                  hint: 'Finish these today.',
-                  dividerIndent: _rowTextInset,
-                  children: [
-                    for (final i in dueToday) _AttentionRow(item: i),
-                  ],
-                ),
-              if (events.isNotEmpty)
-                KoruSection(
-                  label: 'Happening today',
-                  hint: 'Places to be.',
-                  dividerIndent: _rowTextInset,
-                  children: [
-                    for (final i in events) _AttentionRow(item: i),
-                  ],
-                ),
-              if (rest.isNotEmpty)
-                KoruSection(
-                  label: 'Coming up',
-                  hint: 'Not urgent yet.',
-                  dividerIndent: _rowTextInset,
-                  children: [
-                    for (final i in rest) _AttentionRow(item: i),
-                  ],
-                ),
-              const _ProjectGlance(),
-              const _MorningLine(),
-            ]);
-          },
+          data: (items) => _scroll(ref, [
+            _HeroHeader(brief: WorkQueue.brief(items)),
+            _Summary(items: items),
+            if (items.isEmpty)
+              const _AllClear()
+            else
+              KoruSection(
+                label: 'Do this next',
+                hint: 'Late first, then by how pressing it is, then by when '
+                    'it is due. Tap a row to open it.',
+                dividerIndent: KoruSize.badge + KoruSpace.md,
+                children: [
+                  for (final item in items) _queueRow(context, ref, item),
+                ],
+              ),
+            const _MorningLine(),
+          ]),
         ),
       ),
     );
+  }
+
+  /// One row, with the three things that can happen to it: open it, tick it off,
+  /// or nothing at all because there is nowhere to go yet.
+  Widget _queueRow(BuildContext context, WidgetRef ref, WorkItem item) {
+    final clientName = _clientName(ref, item.clientId);
+    final currency = ref.watch(currencyProvider).valueOrNull?.code ?? 'AED';
+
+    return QueueRow(
+      item: item,
+      clientName: clientName,
+      currency: currency,
+      onOpen: () => _open(context, ref, item),
+      onDone: item.kind == WorkKind.task || item.kind == WorkKind.deadline
+          ? () => _done(context, ref, item)
+          : null,
+    );
+  }
+
+  /// The client's name, from the list the screen has already loaded.
+  ///
+  /// Null rather than a lookup that could fail: a queue row about deleted work
+  /// still has to say what the work is.
+  String? _clientName(WidgetRef ref, int? clientId) {
+    if (clientId == null) return null;
+    final clients = ref.read(clientsProvider).valueOrNull ?? const <Client>[];
+    for (final c in clients) {
+      if (c.id == clientId) return c.name;
+    }
+    return null;
+  }
+
+  /// Takes the row to the thing it is about.
+  ///
+  /// A deadline has no screen of its own to go to, so one that belongs to a
+  /// client opens that client, where the deadline is listed. Opening a list when
+  /// the row is about one line of it would be worse than the row not being
+  /// tappable at all, which is why this is null rather than a guess.
+  Future<void> _open(BuildContext context, WidgetRef ref, WorkItem item) async {
+    switch (item.kind) {
+      case WorkKind.money:
+      case WorkKind.deadline:
+        final id = item.clientId;
+        if (id != null && context.mounted) openClient(context, id);
+      case WorkKind.task:
+        final task = await _taskFor(ref, item);
+        if (task == null || !context.mounted) return;
+        await taskSheet(context, ref, existing: task);
+      case WorkKind.event:
+        // No detail screen for an entry yet; the calendar lives on the Tasks
+        // tab, which is where a row about a place to be is edited.
+        break;
+      case WorkKind.project:
+        final id = item.id;
+        if (id != null && context.mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ProjectScreen(projectId: id),
+            ),
+          );
+        }
+    }
+  }
+
+  Future<Task?> _taskFor(WidgetRef ref, WorkItem item) async {
+    final store = await ref.read(storeProvider.future);
+    final id = item.id;
+    return id == null ? null : store.task(id);
+  }
+
+  /// Ticks the row off without leaving the screen.
+  ///
+  /// Both kinds write the same two things — the flag and the moment — so the
+  /// archive on the Tasks tab can say when something was finished rather than
+  /// only that it is not here any more.
+  Future<void> _done(BuildContext context, WidgetRef ref, WorkItem item) async {
+    final store = await ref.read(storeProvider.future);
+    final id = item.id;
+    if (id == null) return;
+    if (item.kind == WorkKind.task) {
+      await store.setTaskDone(id, true);
+    } else {
+      await store.setDeadlineDone(id, true);
+    }
+    invalidateWorkData(ref);
+    if (!context.mounted) return;
+    toast(context, 'Done: ${item.title}');
   }
 
   /// The one scroll view, so every state pulls down to refresh the same way.
   ///
   /// Always scrollable even when the content is short, because a list that
   /// fits on the screen cannot otherwise be dragged far enough to reach the
-  /// refresh — and the empty morning is exactly when a pull to check again is
+  /// refresh — and an empty morning is exactly when a pull to check again is
   /// most likely.
   Widget _scroll(WidgetRef ref, List<Widget> children) {
     return RefreshIndicator(
       onRefresh: () async {
         ref
-          ..invalidate(attentionProvider)
+          ..invalidate(workQueueProvider)
           ..invalidate(clientsProvider)
-          ..invalidate(openDeadlinesProvider);
+          ..invalidate(receivedTotalsProvider)
+          ..invalidate(openDeadlinesProvider)
+          ..invalidate(tasksProvider);
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        // The shared page padding, rather than the same four numbers written
-        // out here. It was already 20/10/20/40, so nothing moved.
         padding: const EdgeInsets.fromLTRB(
           KoruSpace.gutter,
           KoruSpace.sml,
@@ -165,22 +205,20 @@ class TodayScreen extends ConsumerWidget {
 /// The greeting, the date, and where the day stands.
 ///
 /// The header is the one part of the screen that does not change between
-/// states, which is the point: the date is known while the list is still being
+/// states, which is the point: the date is known while the queue is still being
 /// worked out, so the screen arrives whole and the data catches up underneath
-/// it. The brief under the greeting is the same sentence the notification uses,
-/// so what the user was told outside the app and what they read inside it can
-/// never disagree.
+/// it. The brief under the greeting counts rather than lists, because a greeting
+/// that names five things is a list the reader has to read twice.
 class _HeroHeader extends StatelessWidget {
-  const _HeroHeader({this.items});
+  const _HeroHeader({this.brief = ''});
 
-  /// Null while the attention list is still loading.
-  final List<AttentionItem>? items;
+  /// Empty while the queue is still loading, which leaves the line out rather
+  /// than reserving space for a sentence that does not exist yet.
+  final String brief;
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final known = items;
-    final brief = known == null ? '' : Attention.headline(known);
     return KoruScreenHeader(
       eyebrow: formatDay(now, now, style: DateStyle.short),
       title: _greetingFor(now),
@@ -205,13 +243,13 @@ class _Waiting extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Padding(
       padding: EdgeInsets.only(top: KoruSpace.xxxl * 2),
-      child: KoruLoading(label: 'Working out what is due'),
+      child: KoruLoading(label: 'Working out what needs doing'),
     );
   }
 }
 
 /// A failure the user can retry from, with the same retry the error view has
-/// always had — plus the pull-down, which now reaches every state.
+/// always had — plus the pull-down, which reaches every state.
 class _Broken extends StatelessWidget {
   const _Broken({required this.onRetry});
 
@@ -221,25 +259,28 @@ class _Broken extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: KoruSpace.xxxl),
-      child: KoruErrorView(onRetry: onRetry, what: 'work out what is due'),
+      child: KoruErrorView(onRetry: onRetry, what: 'work out what needs doing'),
     );
   }
 }
 
 /// The one figure worth looking at before anything else: what is still owed,
 /// and how much of it is late.
+///
+/// Above the queue rather than inside it, because it is the answer to "how is
+/// this month going" and that is a different question from "what do I do next",
+/// which the queue answers one row at a time.
 class _Summary extends ConsumerWidget {
   const _Summary({required this.items});
 
-  final List<AttentionItem> items;
+  final List<WorkItem> items;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final clients = ref.watch(clientsProvider).valueOrNull ?? const <Client>[];
     final received =
         ref.watch(receivedTotalsProvider).valueOrNull ?? const <int, double>{};
-    final overdue =
-        items.where((i) => i.kind == AttentionKind.overdueMoney).length;
+    final late = items.where((i) => i.overdue).length;
 
     double owed = 0;
     for (final c in clients) {
@@ -253,308 +294,31 @@ class _Summary extends ConsumerWidget {
     return KoruCard(
       padding: const EdgeInsets.all(KoruSpace.card),
       child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('STILL OWED', style: KoruType.label),
-                  const SizedBox(height: KoruSpace.xsm),
-                  Text(
-                    '$symbol ${_plain(owed)}',
-                    style: KoruType.stat,
-                  ),
-                ],
-              ),
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('STILL OWED', style: KoruType.label),
+                const SizedBox(height: KoruSpace.xsm),
+                Text('$symbol ${_plain(owed)}', style: KoruType.stat),
+              ],
             ),
-            if (overdue > 0)
-              KoruPill(
-                label: '$overdue overdue',
-                color: KoruColors.clay,
-                background: KoruColors.claySoft,
-                icon: Icons.error_outline,
-              ),
-          ],
+          ),
+          if (late > 0)
+            KoruPill(
+              label: '$late late',
+              color: KoruColors.clay,
+              background: KoruColors.claySoft,
+              icon: Icons.error_outline,
+            ),
+        ],
       ),
     );
   }
 
   static String _plain(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
-}
-
-/// One thing that needs doing, and the way to do it.
-///
-/// Rows sit on one surface with hairlines between them rather than each in a
-/// box of its own: a stack of outlined cards makes every item look like a
-/// separate decision, and a morning with six of them reads as six problems
-/// instead of one list. The icon says what kind of thing it is — late money in
-/// clay, today's work in gold, a place to be in leaf, and the quiet greys for
-/// anything that can wait — so the eye can sort the list before reading it.
-class _AttentionRow extends ConsumerWidget {
-  const _AttentionRow({required this.item});
-
-  final AttentionItem item;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tone = _toneFor(item.kind);
-    final link = _followUpLink(ref);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: KoruSpace.row,
-        vertical: KoruSpace.mdl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              KoruIconBadge(
-                icon: tone.icon,
-                color: tone.tint,
-                background: tone.fill,
-              ),
-              const SizedBox(width: KoruSpace.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(item.title, style: KoruType.rowTitle),
-                    const SizedBox(height: KoruSpace.xxs),
-                    Text(item.detail, style: KoruType.bodyCompact),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (link != null) ...[
-            const SizedBox(height: KoruSpace.xs),
-            // Indented to the text, not the icon, so the button reads as part
-            // of this row's words rather than as a new item in the list.
-            Padding(
-              padding: const EdgeInsets.only(left: _followUpInset),
-              child: _FollowUpButton(link: link),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// What a row of this kind looks like: the icon and the pair of colours
-  /// behind it. Measured pairs from the palette, so both brightnesses hold.
-  static ({IconData icon, Color tint, Color fill}) _toneFor(
-          AttentionKind kind) =>
-      switch (kind) {
-        AttentionKind.overdueMoney => (
-            icon: Icons.account_balance_wallet_outlined,
-            tint: KoruColors.clay,
-            fill: KoruColors.claySoft,
-          ),
-        AttentionKind.dueToday => (
-            icon: Icons.flag_outlined,
-            tint: KoruColors.gold,
-            fill: KoruColors.goldSoft,
-          ),
-        AttentionKind.eventToday => (
-            icon: Icons.event_outlined,
-            tint: KoruColors.leaf,
-            fill: KoruColors.leafSoft,
-          ),
-        AttentionKind.dueSoon => (
-            icon: Icons.schedule,
-            tint: KoruColors.inkSoft,
-            fill: KoruColors.surfaceAlt,
-          ),
-        AttentionKind.eventSoon => (
-            icon: Icons.event_outlined,
-            tint: KoruColors.inkSoft,
-            fill: KoruColors.surfaceAlt,
-          ),
-        AttentionKind.stalledProject => (
-            icon: Icons.work_outline,
-            tint: KoruColors.inkSoft,
-            fill: KoruColors.surfaceAlt,
-          ),
-      };
-
-  /// The WhatsApp link for this item, or null when there is nothing to send.
-  Client? _client(AttentionItem i, WidgetRef ref) {
-    if (i.clientId == null) return null;
-    final list = ref.watch(clientsProvider).valueOrNull ?? const <Client>[];
-    for (final c in list) {
-      if (c.id == i.clientId) return c;
-    }
-    return null;
-  }
-
-  String? _followUpLink(WidgetRef ref) {
-    final c = _client(item, ref);
-    if (c == null) return null;
-    return c.whatsappLink(message: followUpMessage(c, item.owing));
-  }
-}
-
-/// The polite-but-clear message, built once so the wording is testable rather
-/// than living inside a widget.
-///
-/// Two rules. It names the figure, because "about the invoice" makes the user
-/// look it up and a chase that needs preparation never happens. And it does not
-/// apologise, because an apology for being owed money is a strange thing to send.
-String followUpMessage(Client c, double? owing) {
-  final who = c.name.trim();
-  if (owing == null || owing <= 0) {
-    return 'Hi $who, a quick one about an outstanding invoice.';
-  }
-  final money = owing.toStringAsFixed(2);
-  return 'Hi $who, a quick reminder that \u{00A3}$money is still outstanding. '
-      'Happy to resend the invoice if useful.';
-}
-
-class _FollowUpButton extends StatelessWidget {
-  const _FollowUpButton({required this.link});
-
-  /// Built by the row, which already has the client in hand.
-  final String link;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: () => _open(context, link),
-      icon: const Icon(Icons.chat_bubble_outline_rounded,
-          size: KoruSize.iconSm),
-      label: const Text('Follow up on WhatsApp'),
-      style: TextButton.styleFrom(
-        backgroundColor: KoruColors.leafSoft,
-        foregroundColor: KoruColors.leaf,
-        padding: const EdgeInsets.symmetric(
-          horizontal: KoruSpace.mdl,
-          vertical: KoruSpace.xsm,
-        ),
-        visualDensity: VisualDensity.compact,
-        textStyle: KoruType.badge.copyWith(fontWeight: FontWeight.w700),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(KoruRadius.pill)),
-        ),
-      ),
-    );
-  }
-
-  /// Opens WhatsApp with the message typed out; the user presses send.
-  ///
-  /// The app never sends anything itself. That is why this needs no API key,
-  /// no business account and no network permission of its own — the same deal
-  /// as tapping an email address.
-  Future<void> _open(BuildContext context, String link) async {
-    final uri = Uri.parse(link);
-    var launched = false;
-    try {
-      launched =
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      launched = false;
-    }
-    if (!launched && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WhatsApp is not installed on this device.')),
-      );
-    }
-  }
-}
-
-/// The projects, at a glance.
-///
-/// Here because the user's own framing was clients, payments and projects, and a
-/// Today screen that only counts money would answer half the question. Sorted so
-/// the thing that has not moved comes first, which is the one worth looking at.
-class _ProjectGlance extends ConsumerWidget {
-  const _ProjectGlance();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final projects = ref.watch(projectsProvider).valueOrNull ?? const <Project>[];
-    if (projects.isEmpty) return const SizedBox.shrink();
-
-    final stalled = projects.where((p) => _isStalled(p)).toList();
-    final shown = stalled.isEmpty ? projects.take(3).toList() : stalled.take(3).toList();
-
-    return KoruSection(
-      label: 'Projects going quiet',
-      hint: stalled.isEmpty ? 'Nothing has gone stale.' : 'Not touched in a while.',
-      dividerIndent: _rowTextInset,
-      children: [
-        for (final p in shown) _ProjectRow(project: p),
-      ],
-    );
-  }
-
-  /// Not touched for a fortnight.
-  ///
-  /// Chosen rather than a week because a project somebody works on every Sunday
-  /// would otherwise be shouted at every Monday.
-  static bool _isStalled(Project p) {
-    final updated = DateTime.tryParse(p.updated.isEmpty ? p.created : p.updated);
-    if (updated == null) return false;
-    return DateTime.now().difference(updated).inDays >= 14;
-  }
-}
-
-/// One project on the glance: what it is, the last note, how far along.
-class _ProjectRow extends StatelessWidget {
-  const _ProjectRow({required this.project});
-
-  final Project project;
-
-  @override
-  Widget build(BuildContext context) {
-    final personal = project.isPersonal;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: KoruSpace.row,
-        vertical: KoruSpace.mdl,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          KoruIconBadge(
-            icon: personal ? Icons.favorite_outline : Icons.work_outline,
-            color: personal ? KoruColors.clay : KoruColors.leaf,
-            background: personal ? KoruColors.claySoft : KoruColors.leafSoft,
-          ),
-          const SizedBox(width: KoruSpace.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(project.name, style: KoruType.rowTitle),
-                if (project.progressNote != null &&
-                    project.progressNote!.isNotEmpty) ...[
-                  const SizedBox(height: KoruSpace.xxs),
-                  Text(
-                    project.progressNote!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: KoruType.caption,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: KoruSpace.md),
-          Text(
-            '${(project.progress * 100).round()}%',
-            style: KoruType.rowTitleCompact.copyWith(
-              color: KoruColors.inkSoft,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// The all-clear, on the same surface the rest of the app uses for an empty
@@ -572,8 +336,8 @@ class _AllClear extends StatelessWidget {
         tint: KoruColors.leaf,
         tintBg: KoruColors.leafSoft,
         title: 'Nothing needs you today',
-        body: 'Nothing overdue, nothing due, no calls. Say "add client Bilal '
-            'for 2000" in Talk when something comes in.',
+        body: 'Nothing late, nothing due, no calls. Say "add client Bilal '
+            'for 2000" in Talk, or add a task for work that is only yours.',
       ),
     );
   }

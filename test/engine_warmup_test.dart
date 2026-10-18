@@ -8,6 +8,7 @@ import 'package:koru/local/bundled_engine.dart';
 import 'package:koru/local/local_model_client.dart';
 import 'package:koru/main.dart';
 import 'package:koru/screens/chat.dart';
+import 'package:koru/screens/shell_actions.dart';
 import 'package:koru/secrets.dart';
 import 'package:koru/state.dart';
 import 'package:koru/store.dart';
@@ -287,12 +288,20 @@ void main() {
       );
       await pump(tester, frames: 20);
 
-      for (final tab in ['Talk', 'Business', 'Projects', 'Settings', 'Today']) {
-        await tester.tap(find.text(tab));
+      // The four tabs, in the order the bar has them. Talk and Settings used to
+      // be two of the five and are in the header now, so this list is what has
+      // to be walked to cover every screen the bar can reach.
+      //
+      // Scoped to the bar: every tab's label is also its own screen's title, and
+      // all four screens are alive at once behind it, so a plain find matches
+      // two widgets and the tap is ambiguous.
+      final bar = find.byType(KoruTabBar);
+      for (final tab in ['Today', 'Tasks', 'Clients', 'Revenue']) {
+        await tester.tap(find.descendant(of: bar, matching: find.text(tab)));
         await pump(tester, frames: 4);
       }
 
-      await tester.tap(find.text('Talk'));
+      await tester.tap(find.byTooltip('Talk to Koru').first);
       await pump(tester, frames: 4);
       await tester.tap(find.byType(KoruEngineBarButton).first);
       await pump(tester, frames: 4);

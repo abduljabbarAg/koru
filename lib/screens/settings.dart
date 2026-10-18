@@ -169,7 +169,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   /// Pushes rather than replaces, so the index is still underneath when the
-  /// page is closed. Same shape as the Business screen opening a client.
+  /// page is closed. Same shape as the Clients tab opening a client.
   Widget _row(BuildContext context, _Entry entry) {
     return KoruRow(
       leading: KoruIconBadge(

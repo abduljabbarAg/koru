@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koru/models.dart';
-import 'package:koru/screens/today.dart';
+import 'package:koru/screens/follow_up.dart';
 
 Client _c(String? phone) => Client(name: 'Acme', created: '', phone: phone);
 

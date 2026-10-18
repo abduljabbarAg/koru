@@ -26,6 +26,7 @@ import 'permission_consent.dart';
 import 'proposed_write.dart';
 import 'secrets.dart';
 import 'store.dart';
+import 'work_queue.dart';
 
 /// Riverpod holds the store, the chat thread and the current packet.
 ///
@@ -858,18 +859,13 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> applyWrite(ProposedWrite write) async {
     final store = await ref.read(storeProvider.future);
     await write.apply(store);
-    ref
-      ..invalidate(clientsProvider)
-      ..invalidate(paymentsProvider)
-      ..invalidate(receivedTotalsProvider)
-      ..invalidate(openDeadlinesProvider)
-      ..invalidate(eventsProvider)
-      ..invalidate(guideFactsProvider)
-      // A project edit, a note or a delete changes what the Projects tab and the
-      // model prompt read, so they are re-read rather than left showing what was
-      // there before the card was approved.
-      ..invalidate(projectsProvider)
-      ..invalidate(packetProvider);
+    // Everything the write could have moved, in one list. This was five
+    // hand-maintained calls and grew a sixth every time something new was
+    // added, which is how a screen ends up reading a list the chat has already
+    // changed.
+    for (final provider in _workData) {
+      ref.invalidate(provider);
+    }
 
     // An import is remembered only once it has actually landed. Recording it
     // before would mean a failed import could never be retried, because the
@@ -1335,6 +1331,10 @@ final attentionProvider = FutureProvider<List<AttentionItem>>((ref) async {
   final deadlines = await ref.watch(openDeadlinesProvider.future);
   final projects = await ref.watch(projectsProvider.future);
   final events = await ref.watch(eventsProvider.future);
+  // Tasks too. The user writes these down expecting them to be waited on, and a
+  // notification that ignored the one list they wrote themselves would be the
+  // clearest possible way for this app to say it does not read what is on it.
+  final tasks = await ref.watch(tasksProvider.future);
   return Attention.build(
     clients: clients,
     deadlines: deadlines,
@@ -1343,6 +1343,7 @@ final attentionProvider = FutureProvider<List<AttentionItem>>((ref) async {
     // Today's entries used to stay inside the Business screen, so a call at 3pm
     // could not reach a notification or the widget however overdue it got.
     events: events,
+    tasks: tasks,
   );
 });
 
@@ -1351,6 +1352,70 @@ final projectsProvider = FutureProvider<List<Project>>((ref) async {
   final store = await ref.watch(storeProvider.future);
   return store.projects();
 });
+
+/// Every task, done ones included, oldest first.
+///
+/// One read rather than two. The Tasks screen splits this list in half itself,
+/// and a pending list and an archive fetched separately can disagree for as long
+/// as one of them is still loading — which reads as a task that vanished.
+final tasksProvider = FutureProvider<List<Task>>((ref) async {
+  final store = await ref.watch(storeProvider.future);
+  return store.tasks();
+});
+
+/// The day's work, ranked.
+///
+/// The screen that answers "what should I do now". Built from the same providers
+/// [attentionProvider] is built from, plus the tasks the notification has no way
+/// to know about, so the badge on the phone and the list inside it are reading
+/// the same records.
+final workQueueProvider = FutureProvider<List<WorkItem>>((ref) async {
+  final clients = await ref.watch(clientsProvider.future);
+  final received = await ref.watch(receivedTotalsProvider.future);
+  final deadlines = await ref.watch(openDeadlinesProvider.future);
+  final tasks = await ref.watch(tasksProvider.future);
+  final projects = await ref.watch(projectsProvider.future);
+  final events = await ref.watch(eventsProvider.future);
+  return WorkQueue.build(
+    clients: clients,
+    deadlines: deadlines,
+    tasks: tasks,
+    received: received,
+    projects: projects,
+    events: events,
+  );
+});
+
+/// Everything a write to a client, a payment, a deadline, a calendar entry, a
+/// task or a project can have moved.
+///
+/// One list, because every one of those feeds the same queue and the same money
+/// totals, and a screen left showing what was true a minute ago is worse than a
+/// slow one. Held here rather than next to a screen so the screens cannot each
+/// remember a different subset of it, and held as a list rather than as calls so
+/// that the chat and a button on a row drop exactly the same things.
+final List<ProviderOrFamily> _workData = [
+  clientsProvider,
+  paymentsProvider,
+  receivedTotalsProvider,
+  openDeadlinesProvider,
+  eventsProvider,
+  tasksProvider,
+  projectsProvider,
+  workQueueProvider,
+  attentionProvider,
+  guideFactsProvider,
+  // The packet is what the model is told the user is working on, so a project
+  // that moved has to be in it before the next question.
+  packetProvider,
+];
+
+/// Drops the derived data after a write from a widget.
+void invalidateWorkData(WidgetRef ref) {
+  for (final provider in _workData) {
+    ref.invalidate(provider);
+  }
+}
 
 /// Keeps the notification in step with the data.
 ///
